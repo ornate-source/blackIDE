@@ -10,6 +10,18 @@ os.tmpdir = () => {
   }
   return tmp;
 };
+// The real-git tests drive worktreeManager, which commits via ToolRunner.executeCommand —
+// a child process that inherits process.env. A bare CI runner has no git identity
+// configured, so those commits abort with "Author identity unknown". Setting the identity
+// here (rather than relying on `git config --global`) keeps the suite self-contained: the
+// vars land on process.env, so both the tests' own execSync calls and the manager's
+// spawned git inherit them.
+process.env.GIT_AUTHOR_NAME = 'Test';
+process.env.GIT_AUTHOR_EMAIL = 't@example.com';
+process.env.GIT_COMMITTER_NAME = 'Test';
+process.env.GIT_COMMITTER_EMAIL = 't@example.com';
+const gitEnv = process.env;
+
 const Module = require('module');
 
 // AgentToolExecutor and its tool modules require 'vscode', which only exists inside the
@@ -572,7 +584,6 @@ async function main() {
   {
     const { execSync } = require('child_process');
     const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wtrepo-'));
-    const gitEnv = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.com' };
     const run = (cmd) => execSync(cmd, { cwd: repoDir, env: gitEnv, stdio: 'pipe' });
     const savedWorkspaceFolders = vscodeStub.workspace.workspaceFolders;
     let worktreeDir, branchName;
@@ -1235,7 +1246,6 @@ async function main() {
     // LLM run — that belongs to the P6b extension-host suite.)
     const { execSync } = require('child_process');
     const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-mode-'));
-    const gitEnv = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.com' };
     const runGit = (cmd, cwd = repoDir) => execSync(cmd, { cwd, env: gitEnv, stdio: 'pipe' }).toString();
     const savedWorkspaceFolders = vscodeStub.workspace.workspaceFolders;
     let branchName, worktreeDir;
@@ -1355,7 +1365,6 @@ async function main() {
     // (Concurrent cancellation and budget-trip behaviour need the P6b host suite.)
     const { execSync } = require('child_process');
     const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'par-'));
-    const gitEnv = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.com' };
     const runGit = (cmd) => execSync(cmd, { cwd: repoDir, env: gitEnv, stdio: 'pipe' }).toString();
     const savedWorkspaceFolders = vscodeStub.workspace.workspaceFolders;
     const branches = [];
