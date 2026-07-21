@@ -10,7 +10,7 @@ VSCodium*
 .env
 .env.*
 !.env.example
-
+secrets-setup.txt
 assets/
 build/linux/appimage/out
 build/linux/appimage/pkg2appimage.AppDir
