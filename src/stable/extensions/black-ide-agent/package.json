@@ -1,0 +1,126 @@
+{
+  "name": "black-ide-agent",
+  "displayName": "Black IDE Agent",
+  "description": "Built-in AI coding assistant and agentic loop engine for Black IDE",
+  "version": "1.0.0",
+  "license": "MIT",
+  "publisher": "blackide",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "enabledApiProposals": [
+    "contribSourceControlInputBoxMenu"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:black-ide-chat-view"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "black-ide.openSettings",
+        "title": "✦ Black IDE Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "black-ide.generateCommitMessage",
+        "title": "Generate Commit Message",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "black-ide.inlineEdit",
+        "title": "Black IDE: Inline Edit",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "black-ide.openPipelineManager",
+        "title": "✦ Black IDE: Pipeline Manager",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "black-ide.exportDiagnostics",
+        "title": "✦ Black IDE: Export Agent Diagnostics",
+        "icon": "$(output)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "black-ide.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "black-ide.openSettings",
+          "group": "navigation",
+          "order": 1
+        }
+      ],
+      "global/activity": [
+        {
+          "command": "black-ide.openSettings",
+          "group": "2_configuration",
+          "order": 1.5
+        }
+      ],
+      "scm/inputBox": [
+        {
+          "command": "black-ide.generateCommitMessage",
+          "group": "inline"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "black-ide-chat",
+          "title": "Black Agent",
+          "icon": "resources/agent-sidebar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "black-ide-chat": [
+        {
+          "id": "black-ide-chat-view",
+          "type": "webview",
+          "name": ""
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w",
+    "build-webview": "cd webview && npm run build",
+    "test": "tsc -b && npm run build-store-test && node test/harness.js",
+    "build-store-test": "tsc webview/src/agent-store.ts --outDir test/dist-store --module commonjs --target es2020 --skipLibCheck",
+    "lint:css": "stylelint 'webview/src/**/*.css'",
+    "lint:dead-code": "knip",
+    "compile-integration": "tsc -p test/integration",
+    "test:integration": "npm run compile && npm run compile-integration && node test/integration/out/runTest.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.5.2",
+    "knip": "^5.0.0",
+    "mocha": "^10.8.2",
+    "stylelint": "^16.0.0",
+    "stylelint-config-standard": "^36.0.0",
+    "stylelint-no-unsupported-browser-features": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}

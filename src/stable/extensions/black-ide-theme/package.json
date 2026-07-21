@@ -1,0 +1,186 @@
+{
+  "name": "black-ide-theme",
+  "displayName": "Black IDE Theme",
+  "description": "Premium neon dark theme for Black IDE",
+  "version": "1.0.0",
+  "publisher": "blackide",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Black IDE Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/black-ide-dark.json"
+      }
+    ],
+    "configurationDefaults": {
+      "editor.fontSize": 17,
+      "editor.fontLigatures": true,
+      "editor.fontWeight": "normal",
+      "editor.minimap.enabled": false,
+      "editor.wordWrapColumn": 50,
+      "editor.wordWrap": "on",
+      "editor.wrappingStrategy": "advanced",
+      "liveServer.settings.donotShowInfoMsg": true,
+      "editor.inlineSuggest.enabled": true,
+      "workbench.colorTheme": "Andromeda",
+      "editor.fontFamily": "Firacode Nerd Font",
+      "editor.indentSize": "tabSize",
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "comment",
+            "settings": {
+              "fontStyle": "italic"
+            }
+          }
+        ]
+      },
+      "editor.cursorSmoothCaretAnimation": "on",
+      "editor.cursorBlinking": "expand",
+      "editor.defaultFormatter": "HookyQR.beautify",
+      "editor.formatOnSave": true,
+      "files.autoSave": "onFocusChange",
+      "prettier.tabWidth": 4,
+      "[html]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "HookyQR.beautify"
+      },
+      "[javascript]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      },
+      "[javascriptreact]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      },
+      "[typescript]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      },
+      "[typescriptreact]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      },
+      "eslint.alwaysShowStatus": true,
+      "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit",
+        "source.fixAll.tslint": "explicit",
+        "source.organizeImports": "explicit"
+      },
+      "[python]": {
+        "editor.formatOnType": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "always"
+        },
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "python.analysis.autoImportCompletions": true,
+        "python.analysis.autoImportUserSymbols": true,
+        "python.analysis.indexing": true
+      },
+      "files.associations": {
+        "**/templates/*.html": "django-html",
+        "**/templates/*": "django-txt",
+        "**/requirements{/**,*}.{txt,in}": "pip-requirements"
+      },
+      "emmet.includeLanguages": {
+        "javascript": "javascriptreact",
+        "typescript": "typescriptreact",
+        "django-html": "html"
+      },
+      "emmet.showSuggestionsAsSnippets": true,
+      "auto-close-tag.disableOnLanguage": [],
+      "workbench.startupEditor": "none",
+      "editor.accessibilitySupport": "off",
+      "security.workspace.trust.untrustedFiles": "open",
+      "git.autofetch": true,
+      "auto-close-tag.excludedTags": [
+        "area",
+        "base",
+        "br",
+        "col",
+        "command",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "keygen",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr"
+      ],
+      "explorer.confirmDelete": false,
+      "git.openRepositoryInParentFolders": "never",
+      "auto-close-tag.activationOnLanguage": [
+        "xml",
+        "php",
+        "blade",
+        "ejs",
+        "jinja",
+        "javascript",
+        "javascriptreact",
+        "typescript",
+        "typescriptreact",
+        "plaintext",
+        "markdown",
+        "vue",
+        "liquid",
+        "erb",
+        "lang-cfml",
+        "cfml",
+        "HTML (EEx)",
+        "HTML (Eex)",
+        "plist"
+      ],
+      "workbench.editorAssociations": {
+        "*.sqlite3": "sqlite3-editor.optional"
+      },
+      "workbench.sideBar.location": "right",
+      "workbench.iconTheme": "material-icon-theme",
+      "explorer.fileNesting.patterns": {
+        "*.ts": "${capture}.js",
+        "*.js": "${capture}.js.map, ${capture}.min.js, ${capture}.d.ts",
+        "*.jsx": "${capture}.js",
+        "*.tsx": "${capture}.ts",
+        "tsconfig.json": "tsconfig.*.json",
+        "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, bun.lock",
+        "*.sqlite": "${capture}.${extname}-*",
+        "*.db": "${capture}.${extname}-*",
+        "*.sqlite3": "${capture}.${extname}-*",
+        "*.db3": "${capture}.${extname}-*",
+        "*.sdb": "${capture}.${extname}-*",
+        "*.s3db": "${capture}.${extname}-*"
+      },
+      "codeium.enableConfig": {
+        "*": true,
+        "django-html": true,
+        "plaintext": true
+      },
+      "github.copilot.nextEditSuggestions.enabled": false,
+      "explorer.compactFolders": false,
+      "gitlens.ai.model": "vscode",
+      "gitlens.ai.vscode.model": "copilot:gpt-4.1",
+      "redhat.telemetry.enabled": true,
+      "git.confirmSync": false,
+      "http.systemCertificatesNode": true,
+      "geminicodeassist.project": "inductive-howl-0ttt2",
+      "geminicodeassist.displayInlineContextHint": false,
+      "github.copilot.enable": {
+        "*": false,
+        "plaintext": false,
+        "markdown": false,
+        "scminput": false
+      },
+      "chat.viewSessions.orientation": "stacked",
+      "docker.extension.enableComposeLanguageServer": false
+    }
+  }
+}

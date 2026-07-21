@@ -1,0 +1,8 @@
+{
+  "name": "integration-fixture",
+  "version": "0.1.0",
+  "description": "Disposable workspace for extension-host integration tests.",
+  "dependencies": { "react": "^18.0.0" },
+  "devDependencies": { "typescript": "^5.0.0" },
+  "scripts": { "build": "tsc" }
+}

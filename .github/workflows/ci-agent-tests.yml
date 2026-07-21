@@ -1,0 +1,56 @@
+name: CI - Agent Extension Tests
+
+# Gates the black-ide-agent core harness (test/harness.js). The harness is a plain Node
+# process driving the vscode-free core against a mock LLM server over HTTP — no display
+# server, no Electron — so it runs on a stock ubuntu runner. Extension-host integration
+# tests (which do need a windowing environment) are tracked separately as P6b.
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'src/stable/extensions/black-ide-agent/**'
+      - '.github/workflows/ci-agent-tests.yml'
+  pull_request:
+    paths:
+      - 'src/stable/extensions/black-ide-agent/**'
+      - '.github/workflows/ci-agent-tests.yml'
+
+permissions: {}
+
+defaults:
+  run:
+    working-directory: src/stable/extensions/black-ide-agent
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install extension dependencies
+        run: npm ci
+
+      - name: Install webview dependencies
+        run: npm ci
+        working-directory: src/stable/extensions/black-ide-agent/webview
+
+      # `npm test` chains `tsc -b` -> build-store-test -> node test/harness.js.
+      # The harness exits non-zero when any assertion fails (process.exit(fail ? 1 : 0)),
+      # so a regression fails this job rather than passing silently.
+      - name: Core harness tests
+        run: npm test
+
+      # The webview is a separate tsc project and is NOT covered by `npm test`; without
+      # this step a type error in the webview reaches main unnoticed.
+      - name: Typecheck webview
+        run: npx tsc -p ./webview --noEmit

@@ -1,0 +1,9 @@
+
+test/dist-store/
+
+dist/
+tsconfig.tsbuildinfo
+test/integration/out/
+.vscode-test/
+test/tmp/
+node_modules/

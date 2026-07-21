@@ -1,0 +1,33 @@
+vscode*
+VS*/*
+VSCode*
+continue
+VSCodium*
+.DS_Store
+# Environment / secrets — never commit real values.
+# .env.example is the committed template.
+*.env
+.env
+.env.*
+!.env.example
+
+assets/
+build/linux/appimage/out
+build/linux/appimage/pkg2appimage.AppDir
+build/linux/appimage/pkg2appimage-*.AppImage
+build/linux/appimage/pkg2appimage.AppImage
+build/linux/appimage/squashfs-root
+build/linux/appimage/VSCodium
+build/windows/msi/releasedir
+build/windows/msi/Files*.wxs
+build/windows/msi/Files*.wixobj
+sourcemaps/
+stores/snapcraft/insider/*.snap
+stores/snapcraft/stable/*.snap
+tools/font-size/node_modules/
+tools/font-size/generate-css.js
+/vscode
+resource/
+antigravity-source/
+node_modules/
+**/node_modules/

@@ -1,0 +1,104 @@
+name: black-ide-insiders
+adopt-info: black-ide-insiders
+summary: Code editing. Redefined.
+description: |
+  Black IDE - Insiders: a clean build of the VS Code editor core, free of branding, telemetry, and proprietary licensing
+
+base: core20
+grade: stable
+confinement: classic
+compression: lzo
+
+parts:
+  black-ide-insiders:
+    plugin: nil
+    override-build: |
+      set -eu
+      # Get .deb url
+      wget --quiet https://api.github.com/repos/ornate-source/blackIDE-insiders/releases -O latest.json
+      VERSION=$( jq -r 'sort_by(.tag_name|split("-")[0]|split(".")|map(tonumber))|last.tag_name' latest.json )
+      DEB_URL=$( jq -r 'map(select(.tag_name == "'"${VERSION}"'"))|first.assets[].browser_download_url|select(endswith("'"_${SNAPCRAFT_TARGET_ARCH}.deb"'"))' latest.json )
+      DEB_NAME=$( basename "${DEB_URL}" )
+      # Downloading .deb
+      wget "${DEB_URL}" -O "${SNAPCRAFT_PART_INSTALL}/${DEB_NAME}"
+      # Unpacking .deb
+      dpkg -x "${SNAPCRAFT_PART_INSTALL}/${DEB_NAME}" "${SNAPCRAFT_PART_INSTALL}"
+      # Clean up
+      rm -f latest.json
+      rm -f "${SNAPCRAFT_PART_INSTALL}/${DEB_NAME}"
+      # Set version
+      snapcraftctl set-version "${VERSION/-*/}"
+      # Prepare GUI
+      mkdir -p "${SNAPCRAFT_PART_INSTALL}/meta/gui"
+      cp "${SNAPCRAFT_PART_INSTALL}/usr/share/black-ide-insiders/resources/app/resources/linux/code.png" "${SNAPCRAFT_PART_INSTALL}/meta/gui/black-ide-insiders.png"
+      # Update paths
+      sed -i 's|Exec=/usr/share/black-ide/black-ide-insiders|Exec=black-ide-insiders --force-user-env|g' "${SNAPCRAFT_PART_INSTALL}/usr/share/applications/black-ide-insiders.desktop"
+      sed -i 's|Exec=/usr/share/black-ide/black-ide-insiders|Exec=black-ide-insiders --force-user-env|g' "${SNAPCRAFT_PART_INSTALL}/usr/share/applications/black-ide-insiders-url-handler.desktop"
+      sed -i 's|Icon=black-ide-insiders|Icon=${SNAP}/meta/gui/black-ide-insiders.png|g' "${SNAPCRAFT_PART_INSTALL}/usr/share/applications/black-ide-insiders.desktop"
+      sed -i 's|Icon=black-ide-insiders|Icon=${SNAP}/meta/gui/black-ide-insiders.png|g' "${SNAPCRAFT_PART_INSTALL}/usr/share/applications/black-ide-insiders-url-handler.desktop"
+    build-packages:
+      - wget
+      - jq
+    stage-packages:
+      - ca-certificates
+      - libasound2
+      - libatk-bridge2.0-0
+      - libatk1.0-0
+      - libatspi2.0-0
+      - libcairo2
+      - libcanberra-gtk3-module
+      - libcurl3-gnutls
+      - libcurl3-nss
+      - libcurl4
+      - libdrm2
+      - libgbm1
+      - libgl1
+      - libglib2.0-0
+      - libgtk-3-0
+      - libibus-1.0-5
+      - libnss3
+      - libpango-1.0-0
+      - libsecret-1-0
+      - libwayland-egl1
+      - libxcomposite1
+      - libxdamage1
+      - libxfixes3
+      - libxkbcommon0
+      - libxkbfile1
+      - libxrandr2
+      - libxss1
+      - locales-all
+      - packagekit-gtk3-module
+      - xdg-utils
+    prime:
+      - -usr/share/doc
+      - -usr/share/fonts
+      - -usr/share/icons
+      - -usr/share/lintian
+      - -usr/share/man
+      - -usr/share/black-ide-insiders/chrome-sandbox
+    build-attributes:
+      - enable-patchelf
+    override-prime: |
+      set -eux
+      snapcraftctl prime
+      for snap in "core20"; do
+        cd "/snap/${snap}/current/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}"
+        find . -type f,l -name "*.so*" -exec bash -c "rm -f ${SNAPCRAFT_PRIME}/{}*" \;
+      done
+
+  electron-launch:
+    after:
+      - black-ide-insiders
+    plugin: dump
+    source: snap/local/bin
+
+apps:
+  black-ide:
+    command: electron-launch $SNAP/usr/share/black-ide-insiders/bin/black-ide-insiders --no-sandbox
+    desktop: usr/share/applications/black-ide-insiders.desktop
+    common-id: black-ide-insiders.desktop
+
+  url-handler:
+    command: electron-launch $SNAP/usr/share/black-ide-insiders/bin/black-ide-insiders --open-url --no-sandbox
+    desktop: usr/share/applications/black-ide-insiders-url-handler.desktop

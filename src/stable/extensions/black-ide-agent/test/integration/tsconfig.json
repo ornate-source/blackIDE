@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "outDir": "./out",
+    "lib": ["ES2022"],
+    "sourceMap": true,
+    "strict": true,
+    "rootDir": ".",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "mocha"]
+  },
+  "include": ["./**/*.ts"],
+  // The fixture is a workspace VS Code opens, not part of the test suite — compiling it
+  // would shift rootDir and scatter output under out/fixtures.
+  "exclude": ["./fixtures", "./out"]
+}

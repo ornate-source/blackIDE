@@ -1,0 +1,42 @@
+Black IDE
+Copyright (c) 2026-present OrnateSource
+
+This product is a derivative work. It is built on, and includes substantial
+portions of, the open-source projects listed below. Their copyright notices and
+license terms are retained as required by their respective licenses.
+
+--------------------------------------------------------------------------------
+Visual Studio Code
+--------------------------------------------------------------------------------
+Copyright (c) 2015-present Microsoft Corporation
+Licensed under the MIT License.
+https://github.com/microsoft/vscode
+
+Black IDE derives its editor core from the VS Code source tree (see ./vscode).
+Third-party components bundled within that tree carry their own licenses; refer
+to vscode/ThirdPartyNotices.txt and vscode/cglicenses.json.
+
+--------------------------------------------------------------------------------
+VSCodium
+--------------------------------------------------------------------------------
+Copyright (c) 2018-present The VSCodium contributors
+Copyright (c) 2018-present Peter Squicciarini
+Licensed under the MIT License.
+https://github.com/VSCodium/vscodium
+
+Black IDE is a fork of VSCodium and retains its full commit history. The build
+system, telemetry-removal patches, packaging scripts, and CI configuration
+originate with VSCodium and are the work of its maintainers and contributors —
+principally Baptiste Augrain and Peter Squicciarini. The GitHub contributor list
+for this repository reflects that inherited history and is accurate.
+
+--------------------------------------------------------------------------------
+Modifications
+--------------------------------------------------------------------------------
+Changes made by the Black IDE project — including the integrated AI agent
+extension (black-ide-agent), the multi-agent pipeline and orchestrator, custom
+branding and theming, and the associated CI/CD workflows — are Copyright (c)
+2026-present OrnateSource and are licensed under the MIT License (see ./LICENSE).
+
+Contributors to Black IDE's own changes are credited in the repository commit
+history.

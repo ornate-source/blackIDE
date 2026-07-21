@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Robot Head -->
+  <rect x="3.5" y="2" width="17" height="10" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/>
+  <!-- Head Connectors/Ears -->
+  <rect x="1" y="4.5" width="2.5" height="5" rx="0.5" fill="currentColor"/>
+  <rect x="20.5" y="4.5" width="2.5" height="5" rx="0.5" fill="currentColor"/>
+  <!-- Inner Screen Outline -->
+  <rect x="5.5" y="3.5" width="13" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="1 1"/>
+  <!-- Eyes -->
+  <circle cx="9.5" cy="7" r="1.2" fill="currentColor"/>
+  <circle cx="14.5" cy="7" r="1.2" fill="currentColor"/>
+  <!-- Robot Body -->
+  <path d="M6 16c0-2.8 2.7-4.2 6-4.2s6 1.4 6 4.2c0 2.8-2.7 5.2-6 5.2s-6-2.4-6-5.2z" fill="none" stroke="currentColor" stroke-width="2"/>
+  <!-- Chest V-Shape / Collar -->
+  <path d="M10 14 L12 16 L14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

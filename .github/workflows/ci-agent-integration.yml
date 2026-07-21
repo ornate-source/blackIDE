@@ -1,0 +1,55 @@
+name: CI - Agent Extension Integration Tests
+
+# Extension-host tests (P6b): launches a real VS Code with the extension loaded and runs
+# the suite inside the extension host. This is the only layer that can exercise
+# extension.ts's activation glue, command registration, and the first-run workspace scan —
+# the core harness stubs `vscode` and structurally cannot reach them.
+#
+# Separate from ci-agent-tests.yml because it is slower (downloads VS Code, ~270MB) and
+# needs a virtual display. Keeping the fast harness gate independent means a unit
+# regression still fails in under a minute.
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'src/stable/extensions/black-ide-agent/**'
+      - '.github/workflows/ci-agent-integration.yml'
+  pull_request:
+    paths:
+      - 'src/stable/extensions/black-ide-agent/**'
+      - '.github/workflows/ci-agent-integration.yml'
+
+permissions: {}
+
+defaults:
+  run:
+    working-directory: src/stable/extensions/black-ide-agent
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # VS Code is an Electron app: on a headless runner it needs a virtual display, and
+      # `xvfb-run` supplies one. On macOS/Windows the suite runs without this wrapper.
+      - name: Run extension-host integration tests
+        run: xvfb-run -a npm run test:integration
+
+      # The downloaded VS Code and the test's temp user-data dirs are large and disposable.
+      - name: Clean up VS Code test install
+        if: always()
+        run: rm -rf .vscode-test
