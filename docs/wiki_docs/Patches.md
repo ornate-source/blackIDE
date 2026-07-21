@@ -2,9 +2,54 @@
 
 Documentation for Black IDE patches applied on top of VS Code.
 
+For the mechanics of creating and rebasing patches, see
+[[Building from Source|How-to-Build]].
+
 ---
 
-## fix-policies
+## 📁 How the Patch Set Is Organized
+
+Patches live in `config/patches/`. The top level holds the ~46 cross-platform patches;
+subdirectories hold patches that only apply to a specific target:
+
+| Directory | Applies to |
+|---|---|
+| `config/patches/` | All builds (cross-platform) |
+| `linux/` | Linux builds |
+| `windows/` | Windows builds |
+| `osx/` | macOS builds |
+| `alpine/` | Alpine / musl builds |
+| `insider/` | Insider quality only |
+| `user/` | Windows user-installer build |
+| `helper/` | `settings.patch`, applied by `patch.sh` as a scaffold — not a product change |
+
+### Naming Convention
+
+Files are named `<order>-<area>-<what-it-does>.patch` and applied in lexical order, so the
+numeric prefix controls sequencing when one patch depends on another landing first:
+
+* `00-*` — the bulk of the set: branding, telemetry removal, build fixes, UI tweaks
+* `10-*`–`12-*` — versioning and the update channel
+* `20-*`/`21-*` — swapping in Black IDE's forked native libs (keymap, policy watcher)
+* `30-*`–`61-*` — build dependencies, CLI packaging, gulp tasks, extension security
+
+The `<area>` segment groups related patches: `brand`, `build`, `telemetry`, `ui`,
+`update`, `remote`, `ext-*`, `security`, `policy`, `cli`.
+
+### Disabled Patches
+
+Two extensions mark a patch as parked rather than deleting it:
+
+* `.patch.no` — disabled (e.g. `00-build-update-electron.patch.no`)
+* `.patch.yet` — not applied yet (e.g. `00-update-disable.patch.yet`)
+
+Neither is picked up by the apply step. A companion `.json` file (e.g.
+`51-ext-copilot-remove-it.json`, `80-ui-disable-onboarding.json`) carries the JSON-merge
+half of a change whose other half is a `.patch`.
+
+---
+
+## 🔐 `21-policy-use-custom-lib.patch`
 
 **Replace `@vscode/policy-watcher` with `@black-ide/policy-watcher`**
 

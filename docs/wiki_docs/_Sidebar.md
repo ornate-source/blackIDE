@@ -5,6 +5,7 @@
 * [[Usage Guide|Usage]]
 
 ### Core Guides
+* [[AI Agent|AI-Agent]]
 * [[Telemetry-Free Design|Telemetry]]
 * [[Extensions & Marketplace|Extensions]]
 * [[Extensions Compatibility|Extensions-Compatibility]]
@@ -13,6 +14,7 @@
 
 ### Developer Guides
 * [[Building from Source|How-to-Build]]
+* [[Development Workflow|Development-Workflow]]
 * [[Migration Guide|Migration-Guide]]
 * [[Troubleshooting]]
 * [[Patches]]

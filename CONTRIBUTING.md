@@ -44,9 +44,9 @@ If you want to update the existing patches, please follow the section [`Patch Up
 ### Add a new patch
 
 - first, you need to build Black IDE
-- then use the command `./dev/patch.sh <your patch name>`, to initiate a new patch
+- then use the command `./scripts/dev/patch.sh <your patch name>`, to initiate a new patch
 - when the script pauses at `Press any key when the conflict have been resolved...`, open `vscode` directory in **Black IDE**
 - run `npm run watch`
-- run `./script/code.sh`
+- run `./scripts/code.sh`
 - make your changes
 - press any key to continue the script `patch.sh`

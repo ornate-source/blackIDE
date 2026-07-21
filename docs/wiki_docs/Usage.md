@@ -31,8 +31,15 @@ Black IDE supports **Portable Mode**, which stores all configuration, extensions
 By default, macOS displays an accent menu when you press and hold a key instead of repeating the character. To enable character repeating in Black IDE, execute the following command in your terminal:
 
 ```bash
-defaults write com.electron.black-ide ApplePressAndHoldEnabled -bool false
+# Stable
+defaults write com.blackide ApplePressAndHoldEnabled -bool false
+
+# Insiders
+defaults write com.blackide.insiders ApplePressAndHoldEnabled -bool false
 ```
+
+*The domain is Black IDE's `darwinBundleIdentifier`, set during the build in
+`scripts/prepare/prepare_vscode.sh`.*
 
 After running the command, restart Black IDE for the changes to take effect.
 

@@ -28,10 +28,14 @@ Copy your configuration files into these target folders:
 
 ## 🔌 Migrating Extensions
 
-VS Code OSS-based distributions store their extension files in the `~/.vscode-oss/extensions` directory.
+Black IDE sets its own `dataFolderName`, so extensions do **not** live in the generic
+`~/.vscode-oss/extensions` folder used by unbranded OSS builds:
+
+* **Stable**: `~/.black-ide/extensions`
+* **Insiders**: `~/.black-ide-insiders/extensions`
 
 To copy your extensions from official VS Code to Black IDE:
 1. Locate your VS Code extensions folder at `~/.vscode/extensions`.
-2. Copy its contents into `~/.vscode-oss/extensions` (or your custom portable data folder if running in portable mode).
+2. Copy its contents into `~/.black-ide/extensions` (or your portable data folder if running in portable mode).
 
 Alternatively, you can manually reinstall extensions via the Extensions pane in Black IDE using the Open VSX search bar.
