@@ -1,5 +1,11 @@
 # Phase 4 — Repo Hygiene & Documentation Accuracy
 
+> **✅ Status: Delivered (2026-07-22).** `tmp/` untracked + ignored; README fixed (persistence +
+> mode count); the 7 internal pipeline-phase modes are now flagged and hidden from the picker so
+> "eight modes" is literally true. Extension `tsc -b` clean, harness **386/386** (new suite `[43]`).
+> During the fix the built-in count was found to be **15**, not 11 as the audit first estimated
+> (there are also four Executor phase modes) — corrected in `../missing-and-broken-features.md`.
+
 **Defects:** B7 (committed `tmp/` fixtures) + the two 🟡 doc-accuracy items from the audit.
 **Ship gate:** Recommended. Fully independent — can land any time, including first.
 
@@ -63,3 +69,31 @@
 2. README's indexing description matches the actual JSON+`vectors.bin` persistence.
 3. The mode count in the README matches what the picker actually shows.
 4. `../missing-and-broken-features.md` B7 and both 🟡 doc items flipped/struck.
+
+---
+
+## Delivery notes (2026-07-22)
+
+**B7 — hygiene**
+- `git rm -r --cached src/stable/extensions/black-ide-agent/tmp` (untracked 125 files) + removed the
+  stale physical dir (pure scratch: `ckpt-*/keep.txt`, `sandbox-*/victim.txt`, `store-*/checkpoints.json`,
+  `txn-*/*.txt`).
+- Added `tmp/` and `.npm-cache/` to the extension `.gitignore` (next to `test/tmp/`).
+- No harness change needed: `os.tmpdir` is already overridden to `__dirname/tmp` = `test/tmp/`
+  (ignored). Verified `git status` clean after `npm test` — root `tmp/` does not reappear.
+
+**4.2 — README persistence claim** — replaced "SQLite vector embeddings" with the real design:
+`codebase-index.json` + `vectors.bin`, ranked by RRF.
+
+**4.3 — mode count (decision: filter the picker, keep README at eight)**
+- Added `internal?: boolean` to `CustomMode`; flagged all **7** pipeline-phase modes
+  (`Sr Architect HLD`, `Sr Engineer LLD`, `Planner`, and the four `* Executor` modes).
+- New `ModeLoader.getSelectableModes()` (non-internal). Used it in the two user-facing surfaces:
+  the `modesLoaded` posts to the webview and the `openModeSelector` quick pick. `getAllModes()`/
+  `getMode()` are unchanged, so the pipeline still drives all 15.
+- README now lists the eight selectable modes and notes the seven internal ones.
+- Harness suite `[43]` locks the 8-selectable / 7-internal split and that internal modes stay
+  reachable via `getAllModes`/`getMode`.
+
+**Correction to the audit's estimate:** the built-in set is **15** (8 + 7), not 11 — the audit's
+first pass missed the four Executor phase modes. Fixed in the audit doc.

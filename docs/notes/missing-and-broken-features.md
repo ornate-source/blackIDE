@@ -39,7 +39,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | Feature | Status | Notes / Ref |
 |---|:--:|---|
 | Built-in modes: Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect | ✅ | `core/mode-loader.ts:107+` |
-| README says "**eight** built-in modes"; code ships **11** | 🟡 | +`Sr Architect HLD`, `Sr Engineer LLD`, `Planner` (internal pipeline phases) — doc undercount |
+| README says "**eight** built-in modes"; code ships **15** | ✅ | **Fixed (Phase 4)** — 8 user-selectable + 7 internal pipeline-phase modes; the 7 are now flagged `internal` and hidden from the picker, so "eight" is true. README notes the internal set |
 | Custom modes (Markdown + YAML frontmatter, 3 scopes) | ✅ | `~/.blackide/modes`, `.blackide/modes`, `.agents/modes` |
 | Hot-reload + config errors as inline diagnostics | ✅ | `ModeLoader.watchForChanges` |
 
@@ -57,7 +57,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 |---|:--:|---|
 | Semantic index: embeddings + BM25 fused via RRF, AST-aware chunking | ✅ | `core/codebase-index.ts`, `core/embeddings-client.ts` |
 | Embeddings settings (provider/model/key/url) honored | ✅ | OpenAI + Ollama |
-| README claims "**SQLite** vector embeddings" | 🟡 | Actually JSON (`codebase-index.json`) + `vectors.bin` — no SQLite anywhere. Doc inaccuracy |
+| README claims "**SQLite** vector embeddings" | ✅ | **Fixed (Phase 4)** — README now describes the real persistence: `codebase-index.json` + `vectors.bin`, ranked by RRF |
 
 ### Subagents & multi-agent pipeline
 
@@ -134,7 +134,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 
 | Item | Status | Notes / Ref |
 |---|:--:|---|
-| 125 test-fixture files committed under `.../black-ide-agent/tmp/` | 🐛 | **B7** — `.gitignore` gap |
+| 125 test-fixture files committed under `.../black-ide-agent/tmp/` | ✅ | **B7 fixed (Phase 4)** — untracked, dir removed, `tmp/` ignored; harness already writes to `test/tmp/` |
 
 ---
 
@@ -148,7 +148,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | B4 | Chat "Take screenshot" is a hardcoded stub | ✅ Fixed (Phase 2) | **P1** | `extension.ts:614` |
 | B5 | "Fast Apply" toggle (`enableFastApply`) is a no-op | ✅ Fixed (Phase 2) | **P1** | 0 runtime reads |
 | B6 | "Reasoning display" toggle (`enableReasoningDisplay`) is a no-op | ✅ Fixed (Phase 3) | **P2** | 0 runtime reads |
-| B7 | 125 test-fixture files committed under `tmp/`; `.gitignore` gaps | Hygiene | **P2** | `git ls-files …/tmp` |
+| B7 | 125 test-fixture files committed under `tmp/`; `.gitignore` gaps | ✅ Fixed (Phase 4) | **P2** | `git ls-files …/tmp` |
 | B8 | Browser viewport / headless / screenshot-on-nav settings ignored | ✅ Fixed (Phase 1) | **P2** | 0 runtime reads |
 
 Legend — **P0**: advertised feature is non-functional in the shipped build. **P1**: visible
@@ -275,6 +275,12 @@ these are quality/ergonomics, not security.
 ## Repo hygiene / packaging
 
 ### B7 — Test-fixture artifacts committed; `.gitignore` gaps (P2)
+> **✅ Resolved (Phase 4).** `git rm -r --cached …/tmp` untracked all 125 files, the stale physical
+> dir was removed, and `tmp/` (plus `.npm-cache/`) added to the extension `.gitignore`. The current
+> harness already writes scratch to `test/tmp/` (via `os.tmpdir` → `__dirname/tmp` = `test/tmp`,
+> already ignored), so the root `tmp/` cannot recur — confirmed by a clean `git status` after a full
+> `npm test`.
+
 `git ls-files` shows **125 tracked files under
 `src/stable/extensions/black-ide-agent/tmp/`** — leftover harness output (`tmp/ckpt-*/keep.txt`,
 `tmp/txn-*/*.txt`). These are transient test scratch files that should never be in version

@@ -1482,6 +1482,27 @@ async function main() {
     ok('BROWSER_TOOL_NAMES covers all six', BROWSER_TOOL_NAMES.length === 6);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n[43] Phase 4: selectable vs internal pipeline-phase modes');
+  {
+    const loader = new ModeLoader();
+    await loader.loadAll('/empty');
+    const selectable = loader.getSelectableModes().map(m => m.name).sort();
+    const all = loader.getAllModes().map(m => m.name);
+
+    const expectedSelectable = ['Agent', 'Ask', 'Backend', 'DevOps', 'Frontend', 'Manager', 'Plan', 'Sr Architect'];
+    ok('exactly eight user-selectable modes', selectable.length === 8, selectable);
+    ok('the eight selectable modes are the documented set',
+      JSON.stringify(selectable) === JSON.stringify(expectedSelectable), selectable);
+
+    const internalNames = ['Sr Architect HLD', 'Sr Engineer LLD', 'Planner', 'Design Executor', 'Backend Executor', 'Frontend Executor', 'Testing Executor'];
+    ok('all seven internal pipeline-phase modes are hidden from the picker',
+      internalNames.every(n => !selectable.includes(n)));
+    ok('but internal modes remain available to the pipeline via getAllModes/getMode',
+      internalNames.every(n => all.includes(n)) && !!loader.getMode('planner'));
+    ok('getAllModes still returns the full built-in set', all.length >= 15);
+  }
+
   server.close();
   console.log(`\n──────────\nPASS ${pass}  FAIL ${fail}`);
   process.exit(fail ? 1 : 0);

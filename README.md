@@ -77,6 +77,8 @@ Eight built-in modes, each with targeted system prompts, tool permissions, and i
 | **Manager** | Coordination and delegation | 15 | Cannot write code; `spawn_subagent` only |
 | **Sr Architect** | System design, patterns, tech debt | 20 | Read-only; writes ADRs and refactor plans |
 
+Beyond these eight user-selectable modes, the [multi-agent pipeline](#-the-multi-agent-pipeline) drives seven **internal** phase modes of its own (Sr Architect HLD, Sr Engineer LLD, Planner, and the Design/Backend/Frontend/Testing Executors). They are hidden from the mode picker — the orchestrator selects them automatically per phase.
+
 ### ⏮️ Atomic Checkpoints & Rollback
 
 A surgical undo system that keeps the agent from permanently breaking your code:
@@ -88,7 +90,7 @@ A surgical undo system that keeps the agent from permanently breaking your code:
 
 ### 🔍 Semantic Codebase Indexing
 
-A local RAG pipeline backed by SQLite vector embeddings. Chunking is **AST-aware** — code is split on class and function boundaries rather than arbitrary character counts, so retrieved context contains whole functions with intact signatures.
+A local RAG pipeline backed by an on-disk index — code chunks in `codebase-index.json` and their embedding vectors in a companion `vectors.bin`, ranked by fusing semantic similarity and BM25 via Reciprocal Rank Fusion (RRF). Chunking is **AST-aware** — code is split on class and function boundaries rather than arbitrary character counts, so retrieved context contains whole functions with intact signatures.
 
 ### 🌲 Parallel Subagent Isolation (Git Worktrees)
 

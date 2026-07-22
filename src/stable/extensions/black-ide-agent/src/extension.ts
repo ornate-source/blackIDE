@@ -524,12 +524,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const globalConfigPath = path.join(os.homedir(), '.blackide');
         
-        this._modeLoader.loadAll(rootPath, globalConfigPath).then(modes => {
-            webviewView.webview.postMessage({ type: 'modesLoaded', value: modes });
+        // Only user-selectable modes reach the picker — internal pipeline-phase modes
+        // (HLD/LLD/Planner) stay hidden from the chat mode dropdown.
+        this._modeLoader.loadAll(rootPath, globalConfigPath).then(() => {
+            webviewView.webview.postMessage({ type: 'modesLoaded', value: this._modeLoader.getSelectableModes() });
         });
-        
-        this._modeLoader.watchForChanges(rootPath, (modes) => {
-            webviewView.webview.postMessage({ type: 'modesLoaded', value: modes });
+
+        this._modeLoader.watchForChanges(rootPath, () => {
+            webviewView.webview.postMessage({ type: 'modesLoaded', value: this._modeLoader.getSelectableModes() });
         });
 
         // Restore pending plan approval if it survived a window reload (Antigravity pattern)
@@ -686,7 +688,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 case 'openModeSelector':
-                    const allModes = this._modeLoader.getAllModes();
+                    const allModes = this._modeLoader.getSelectableModes();
                     const currentMode = data.value || 'agent';
                     const items = allModes.map(m => ({
                         label: `${m.icon ? `$(${m.icon}) ` : ''}${m.name}`,

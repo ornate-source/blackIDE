@@ -5,5 +5,7 @@ dist/
 tsconfig.tsbuildinfo
 test/integration/out/
 .vscode-test/
+tmp/
 test/tmp/
 node_modules/
+.npm-cache/
