@@ -37,6 +37,9 @@ import { ModeLoader } from './core/mode-loader';
 import { performFetchModels } from './agent/model-fetcher';
 import { PlanningEngine } from './agent/planning-engine';
 import { SkillsManager } from './agent/skills-manager';
+import { resolveSkills, renderSkills, roleForMode } from './agent/skill-resolver';
+import { detectProjectProfile, formatProfileLine, MANIFEST_FILENAMES, ProjectProfile, stackMindmapSection, upsertMarkdownSection, STACK_MINDMAP_HEADING } from './core/project-profiler';
+import { installSkillPacks, listBundledPacks } from './tools/skill-install';
 import { ArtifactManager } from './agent/artifact-manager';
 import { AgentScheduler } from './agent/scheduler';
 import { AgentHooks } from './agent/hooks';
@@ -306,6 +309,30 @@ export function activate(context: vscode.ExtensionContext) {
             }
         })
     );
+
+    // Materialize built-in skill packs into <repo>/.blackide/skills/ so users can see, edit, and
+    // override them — and so their own project packs live in the same place (Phase 3).
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.installSkillPacks', async () => {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!root) { vscode.window.showErrorMessage('Open a workspace folder first.'); return; }
+            const bundledDir = path.join(context.extensionUri.fsPath, 'resources', 'skills');
+            const packs = listBundledPacks(bundledDir);
+            if (!packs.length) { vscode.window.showWarningMessage('No built-in skill packs are bundled.'); return; }
+
+            const picked = await vscode.window.showQuickPick(
+                packs.map(p => ({ label: p.name, description: [p.roles.join('/'), p.stacks.join(', ')].filter(Boolean).join(' · '), detail: p.description, picked: true })),
+                { canPickMany: true, placeHolder: 'Select skill packs to install into .blackide/skills/ (already-present packs are skipped)' }
+            );
+            if (!picked || !picked.length) return;
+            const installed = installSkillPacks(bundledDir, root, picked.map(p => p.label));
+            vscode.window.showInformationMessage(
+                installed.length
+                    ? `Installed ${installed.length} skill pack(s) into .blackide/skills/: ${installed.join(', ')}. Edit them there to customize.`
+                    : 'Selected packs already exist in .blackide/skills/ — nothing overwritten.'
+            );
+        })
+    );
 }
 
 export function deactivate() {}
@@ -486,6 +513,66 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             }
             await this._context.globalState.update(key, true);
         } catch { /* best-effort; the knowledge base must never break activation */ }
+    }
+
+    /** Absolute path to the bundled built-in skill packs shipped with the extension. */
+    private get _bundledSkillsDir(): string {
+        return path.join(this._context.extensionUri.fsPath, 'resources', 'skills');
+    }
+
+    /** Cached project profile (Phase 1). Detected once per window, refreshed lazily. */
+    private _projectProfile?: ProjectProfile;
+
+    /**
+     * Detect the project's stack from its manifests (package.json, Cargo.toml, *.csproj, …) so the
+     * skill resolver can pick stack-appropriate packs. Cached; best-effort — any failure yields an
+     * empty profile, which simply means "inject no stack skills" (fail safe).
+     */
+    private async _getProjectProfile(): Promise<ProjectProfile> {
+        if (this._projectProfile) return this._projectProfile;
+        const empty: ProjectProfile = { languages: [], frameworks: [], testFrameworks: [], packageManagers: [], stacks: [], confidence: 0, evidence: [] };
+        try {
+            const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!rootPath) return empty;
+
+            const uris = await vscode.workspace.findFiles('**/*', '**/{node_modules,.git,dist,out,build,.next,coverage,vendor,target,bin,obj}/**', 4000);
+            const files = uris.map(u => vscode.workspace.asRelativePath(u));
+
+            const manifests: Record<string, string> = {};
+            const readIfExists = (rel: string, key: string) => {
+                try { manifests[key] = fs.readFileSync(path.join(rootPath, rel), 'utf8'); } catch { /* absent */ }
+            };
+            for (const name of MANIFEST_FILENAMES) readIfExists(name, name);
+            // Globbed manifests: grab the first .csproj/.sln content, if any.
+            const csproj = files.find(f => /\.csproj$/i.test(f));
+            if (csproj) readIfExists(csproj, 'csproj');
+            const sln = files.find(f => /\.sln$/i.test(f));
+            if (sln) readIfExists(sln, 'sln');
+
+            this._projectProfile = detectProjectProfile(files, manifests);
+            if (this._projectProfile.stacks.length) {
+                console.log(`[Profiler] Detected stack — ${formatProfileLine(this._projectProfile)}`);
+            }
+            return this._projectProfile;
+        } catch {
+            return empty;
+        }
+    }
+
+    /**
+     * Sync the detected stack into the project mindmap as a stable, idempotent section (Phase 5),
+     * so the "Project Stack & Conventions" block reflects reality and re-syncing never duplicates
+     * it. Best-effort; a mindmap write must never break a run.
+     */
+    private _syncStackToMindmap(profile: ProjectProfile, rootPath: string): void {
+        try {
+            const section = stackMindmapSection(profile);
+            if (!section) return;
+            const mindmapPath = path.join(rootPath, '.blackIDE', 'mindmap', 'project_mindmap.md');
+            fs.mkdirSync(path.dirname(mindmapPath), { recursive: true });
+            const existing = fs.existsSync(mindmapPath) ? fs.readFileSync(mindmapPath, 'utf8') : '';
+            fs.writeFileSync(mindmapPath, upsertMarkdownSection(existing, STACK_MINDMAP_HEADING, section), 'utf8');
+        } catch { /* mindmap sync is best-effort */ }
     }
 
     /** Reads the anonymous-telemetry toggle from settings into the cached flag. */
@@ -1182,6 +1269,25 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
             const allModes = this._modeLoader.getAllModes();
 
+            // Project-aware skills for the pipeline executors (Phase 4). Until now the pipeline
+            // agents received NO skills; this resolves stack+role-appropriate packs per phase and
+            // appends them to each executor's system prompt via the orchestrator's skillsForMode.
+            const pipelineSkills = new SkillsManager();
+            await pipelineSkills.discover(this._bundledSkillsDir);
+            const pipelineProfile = await this._getProjectProfile();
+            // Phase 5: reflect the detected stack in the project mindmap (idempotent).
+            if (rootPath && pipelineProfile.stacks.length) this._syncStackToMindmap(pipelineProfile, rootPath);
+            const skillsForMode = (modeId: string): string => {
+                const picked = resolveSkills({
+                    skills: pipelineSkills.getAll(),
+                    role: roleForMode(modeId),
+                    profile: pipelineProfile,
+                    prompt: userPrompt,
+                });
+                if (picked.length) log(`[Skills] ${modeId}: ${picked.map(s => s.name).join(', ')}`);
+                return renderSkills(picked);
+            };
+
             browserTool = new BrowserTool();
             mcpClient = new MCPClient();
             const artifactManager = new ArtifactManager(this._context);
@@ -1425,7 +1531,8 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 configs,
                 phaseModelOverrides,
                 outputMode,
-                parallelExecution
+                parallelExecution,
+                skillsForMode
             );
 
             // Long-term memory (read side): start the run aware of prior decisions, feature
@@ -1739,9 +1846,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 log(`[Index] ${codebaseIndex.size} chunks — ${stats.indexed} indexed, ${stats.reused} reused, ${stats.removed} removed (${Date.now() - t0}ms).`);
             } catch (e: any) { log(`[Index] Skipped: ${e?.message || e}`); }
 
-            await skillsManager.discover();
-            const relevantSkills = skillsManager.findRelevant(userPrompt);
-            const skillInstructions = skillsManager.getInstructions(relevantSkills);
+            // Project-aware skills (Phase 2/4): resolve by (agent role + detected stack + prompt),
+            // including the bundled built-in packs, not prompt keywords alone.
+            await skillsManager.discover(this._bundledSkillsDir);
+            const profile = await this._getProjectProfile();
+            const skillRole = roleForMode(customModeDef?.name || effectiveMode);
+            const relevantSkills = resolveSkills({ skills: skillsManager.getAll(), role: skillRole, profile, prompt: userPrompt });
+            const skillInstructions = renderSkills(relevantSkills);
+            if (relevantSkills.length) log(`[Skills] Loaded ${relevantSkills.length}: ${relevantSkills.map(s => s.name).join(', ')}`);
 
             // MCP tools are exec-class: they hand arguments to an arbitrary external
             // process. Only Agent mode may call them, so only Agent mode pays the cost

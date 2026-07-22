@@ -2,9 +2,24 @@
 
 **Author:** Principal Engineer (fleet + agent infrastructure)
 **Date:** 2026-07-22
-**Status:** Proposed — supersedes the prior notes/ set (audit + phase plans, now delivered).
+**Status:** **In progress — Phases 1–5 delivered, Phase 6 partial (2026-07-22).**
 **Scope reference:** `src/stable/extensions/black-ide-agent/`. Every claim below is grounded in
 current code (file:line where it matters).
+
+> ## Delivery status (2026-07-22)
+> Extension `tsc -b` clean · harness **426/426** (+40, suites `[44]`–`[46]`) · webview builds.
+>
+> | Phase | Status | What landed |
+> |---|:--:|---|
+> | 1 — Project Profiler | ✅ | `core/project-profiler.ts` — detects languages/frameworks/test-runners from manifests (Django, .NET, Rust, Go, React, Node, Rails, Spring, Laravel, Flutter…). Wired into a cached `_getProjectProfile()` in `extension.ts`. |
+> | 2 — Skill model + resolver | ✅ | `Skill` gains `roles`/`stacks`/`priority` (backward compatible); `agent/skill-resolver.ts` ranks by stack + role + prompt, with `roleForMode()`. |
+> | 3 — Built-in packs + storage | ✅ | **16 bundled packs** in `resources/skills/` across all 4 roles; `SkillsManager` now resolves bundled → global → workspace (later overrides by name); `black-ide.installSkillPacks` command materializes packs into `.blackide/skills/`. |
+> | 4 — Wire into all agents | ✅ | Chat (`_runAgentTask`) and **pipeline executors** (`_runPipelineCore` → orchestrator `skillsForMode`) now receive resolved skills. The pipeline agents previously received **none**. |
+> | 5 — Project-aware mindmap | ✅ | Detected stack is upserted as an idempotent "Project Stack & Conventions" section in `project_mindmap.md`. |
+> | 6 — Authoring/lifecycle | 🟡 | Hot-reload is satisfied by design (skills are re-discovered every task); skills-fired logging is in place. **Remaining:** dedicated validation diagnostics UI + telemetry-sink events (follow-up). |
+>
+> **Follow-up (not yet done):** expand the built-in library beyond the initial 16 (the catalog
+> below is the target; adding packs is data-only, no code); Phase 6 diagnostics UI.
 
 This plan does two things:
 1. **Part 1** — a maturity map of *every* Black IDE capability, so we know where the product
