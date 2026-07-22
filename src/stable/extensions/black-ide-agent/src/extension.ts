@@ -643,9 +643,6 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                         });
                     }
                     break;
-                case 'takeScreenshot':
-                    vscode.window.showInformationMessage('Screenshot capture will be available with browser integration.');
-                    break;
                 case 'startAgentTask':
                     // Guard: block new messages while a plan is pending review
                     if (this._pendingApproval || this._pendingPipelineApproval) {

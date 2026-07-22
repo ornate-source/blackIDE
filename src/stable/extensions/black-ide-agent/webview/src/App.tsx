@@ -90,7 +90,6 @@ interface BlackIDESettings {
   browserScreenshotOnNav: boolean;
   // Agent behavior
   maxLoopIterations: number;
-  enableFastApply: boolean;
   enableReasoningDisplay: boolean;
   customSystemPrompt: string;
   selectedModelId?: string;
@@ -138,7 +137,6 @@ const DEFAULT_SETTINGS: BlackIDESettings = {
   browserAllowedDomains: '',
   browserScreenshotOnNav: false,
   maxLoopIterations: 25,
-  enableFastApply: true,
   enableReasoningDisplay: true,
   customSystemPrompt: '',
   selectedModelId: '',
@@ -1546,11 +1544,6 @@ export default function App() {
     vscode.postMessage({ type: 'attachFile' });
   };
 
-  const handleAttachScreenshot = () => {
-    setShowPlusMenu(false);
-    vscode.postMessage({ type: 'takeScreenshot' });
-  };
-
   const handleMention = () => {
     setShowPlusMenu(false);
     setInputText(prev => prev + '@');
@@ -2229,15 +2222,6 @@ export default function App() {
                 </div>
 
                 <div className="h-px bg-[rgba(255,255,255,0.04)]" />
-
-                <CheckboxRow
-                  id="enableFastApply"
-                  title="Fast Apply"
-                  description="Use search/replace delta modifications to speed up file editing operations."
-                  checked={settings.enableFastApply}
-                  onToggle={() => updateSetting('enableFastApply', !settings.enableFastApply)}
-                  icon={<svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>}
-                />
 
                 <CheckboxRow
                   id="enableReasoningDisplay"
@@ -3283,10 +3267,6 @@ export default function App() {
                     <div className="plus-menu-item" onClick={handleAttachFile}>
                       <AttachIcon />
                       <span>Attach File</span>
-                    </div>
-                    <div className="plus-menu-item" onClick={handleAttachScreenshot}>
-                      <ImageIcon />
-                      <span>Attach Screenshot</span>
                     </div>
                     <div className="border-t border-border/30 my-0.5" />
                     <div className="plus-menu-item" onClick={handleMention}>

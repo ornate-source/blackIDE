@@ -65,7 +65,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 |---|:--:|---|
 | Subagent isolation (git worktrees, git mutex, delta reconcile) | ✅ | `agent/worktree-manager.ts` (real-git tests) |
 | Subagent cancel | ✅ | `extension.ts:724` |
-| Subagent **"Merge" button** | 🔴 | **B3** — UI sends `mergeSubagent`; no handler |
+| Subagent **"Merge" button** | ✅ | **B3 fixed (Phase 2)** — removed; subagents auto-reconcile on success, failure path prints the git command |
 | Multi-agent pipeline (HLD → LLD → Planner → execute → overview) | ✅ | `agent/pipeline-orchestrator.ts` |
 | Dependency-driven phase selection (`EXECUTION_PHASE_GRAPH`) | ✅ | |
 | Per-phase model routing | ✅ | `pipelinePhaseModels` |
@@ -115,9 +115,9 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | Command allow/deny policy | ✅ | `core/command-policy.ts` |
 | Custom system prompt, max loop iterations | ✅ | |
 | Anonymous telemetry toggle (local JSONL only) + Export Diagnostics | ✅ | `core/telemetry-sink.ts` |
-| **Fast Apply** toggle | 🔴 | **B5** — no runtime consumer; capability does not exist |
+| **Fast Apply** toggle | ✅ | **B5 fixed (Phase 2)** — removed; the capability never existed. A real fast-apply is a future feature with its own design |
 | **Reasoning display** toggle | 🔴 | **B6** — no-op; reasoning always streams |
-| Chat **"Take screenshot"** | 🔴 | **B4** — hardcoded stub |
+| Chat **"Take screenshot"** | ✅ | **B4 fixed (Phase 2)** — removed; no persistent chat browser to capture. In-run capture stays available via the `browser_screenshot` tool |
 | **Browser settings tab** (path / headless / viewport / screenshot-on-nav) | ✅ | **B2/B8 fixed (Phase 1)** — all read via `readBrowserSettings` and applied in `BrowserTool` |
 | **Browser "Allowed Domains"** restriction | ✅ | **B2 fixed (Phase 1)** — enforced in `BrowserTool.launch/navigate` via `isNavigationAllowed` (fails closed) |
 
@@ -144,9 +144,9 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 |:-:|---------|------|:--------:|----------|
 | B1 | Browser automation (`browser_*` tools) fails out-of-the-box | ✅ Fixed (Phase 1) | **P0** | `playwright` undeclared/uninstalled |
 | B2 | Browser settings tab is entirely unwired (incl. security domain allowlist) | ✅ Fixed (Phase 1) | **P0** | 0 runtime reads of `browser*` keys |
-| B3 | "Merge subagent" button does nothing | Broken | **P1** | `ParallelSubagents.tsx:101`, no handler |
-| B4 | Chat "Take screenshot" is a hardcoded stub | Broken | **P1** | `extension.ts:614` |
-| B5 | "Fast Apply" toggle (`enableFastApply`) is a no-op | Missing | **P1** | 0 runtime reads |
+| B3 | "Merge subagent" button does nothing | ✅ Fixed (Phase 2) | **P1** | `ParallelSubagents.tsx:101`, no handler |
+| B4 | Chat "Take screenshot" is a hardcoded stub | ✅ Fixed (Phase 2) | **P1** | `extension.ts:614` |
+| B5 | "Fast Apply" toggle (`enableFastApply`) is a no-op | ✅ Fixed (Phase 2) | **P1** | 0 runtime reads |
 | B6 | "Reasoning display" toggle (`enableReasoningDisplay`) is a no-op | Broken | **P2** | 0 runtime reads |
 | B7 | 125 test-fixture files committed under `tmp/`; `.gitignore` gaps | Hygiene | **P2** | `git ls-files …/tmp` |
 | B8 | Browser viewport / headless / screenshot-on-nav settings ignored | ✅ Fixed (Phase 1) | **P2** | 0 runtime reads |
@@ -205,6 +205,11 @@ of them.
   either hide the tab or label the controls as non-functional.
 
 ### B3 — "Merge subagent" button has no backend (P1)
+> **✅ Resolved (Phase 2 — removed).** The Merge button and its `mergeSubagent` post are gone
+> from `ParallelSubagents.tsx` (along with the now-unused `isDone`/`BTN` locals). Subagents
+> already auto-reconcile on success; the failure path still preserves the worktree and prints the
+> exact `git merge <branch>` recovery command, so no capability was lost.
+
 `webview/src/ParallelSubagents.tsx:101` posts `{ type: 'mergeSubagent', value: sa.id }`, but
 `extension.ts` has **no `case 'mergeSubagent'`** (it handles `cancelSubagent` only). Clicking
 Merge silently does nothing.
@@ -216,6 +221,11 @@ Merge silently does nothing.
   `preserveWorktree` left work on a branch (`extension.ts:1878-1883`).
 
 ### B4 — Chat "Take screenshot" is a stub (P1)
+> **✅ Resolved (Phase 2 — removed).** The "Attach Screenshot" plus-menu item, its
+> `handleAttachScreenshot` handler, and the `takeScreenshot` extension case are gone. Chat browser
+> sessions are per-task, so there was no persistent page to capture; in-run capture remains
+> available to the agent via the `browser_screenshot` tool (gated by Phase 1).
+
 `extension.ts:614-616` handles `takeScreenshot` by showing *"Screenshot capture will be
 available with browser integration."* The capability exists (`BrowserTool.screenshot()`,
 `browser-tool.ts:62`) but is not connected. The chat UI presents a screenshot affordance that
@@ -234,6 +244,10 @@ runtime reads**. Reasoning tokens always stream to the webview unconditionally v
 ## Missing / unimplemented features (control present, capability absent)
 
 ### B5 — "Fast Apply" is advertised but not implemented (P1)
+> **✅ Resolved (Phase 2 — removed).** The `enableFastApply` toggle, interface field, and default
+> are gone from `App.tsx`, so the UI no longer implies a capability that doesn't exist. A real
+> fast-apply (a dedicated apply-model path) remains a future feature warranting its own design doc.
+
 `enableFastApply` is a Settings toggle (`App.tsx:2234`, default `true`) with **no runtime
 consumer anywhere**. There is no speculative-decoding / fast-apply diff model or code path in
 `tool-executor.ts` or `diff.ts` — edits go through the normal `edit_file` write + approval

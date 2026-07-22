@@ -13,7 +13,7 @@ the work below is a bug in tested code — it closes the gap between what the UI
 | Phase | File | Theme | Defects | Ship gate |
 |:-:|---|---|---|---|
 | 1 ✅ | [phase-1-browser-security.md](phase-1-browser-security.md) | Browser automation strategy + enforce/hide the Browser settings tab (the `browserAllowedDomains` false-security control) | B1, B2, B8 | **Done (2026-07-22)** — Option B (detect & gate); harness 381/381 |
-| 2 | [phase-2-dead-controls.md](phase-2-dead-controls.md) | Resolve three dead UI controls: implement or remove | B3, B4, B5 | **Required** — user-facing dead ends |
+| 2 ✅ | [phase-2-dead-controls.md](phase-2-dead-controls.md) | Resolve three dead UI controls: implement or remove | B3, B4, B5 | **Done (2026-07-22)** — all three removed; harness 381/381 |
 | 3 | [phase-3-noop-toggles.md](phase-3-noop-toggles.md) | Honor the remaining no-op toggle (Reasoning display) | B6 | Recommended |
 | 4 | [phase-4-hygiene-docs.md](phase-4-hygiene-docs.md) | Untrack `tmp/` fixtures; fix README doc-accuracy items | B7, doc drift | Recommended |
 

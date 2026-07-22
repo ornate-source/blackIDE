@@ -1,5 +1,9 @@
 # Phase 2 — Resolve Dead UI Controls
 
+> **✅ Status: Delivered (2026-07-22).** All three resolved by **removal** (user-confirmed).
+> Extension `tsc -b` clean, webview builds under strict `noUnusedLocals`, harness **381/381**.
+> B3/B4/B5 flipped to ✅ in `../missing-and-broken-features.md`. See "Delivery notes" at the end.
+
 **Defects:** B3 (Merge-subagent button), B4 (chat "Take screenshot"), B5 (Fast Apply toggle).
 **Ship gate:** Required. Each is a visible control with no effect — a user-facing dead end.
 **Depends on:** Phase 1 (B4's fate depends on the browser decision).
@@ -74,3 +78,26 @@ capability is actually wanted.
 3. `tsc -b` clean, webview builds.
 4. `../missing-and-broken-features.md` B3/B4/B5 flipped (to ✅ if implemented, or struck as
    removed).
+
+---
+
+## Delivery notes (2026-07-22)
+
+All three **removed** (each `AskUserQuestion`-confirmed as "remove").
+
+- **B3** — `webview/src/ParallelSubagents.tsx`: deleted the Merge button + its `mergeSubagent`
+  post, and the now-unused `isDone` and `BTN` locals (strict `noUnusedLocals` would otherwise
+  fail). No extension handler existed to remove.
+- **B4** — `webview/src/App.tsx`: deleted the "Attach Screenshot" plus-menu item and the
+  `handleAttachScreenshot` handler; `src/extension.ts`: deleted the `case 'takeScreenshot'`.
+  `ImageIcon` stays (still used by attachment previews).
+- **B5** — `webview/src/App.tsx`: deleted the Fast Apply `CheckboxRow`, the `enableFastApply`
+  interface field, and its `DEFAULT_SETTINGS` entry.
+
+**Verification:** no residual `mergeSubagent` / `takeScreenshot` / `enableFastApply` references;
+webview→extension message diff shows no orphaned messages; extension `tsc -b` clean; webview
+`tsc && vite build` clean; harness 381/381 (no test change needed — these were pure removals with
+no new logic).
+
+**Not done (deliberately):** no fast-apply feature was built — it remains a future proposal, not a
+Phase 2 bug fix.
