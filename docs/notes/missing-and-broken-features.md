@@ -116,7 +116,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | Custom system prompt, max loop iterations | ✅ | |
 | Anonymous telemetry toggle (local JSONL only) + Export Diagnostics | ✅ | `core/telemetry-sink.ts` |
 | **Fast Apply** toggle | ✅ | **B5 fixed (Phase 2)** — removed; the capability never existed. A real fast-apply is a future feature with its own design |
-| **Reasoning display** toggle | 🔴 | **B6** — no-op; reasoning always streams |
+| **Reasoning display** toggle | ✅ | **B6 fixed (Phase 3)** — `startReasoning`/`streamReasoning` posts gated on `enableReasoningDisplay` |
 | Chat **"Take screenshot"** | ✅ | **B4 fixed (Phase 2)** — removed; no persistent chat browser to capture. In-run capture stays available via the `browser_screenshot` tool |
 | **Browser settings tab** (path / headless / viewport / screenshot-on-nav) | ✅ | **B2/B8 fixed (Phase 1)** — all read via `readBrowserSettings` and applied in `BrowserTool` |
 | **Browser "Allowed Domains"** restriction | ✅ | **B2 fixed (Phase 1)** — enforced in `BrowserTool.launch/navigate` via `isNavigationAllowed` (fails closed) |
@@ -147,7 +147,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | B3 | "Merge subagent" button does nothing | ✅ Fixed (Phase 2) | **P1** | `ParallelSubagents.tsx:101`, no handler |
 | B4 | Chat "Take screenshot" is a hardcoded stub | ✅ Fixed (Phase 2) | **P1** | `extension.ts:614` |
 | B5 | "Fast Apply" toggle (`enableFastApply`) is a no-op | ✅ Fixed (Phase 2) | **P1** | 0 runtime reads |
-| B6 | "Reasoning display" toggle (`enableReasoningDisplay`) is a no-op | Broken | **P2** | 0 runtime reads |
+| B6 | "Reasoning display" toggle (`enableReasoningDisplay`) is a no-op | ✅ Fixed (Phase 3) | **P2** | 0 runtime reads |
 | B7 | 125 test-fixture files committed under `tmp/`; `.gitignore` gaps | Hygiene | **P2** | `git ls-files …/tmp` |
 | B8 | Browser viewport / headless / screenshot-on-nav settings ignored | ✅ Fixed (Phase 1) | **P2** | 0 runtime reads |
 
@@ -233,6 +233,11 @@ never produces one.
 - **Fix:** wire the handler to a `BrowserTool` instance (gated on B1), or remove the button.
 
 ### B6 — "Reasoning display" toggle does nothing (P2)
+> **✅ Resolved (Phase 3).** `_runAgentTask` now reads `enableReasoningDisplay` (default on) and
+> gates both the `startReasoning` and `streamReasoning` webview posts on it. Off = no reasoning
+> bubble; the model still reasons and the final answer is unaffected. Tool/turn activity keeps the
+> UI live, so no separate "thinking…" placeholder was needed.
+
 `enableReasoningDisplay` is a Settings checkbox (`App.tsx:2243`, default `true`) but has **zero
 runtime reads**. Reasoning tokens always stream to the webview unconditionally via
 `onReasoningStart`/`onToken` (`extension.ts:1954-1959`). Turning it off has no effect.

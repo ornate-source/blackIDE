@@ -1685,6 +1685,10 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
             let settings: any = {};
             try { const s = await this._secretManager.getKey('general-settings'); if (s) settings = JSON.parse(s); } catch {}
+            // Reasoning display (B6): gate the reasoning stream on the user's toggle. Default
+            // on (unset === true) so existing behavior is preserved; only an explicit `false`
+            // silences it. Controls display only — the model still reasons either way.
+            const showReasoning = settings.enableReasoningDisplay !== false;
             // Default 25, configurable to 500. Safe to raise only because the context is
             // now bounded by token budget rather than message count — a long run compacts
             // instead of overflowing the window.
@@ -1993,11 +1997,12 @@ Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_
                         }
                         return { continueWith: 0 };
                     },
-                    onReasoningStart: () => webview.postMessage({ type: 'startReasoning' }),
+                    onReasoningStart: () => { if (showReasoning) webview.postMessage({ type: 'startReasoning' }); },
                     onToken: (t) => {
                         // Reasoning tokens stream straight to the view: at 60fps an event
-                        // envelope per token is pure overhead.
-                        webview.postMessage({ type: 'streamReasoning', value: t });
+                        // envelope per token is pure overhead. Suppressed when the user turns
+                        // reasoning display off (B6).
+                        if (showReasoning) webview.postMessage({ type: 'streamReasoning', value: t });
                     },
                     onToolCall: (tc) => {
                         toolStartedAt.set(tc.id, Date.now());

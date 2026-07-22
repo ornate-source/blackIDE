@@ -1,5 +1,9 @@
 # Phase 3 — Honor the Remaining No-op Toggle
 
+> **✅ Status: Delivered (2026-07-22).** `enableReasoningDisplay` now gates the reasoning stream in
+> `_runAgentTask`. Extension `tsc -b` clean, harness **381/381**. B6 flipped to ✅ in
+> `../missing-and-broken-features.md`.
+
 **Defect:** B6 (Reasoning-display toggle does nothing).
 **Ship gate:** Recommended. Independent of Phases 1–2 — can land any time.
 
@@ -45,3 +49,17 @@
 2. With it `true` or unset, streaming is unchanged from today.
 3. `tsc -b` clean.
 4. `../missing-and-broken-features.md` B6 flipped to ✅.
+
+---
+
+## Delivery notes (2026-07-22)
+
+- `src/extension.ts` — added `const showReasoning = settings.enableReasoningDisplay !== false;`
+  right after the `general-settings` parse in `_runAgentTask`, and gated both callbacks:
+  `onReasoningStart` and `onToken` (the `streamReasoning` post) now fire only when `showReasoning`.
+- Default preserved: unset/`true` streams exactly as before; only explicit `false` silences it.
+  Controls display only — the model still reasons and the final answer is unchanged.
+- No harness test added: the change is a one-line boolean gate inside `_runAgentTask` (not in the
+  vscode-free tier). Extracting a helper for a single `!== false` check would be over-engineering;
+  verified via `tsc -b` + manual reasoning. Harness stays 381/381.
+- B8 (the browser no-ops originally grouped here) was already delivered in Phase 1.
