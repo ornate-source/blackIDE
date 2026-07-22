@@ -52,20 +52,20 @@ exists but naive/experimental, or barely wired.
 
 | Capability | Level | Why this level |
 |---|:--:|---|
-| **8 selectable agents** (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect) | 🟡 | **static system prompts** in `core/mode-loader.ts`; no project/stack awareness |
-| 7 internal pipeline-phase agents (HLD, LLD, Planner, Design/Backend/Frontend/Testing Executors) | 🟡 | static prompts; **receive no skills today** (see Skills below) |
+| **8 selectable agents** (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect) | 🟡→🟢 | static base prompts in `core/mode-loader.ts`, **now augmented at runtime with project-aware skill packs** (Phase 4). Base prompts still static |
+| 7 internal pipeline-phase agents (HLD, LLD, Planner, Design/Backend/Frontend/Testing Executors) | 🟡→🟢 | **now receive resolved skills** via the orchestrator's `skillsForMode` (Phase 4) — previously got none |
 | Custom modes (YAML frontmatter, 3 scopes, hot-reload, inline diagnostics) | 🟢 | `ModeLoader.watchForChanges` |
 | Per-mode tool allowlists + iteration budgets | 🟢 | enforced in the sandbox gate |
 
-### Skills & knowledge — **the weak spine, and the subject of Part 2**
+### Skills & knowledge — **was the weak spine; now the newest strength** (Part 2 delivered)
 
 | Capability | Level | Why this level |
 |---|:--:|---|
-| **Skills framework** (`SkillsManager`) | 🔴 | discovers `.blackide/skills/*/SKILL.md`, but **matches by prompt keyword only**, is wired **into chat only — not the pipeline agents**, ships **no built-in packs**, and has **no notion of project type or agent role** |
-| **Project-type detection** (Django / .NET / Rust / …) | 🔴 | none. Only a prompt-keyword `mentions()` check (`planning-engine.ts:168`); nothing reads manifests (`Cargo.toml`, `*.csproj`, `requirements.txt`, …) |
-| Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | solid store + first-run scan, but content is generic, not stack-specialized |
-| **Mindmap syncing** (`project_mindmap.md`) | 🟡 | deterministic append + `update_mindmap` tool; **not structured/queryable, not stack-aware**, agents rarely read it back |
-| First-run architecture scan | 🟡 | `summarizeRepoStructure()` lists files + `package.json`; does **not** classify the stack |
+| **Skills framework** (`SkillsManager` + `SkillResolver`) | 🔴→🟡 | Now **project- & role-aware**: resolves by stack + role + prompt (`agent/skill-resolver.ts`), **16 bundled packs**, wired into **both chat and pipeline agents**, precedence bundled→global→workspace. Remaining: broader library (16 of ~60), no diagnostics UI yet |
+| **Project-type detection** (Django / .NET / Rust / React / Go / …) | 🔴→🟡 | **Built** (`core/project-profiler.ts`): manifest-based, confidence-scored, tested across ~10 stacks. Rule-based (not learned); framework coverage still growing |
+| Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | solid store + first-run scan; content still generic, not yet stack-specialized from the profile |
+| **Mindmap syncing** (`project_mindmap.md`) | 🟡 | now upserts an idempotent **"Project Stack & Conventions"** section from the profile (Phase 5); still write-mostly — full agent read-back is a follow-up |
+| First-run architecture scan | 🟡 | `summarizeRepoStructure()` lists files + `package.json`; stack now classified separately by the profiler |
 
 ### Retrieval & context
 
@@ -96,26 +96,34 @@ exists but naive/experimental, or barely wired.
 | Output modes (`apply` / `pr`) | 🟢 | `core/git-pr.ts` |
 | Local-only telemetry + diagnostics export | 🟢 | `core/telemetry-sink.ts` |
 
-**Read of the map:** the *engine* (loop, pipeline, checkpoints, index, worktrees) is Advanced. The
-**intelligence layer that makes agents good at a specific stack is Beginning** — skills are
-keyword-only and don't even reach the pipeline agents. That is the highest-leverage gap, and it is
-exactly what Part 2 addresses.
+**Read of the map (updated):** the *engine* (loop, pipeline, checkpoints, index, worktrees) is
+Advanced. The **intelligence layer that makes agents good at a specific stack was Beginning — it is
+now Mid** and rising: Part 2 shipped (Phases 1–5), so skills are project- and role-aware, reach
+**both** chat and pipeline agents, and the stack is detected from manifests and synced to the
+mindmap. The remaining lift is *breadth* (grow the 16-pack library toward the full catalog) and
+*polish* (Phase 6 diagnostics), not architecture.
 
 ---
 
 ## Part 2 — Initiative: Project-Aware Dynamic Agent Skills
 
-### Problem statement
+### Problem statement — and how it now stands
 
-The eight agents share fixed, generic system prompts. A "Backend" agent writes the same way whether
-the repo is Django, ASP.NET, or Actix — it has no loaded knowledge of the stack's idioms,
-conventions, project layout, test runner, or common pitfalls. Meanwhile:
+**The original problem (2026-07-22, pre-Part-2):** the eight agents shared fixed, generic system
+prompts. A "Backend" agent wrote the same way whether the repo was Django, ASP.NET, or Actix — no
+loaded knowledge of the stack's idioms, layout, test runner, or pitfalls. Specifically:
 
-- `SkillsManager` **exists** but (a) triggers only on prompt keywords, (b) ships no content, and
-  (c) is **never called inside the pipeline** (`extension.ts` uses it only in `_runAgentTask`,
-  lines 1665/1742–1744 — `_runPipelineCore` injects zero skills into its executors).
-- There is **no project-type detection** to key skills off of.
-- The **mindmap** isn't stack-aware and isn't read back by the agents that could use it.
+- ~~`SkillsManager` triggered only on prompt keywords, shipped no content, and was never called
+  inside the pipeline.~~ → **Resolved (Phases 2–4):** stack+role resolver, 16 bundled packs, wired
+  into `_runAgentTask` *and* the pipeline executors (`skillsForMode`).
+- ~~No project-type detection to key skills off of.~~ → **Resolved (Phase 1):**
+  `core/project-profiler.ts` detects the stack from manifests.
+- ~~The mindmap isn't stack-aware.~~ → **Resolved (Phase 5):** an idempotent "Project Stack &
+  Conventions" section is synced from the profile. *(Agent read-back of the section remains a
+  follow-up.)*
+
+**What's left** is breadth (grow the pack library) and Phase 6 polish (diagnostics + telemetry) —
+the sections below are retained as the design of record and the target catalog.
 
 ### Target
 
