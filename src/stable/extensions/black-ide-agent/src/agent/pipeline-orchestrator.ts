@@ -217,7 +217,13 @@ export class PipelineOrchestrator {
          * extension-host integration tests (P6b). The sequential path stays the default
          * until it is.
          */
-        private parallelExecution: boolean = false
+        private parallelExecution: boolean = false,
+        /**
+         * Project-aware skills (Phase 4): returns extra system-prompt text (resolved skill packs)
+         * for a given phase mode, appended to that mode's system prompt. Without it, the pipeline
+         * executors run with their static prompts only — which is what they did before this existed.
+         */
+        private skillsForMode?: (modeId: string) => string
     ) {}
 
     /**
@@ -241,9 +247,10 @@ export class PipelineOrchestrator {
                 const tools = this.getToolsForMode(phase.modeId);
                 const executor = this.executorFactory(mode, rootPathOverride);
 
+                const skillText = this.skillsForMode?.(phase.modeId) || '';
                 const result = await runAgentLoop({
                     modelConfig,
-                    system: mode.systemPrompt,
+                    system: skillText ? `${mode.systemPrompt}\n\n${skillText}` : mode.systemPrompt,
                     initialMessage,
                     priorMessages,
                     tools,

@@ -28,6 +28,8 @@ import { resolveOutputMode, buildPrCommands, compareUrlFallback, shellQuote } fr
 import { summarizeRequest, formatReleaseNotes, formatChangelogEntry, prependChangelogEntry } from './core/completion-docs';
 import { DiffContentProvider } from './tools/diff-provider';
 import { BrowserTool } from './tools/browser-tool';
+import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterToolsForBrowser } from './tools/browser-capability';
+import { installBrowserSupport } from './tools/browser-install';
 import { MCPClient } from './tools/mcp-client';
 import { HistoryStore } from './memory/history-store';
 import { KnowledgeStore } from './memory/knowledge-store';
@@ -35,6 +37,9 @@ import { ModeLoader } from './core/mode-loader';
 import { performFetchModels } from './agent/model-fetcher';
 import { PlanningEngine } from './agent/planning-engine';
 import { SkillsManager } from './agent/skills-manager';
+import { resolveSkills, renderSkills, roleForMode } from './agent/skill-resolver';
+import { detectProjectProfile, formatProfileLine, MANIFEST_FILENAMES, ProjectProfile, stackMindmapSection, upsertMarkdownSection, STACK_MINDMAP_HEADING } from './core/project-profiler';
+import { installSkillPacks, listBundledPacks } from './tools/skill-install';
 import { ArtifactManager } from './agent/artifact-manager';
 import { AgentScheduler } from './agent/scheduler';
 import { AgentHooks } from './agent/hooks';
@@ -114,6 +119,9 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
                 case 'openExtensions':
                     vscode.commands.executeCommand('workbench.action.showExtensions');
+                    break;
+                case 'installBrowserSupport':
+                    vscode.commands.executeCommand('black-ide.installBrowserSupport');
                     break;
                 case 'saveSettings':
                     await secretManager.saveKey('general-settings', data.value);
@@ -275,6 +283,54 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('black-ide.exportDiagnostics', () => {
             provider.exportDiagnostics();
+        })
+    );
+
+    // Opt-in browser support (Option B): Playwright is not bundled, so the browser_* tools
+    // stay hidden until this installs it into the extension's node_modules. Progress streams
+    // to a dedicated output channel; on success the tools become available to new tasks.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.installBrowserSupport', async () => {
+            if (browserRuntimeAvailable()) {
+                vscode.window.showInformationMessage('Browser support is already installed. Enable it in Settings → Browser.');
+                return;
+            }
+            const channel = vscode.window.createOutputChannel('Black IDE — Browser Support');
+            channel.show(true);
+            try {
+                await vscode.window.withProgress(
+                    { location: vscode.ProgressLocation.Notification, title: 'Installing browser support (Playwright + Chromium)…', cancellable: false },
+                    () => installBrowserSupport(context.extensionUri.fsPath, (line) => channel.appendLine(line)),
+                );
+                vscode.window.showInformationMessage('Browser support installed. Enable it in Settings → Browser, then start a new task.');
+            } catch (e: any) {
+                channel.appendLine(`\nInstall failed: ${e?.message || e}`);
+                vscode.window.showErrorMessage(`Browser support install failed: ${e?.message || e}. See the "Black IDE — Browser Support" output for details.`);
+            }
+        })
+    );
+
+    // Materialize built-in skill packs into <repo>/.blackide/skills/ so users can see, edit, and
+    // override them — and so their own project packs live in the same place (Phase 3).
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.installSkillPacks', async () => {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!root) { vscode.window.showErrorMessage('Open a workspace folder first.'); return; }
+            const bundledDir = path.join(context.extensionUri.fsPath, 'resources', 'skills');
+            const packs = listBundledPacks(bundledDir);
+            if (!packs.length) { vscode.window.showWarningMessage('No built-in skill packs are bundled.'); return; }
+
+            const picked = await vscode.window.showQuickPick(
+                packs.map(p => ({ label: p.name, description: [p.roles.join('/'), p.stacks.join(', ')].filter(Boolean).join(' · '), detail: p.description, picked: true })),
+                { canPickMany: true, placeHolder: 'Select skill packs to install into .blackide/skills/ (already-present packs are skipped)' }
+            );
+            if (!picked || !picked.length) return;
+            const installed = installSkillPacks(bundledDir, root, picked.map(p => p.label));
+            vscode.window.showInformationMessage(
+                installed.length
+                    ? `Installed ${installed.length} skill pack(s) into .blackide/skills/: ${installed.join(', ')}. Edit them there to customize.`
+                    : 'Selected packs already exist in .blackide/skills/ — nothing overwritten.'
+            );
         })
     );
 }
@@ -459,6 +515,66 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         } catch { /* best-effort; the knowledge base must never break activation */ }
     }
 
+    /** Absolute path to the bundled built-in skill packs shipped with the extension. */
+    private get _bundledSkillsDir(): string {
+        return path.join(this._context.extensionUri.fsPath, 'resources', 'skills');
+    }
+
+    /** Cached project profile (Phase 1). Detected once per window, refreshed lazily. */
+    private _projectProfile?: ProjectProfile;
+
+    /**
+     * Detect the project's stack from its manifests (package.json, Cargo.toml, *.csproj, …) so the
+     * skill resolver can pick stack-appropriate packs. Cached; best-effort — any failure yields an
+     * empty profile, which simply means "inject no stack skills" (fail safe).
+     */
+    private async _getProjectProfile(): Promise<ProjectProfile> {
+        if (this._projectProfile) return this._projectProfile;
+        const empty: ProjectProfile = { languages: [], frameworks: [], testFrameworks: [], packageManagers: [], stacks: [], confidence: 0, evidence: [] };
+        try {
+            const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!rootPath) return empty;
+
+            const uris = await vscode.workspace.findFiles('**/*', '**/{node_modules,.git,dist,out,build,.next,coverage,vendor,target,bin,obj}/**', 4000);
+            const files = uris.map(u => vscode.workspace.asRelativePath(u));
+
+            const manifests: Record<string, string> = {};
+            const readIfExists = (rel: string, key: string) => {
+                try { manifests[key] = fs.readFileSync(path.join(rootPath, rel), 'utf8'); } catch { /* absent */ }
+            };
+            for (const name of MANIFEST_FILENAMES) readIfExists(name, name);
+            // Globbed manifests: grab the first .csproj/.sln content, if any.
+            const csproj = files.find(f => /\.csproj$/i.test(f));
+            if (csproj) readIfExists(csproj, 'csproj');
+            const sln = files.find(f => /\.sln$/i.test(f));
+            if (sln) readIfExists(sln, 'sln');
+
+            this._projectProfile = detectProjectProfile(files, manifests);
+            if (this._projectProfile.stacks.length) {
+                console.log(`[Profiler] Detected stack — ${formatProfileLine(this._projectProfile)}`);
+            }
+            return this._projectProfile;
+        } catch {
+            return empty;
+        }
+    }
+
+    /**
+     * Sync the detected stack into the project mindmap as a stable, idempotent section (Phase 5),
+     * so the "Project Stack & Conventions" block reflects reality and re-syncing never duplicates
+     * it. Best-effort; a mindmap write must never break a run.
+     */
+    private _syncStackToMindmap(profile: ProjectProfile, rootPath: string): void {
+        try {
+            const section = stackMindmapSection(profile);
+            if (!section) return;
+            const mindmapPath = path.join(rootPath, '.blackIDE', 'mindmap', 'project_mindmap.md');
+            fs.mkdirSync(path.dirname(mindmapPath), { recursive: true });
+            const existing = fs.existsSync(mindmapPath) ? fs.readFileSync(mindmapPath, 'utf8') : '';
+            fs.writeFileSync(mindmapPath, upsertMarkdownSection(existing, STACK_MINDMAP_HEADING, section), 'utf8');
+        } catch { /* mindmap sync is best-effort */ }
+    }
+
     /** Reads the anonymous-telemetry toggle from settings into the cached flag. */
     private async _refreshTelemetryEnabled(): Promise<void> {
         try {
@@ -495,12 +611,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const globalConfigPath = path.join(os.homedir(), '.blackide');
         
-        this._modeLoader.loadAll(rootPath, globalConfigPath).then(modes => {
-            webviewView.webview.postMessage({ type: 'modesLoaded', value: modes });
+        // Only user-selectable modes reach the picker — internal pipeline-phase modes
+        // (HLD/LLD/Planner) stay hidden from the chat mode dropdown.
+        this._modeLoader.loadAll(rootPath, globalConfigPath).then(() => {
+            webviewView.webview.postMessage({ type: 'modesLoaded', value: this._modeLoader.getSelectableModes() });
         });
-        
-        this._modeLoader.watchForChanges(rootPath, (modes) => {
-            webviewView.webview.postMessage({ type: 'modesLoaded', value: modes });
+
+        this._modeLoader.watchForChanges(rootPath, () => {
+            webviewView.webview.postMessage({ type: 'modesLoaded', value: this._modeLoader.getSelectableModes() });
         });
 
         // Restore pending plan approval if it survived a window reload (Antigravity pattern)
@@ -568,6 +686,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 case 'exportDiagnostics':
                     await this.exportDiagnostics();
                     break;
+                case 'installBrowserSupport':
+                    vscode.commands.executeCommand('black-ide.installBrowserSupport');
+                    break;
                 case 'fetchModels':
                     try {
                         const fetched = await performFetchModels(data.value);
@@ -610,9 +731,6 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                             }
                         });
                     }
-                    break;
-                case 'takeScreenshot':
-                    vscode.window.showInformationMessage('Screenshot capture will be available with browser integration.');
                     break;
                 case 'startAgentTask':
                     // Guard: block new messages while a plan is pending review
@@ -657,7 +775,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 case 'openModeSelector':
-                    const allModes = this._modeLoader.getAllModes();
+                    const allModes = this._modeLoader.getSelectableModes();
                     const currentMode = data.value || 'agent';
                     const items = allModes.map(m => ({
                         label: `${m.icon ? `$(${m.icon}) ` : ''}${m.name}`,
@@ -1151,6 +1269,25 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
             const allModes = this._modeLoader.getAllModes();
 
+            // Project-aware skills for the pipeline executors (Phase 4). Until now the pipeline
+            // agents received NO skills; this resolves stack+role-appropriate packs per phase and
+            // appends them to each executor's system prompt via the orchestrator's skillsForMode.
+            const pipelineSkills = new SkillsManager();
+            await pipelineSkills.discover(this._bundledSkillsDir);
+            const pipelineProfile = await this._getProjectProfile();
+            // Phase 5: reflect the detected stack in the project mindmap (idempotent).
+            if (rootPath && pipelineProfile.stacks.length) this._syncStackToMindmap(pipelineProfile, rootPath);
+            const skillsForMode = (modeId: string): string => {
+                const picked = resolveSkills({
+                    skills: pipelineSkills.getAll(),
+                    role: roleForMode(modeId),
+                    profile: pipelineProfile,
+                    prompt: userPrompt,
+                });
+                if (picked.length) log(`[Skills] ${modeId}: ${picked.map(s => s.name).join(', ')}`);
+                return renderSkills(picked);
+            };
+
             browserTool = new BrowserTool();
             mcpClient = new MCPClient();
             const artifactManager = new ArtifactManager(this._context);
@@ -1166,6 +1303,11 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 if (s) generalSettings = JSON.parse(s);
             } catch {}
             const autoOpenAllFiles = !!generalSettings.pipelineAutoOpenAllFiles;
+            // Browser gating (B1/B2), same policy as the chat flow: configure the shared
+            // BrowserTool from settings and decide whether browser_* tools are offered at all.
+            const browserSettings = readBrowserSettings(generalSettings);
+            browserTool!.configure(browserSettings);
+            const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
             // Mode name -> LLMConfigEntry id, e.g. routing HLD/LLD scaffolding to a
             // cheap/fast model and execution phases to a stronger one.
             const phaseModelOverrides: Record<string, string> = generalSettings.pipelinePhaseModels || {};
@@ -1251,7 +1393,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 if (mDef?.tools) {
                     tools = tools.filter(t => mDef.tools!.includes(t.name));
                 }
-                return tools;
+                return filterToolsForBrowser(tools, browserUsable);
             };
 
             // One tracker across all phases — the run's cumulative spend. Shared with the
@@ -1389,7 +1531,8 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 configs,
                 phaseModelOverrides,
                 outputMode,
-                parallelExecution
+                parallelExecution,
+                skillsForMode
             );
 
             // Long-term memory (read side): start the run aware of prior decisions, feature
@@ -1651,6 +1794,10 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
             let settings: any = {};
             try { const s = await this._secretManager.getKey('general-settings'); if (s) settings = JSON.parse(s); } catch {}
+            // Reasoning display (B6): gate the reasoning stream on the user's toggle. Default
+            // on (unset === true) so existing behavior is preserved; only an explicit `false`
+            // silences it. Controls display only — the model still reasons either way.
+            const showReasoning = settings.enableReasoningDisplay !== false;
             // Default 25, configurable to 500. Safe to raise only because the context is
             // now bounded by token budget rather than message count — a long run compacts
             // instead of overflowing the window.
@@ -1681,6 +1828,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 tools = tools.filter(t => customModeDef.tools!.includes(t.name));
             }
 
+            // Browser gating (B1/B2): honor the user's settings on the BrowserTool, and hide
+            // the browser_* tools entirely unless the browser is enabled AND a Playwright
+            // runtime is installed — so the model is never offered a tool that would fail.
+            const browserSettings = readBrowserSettings(settings);
+            browserTool.configure(browserSettings);
+            const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
+            tools = filterToolsForBrowser(tools, browserUsable);
+
             // Everything from here publishes with a task envelope: sessionId, taskId, traceId.
             task = this._sessions.beginTask(userPrompt, effectiveMode, modelConfig.model || modelId);
 
@@ -1691,9 +1846,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 log(`[Index] ${codebaseIndex.size} chunks — ${stats.indexed} indexed, ${stats.reused} reused, ${stats.removed} removed (${Date.now() - t0}ms).`);
             } catch (e: any) { log(`[Index] Skipped: ${e?.message || e}`); }
 
-            await skillsManager.discover();
-            const relevantSkills = skillsManager.findRelevant(userPrompt);
-            const skillInstructions = skillsManager.getInstructions(relevantSkills);
+            // Project-aware skills (Phase 2/4): resolve by (agent role + detected stack + prompt),
+            // including the bundled built-in packs, not prompt keywords alone.
+            await skillsManager.discover(this._bundledSkillsDir);
+            const profile = await this._getProjectProfile();
+            const skillRole = roleForMode(customModeDef?.name || effectiveMode);
+            const relevantSkills = resolveSkills({ skills: skillsManager.getAll(), role: skillRole, profile, prompt: userPrompt });
+            const skillInstructions = renderSkills(relevantSkills);
+            if (relevantSkills.length) log(`[Skills] Loaded ${relevantSkills.length}: ${relevantSkills.map(s => s.name).join(', ')}`);
 
             // MCP tools are exec-class: they hand arguments to an arbitrary external
             // process. Only Agent mode may call them, so only Agent mode pays the cost
@@ -1951,11 +2111,12 @@ Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_
                         }
                         return { continueWith: 0 };
                     },
-                    onReasoningStart: () => webview.postMessage({ type: 'startReasoning' }),
+                    onReasoningStart: () => { if (showReasoning) webview.postMessage({ type: 'startReasoning' }); },
                     onToken: (t) => {
                         // Reasoning tokens stream straight to the view: at 60fps an event
-                        // envelope per token is pure overhead.
-                        webview.postMessage({ type: 'streamReasoning', value: t });
+                        // envelope per token is pure overhead. Suppressed when the user turns
+                        // reasoning display off (B6).
+                        if (showReasoning) webview.postMessage({ type: 'streamReasoning', value: t });
                     },
                     onToolCall: (tc) => {
                         toolStartedAt.set(tc.id, Date.now());

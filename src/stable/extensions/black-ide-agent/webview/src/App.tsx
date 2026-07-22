@@ -90,7 +90,6 @@ interface BlackIDESettings {
   browserScreenshotOnNav: boolean;
   // Agent behavior
   maxLoopIterations: number;
-  enableFastApply: boolean;
   enableReasoningDisplay: boolean;
   customSystemPrompt: string;
   selectedModelId?: string;
@@ -138,7 +137,6 @@ const DEFAULT_SETTINGS: BlackIDESettings = {
   browserAllowedDomains: '',
   browserScreenshotOnNav: false,
   maxLoopIterations: 25,
-  enableFastApply: true,
   enableReasoningDisplay: true,
   customSystemPrompt: '',
   selectedModelId: '',
@@ -1546,11 +1544,6 @@ export default function App() {
     vscode.postMessage({ type: 'attachFile' });
   };
 
-  const handleAttachScreenshot = () => {
-    setShowPlusMenu(false);
-    vscode.postMessage({ type: 'takeScreenshot' });
-  };
-
   const handleMention = () => {
     setShowPlusMenu(false);
     setInputText(prev => prev + '@');
@@ -2231,15 +2224,6 @@ export default function App() {
                 <div className="h-px bg-[rgba(255,255,255,0.04)]" />
 
                 <CheckboxRow
-                  id="enableFastApply"
-                  title="Fast Apply"
-                  description="Use search/replace delta modifications to speed up file editing operations."
-                  checked={settings.enableFastApply}
-                  onToggle={() => updateSetting('enableFastApply', !settings.enableFastApply)}
-                  icon={<svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>}
-                />
-
-                <CheckboxRow
                   id="enableReasoningDisplay"
                   title="Show Reasoning"
                   description="Display thought bubbles showing internal reasoning steps."
@@ -2386,6 +2370,20 @@ export default function App() {
                   onToggle={() => updateSetting('browserEnabled', !settings.browserEnabled)}
                   icon={<svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>}
                 />
+
+                {/* One-time browser runtime install. Playwright is not bundled, so the
+                    browser tools stay hidden until this installs it (Option B). */}
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] px-3.5 py-3">
+                  <span className="text-[11px] text-muted/70 leading-relaxed">
+                    Browser tools need a one-time runtime install (Playwright + Chromium). They stay disabled until it's installed.
+                  </span>
+                  <button
+                    onClick={() => vscode.postMessage({ type: 'installBrowserSupport' })}
+                    className="shrink-0 bg-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.08)] text-foreground text-[11px] font-medium px-3 py-1.5 rounded-md border border-[rgba(255,255,255,0.08)] transition-all duration-200 cursor-pointer active:scale-[0.97]"
+                  >
+                    Install browser support
+                  </button>
+                </div>
 
                 <div className={`flex flex-col gap-8 transition-opacity duration-300 ${!settings.browserEnabled ? 'opacity-20 pointer-events-none' : ''}`}>
                   <div className="h-px bg-[rgba(255,255,255,0.04)]" />
@@ -3269,10 +3267,6 @@ export default function App() {
                     <div className="plus-menu-item" onClick={handleAttachFile}>
                       <AttachIcon />
                       <span>Attach File</span>
-                    </div>
-                    <div className="plus-menu-item" onClick={handleAttachScreenshot}>
-                      <ImageIcon />
-                      <span>Attach Screenshot</span>
                     </div>
                     <div className="border-t border-border/30 my-0.5" />
                     <div className="plus-menu-item" onClick={handleMention}>

@@ -139,7 +139,17 @@ export class AgentToolExecutor {
                     return this.ok(tc, await WebSearchTool.search(a.query));
                 }
                 case 'browser_open': {
-                    return this.ok(tc, await this.d.browserTool.launch({ url: a.url, headless: a.headless, viewportWidth: a.viewportWidth, viewportHeight: a.viewportHeight }));
+                    const msg = await this.d.browserTool.launch({ url: a.url, headless: a.headless, viewportWidth: a.viewportWidth, viewportHeight: a.viewportHeight });
+                    // browserScreenshotOnNav (B8): auto-capture the freshly loaded page and
+                    // feed it back as vision input, so the agent "sees" where it landed.
+                    if (this.d.browserTool.shouldScreenshotOnNav) {
+                        try {
+                            const shotPath = await this.d.browserTool.screenshot();
+                            const images: ImagePart[] = [{ mediaType: 'image/png', dataBase64: fs.readFileSync(shotPath).toString('base64') }];
+                            return this.ok(tc, `${msg} A screenshot of the page is attached.`, images);
+                        } catch { /* screenshot is best-effort; fall through to the text result */ }
+                    }
+                    return this.ok(tc, msg);
                 }
                 case 'browser_screenshot': {
                     const shotPath = await this.d.browserTool.screenshot();

@@ -38,7 +38,6 @@ export function ParallelSubagentsPanel({ state, post }: PanelProps) {
     
     if (subagentsList.length === 0) return null;
 
-    const BTN = "text-[9.5px] px-2 py-0.5 rounded border border-border text-muted hover:text-foreground hover:bg-panel transition-colors cursor-pointer";
     const BTN_DANGER = "text-[9.5px] px-2 py-0.5 rounded border border-warningAmber/40 text-warningAmber hover:bg-warningAmber/20 transition-colors cursor-pointer";
 
     return (
@@ -58,7 +57,6 @@ export function ParallelSubagentsPanel({ state, post }: PanelProps) {
                         const isRunning = sa.status === 'running';
                         const isError = sa.status === 'failed';
                         const isCancelled = sa.status === 'cancelled';
-                        const isDone = sa.status === 'completed';
 
                         return (
                             <div key={sa.id} 
@@ -93,15 +91,6 @@ export function ParallelSubagentsPanel({ state, post }: PanelProps) {
                                             aria-label={`Cancel subagent ${sa.name}`}
                                         >
                                             Cancel
-                                        </button>
-                                    )}
-                                    {isDone && (
-                                        <button 
-                                            className={BTN} 
-                                            onClick={() => post({ type: 'mergeSubagent', value: sa.id })}
-                                            aria-label={`Merge changes from subagent ${sa.name}`}
-                                        >
-                                            Merge
                                         </button>
                                     )}
                                 </div>

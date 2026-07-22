@@ -44,6 +44,16 @@
         "command": "black-ide.exportDiagnostics",
         "title": "✦ Black IDE: Export Agent Diagnostics",
         "icon": "$(output)"
+      },
+      {
+        "command": "black-ide.installBrowserSupport",
+        "title": "✦ Black IDE: Install Browser Support",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "black-ide.installSkillPacks",
+        "title": "✦ Black IDE: Install Skill Packs",
+        "icon": "$(book)"
       }
     ],
     "keybindings": [

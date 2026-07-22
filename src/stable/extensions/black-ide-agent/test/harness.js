@@ -67,6 +67,15 @@ const { PlanningEngine } = require(path.join(DIST, 'agent/planning-engine.js'));
 const { selectExecutionPhases, resolveModelForPhase, PipelineOrchestrator, buildPipelineContextSummary, isOverTokenBudget } = require(path.join(DIST, 'agent/pipeline-orchestrator.js'));
 const { worktreeManager } = require(path.join(DIST, 'agent/worktree-manager.js'));
 const { ModeLoader } = require(path.join(DIST, 'core/mode-loader.js'));
+const {
+  BROWSER_TOOL_NAMES, browserRuntimeAvailable, parseAllowedDomains, hostOf,
+  isNavigationAllowed, readBrowserSettings, isBrowserUsable, filterToolsForBrowser,
+} = require(path.join(DIST, 'tools/browser-capability.js'));
+const { detectProjectProfile, stackMindmapSection, upsertMarkdownSection } = require(path.join(DIST, 'core/project-profiler.js'));
+const { resolveSkills, renderSkills, roleForMode } = require(path.join(DIST, 'agent/skill-resolver.js'));
+const { SkillsManager } = require(path.join(DIST, 'agent/skills-manager.js'));
+const { installSkillPacks, listBundledPacks } = require(path.join(DIST, 'tools/skill-install.js'));
+const BUNDLED_SKILLS_DIR = path.join(__dirname, '..', 'resources', 'skills');
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓', name); } else { fail++; console.log('  ✗', name, extra !== undefined ? JSON.stringify(extra) : ''); } }
@@ -1421,6 +1430,180 @@ async function main() {
       vscodeStub.workspace.workspaceFolders = savedWorkspaceFolders;
       try { fs.rmSync(repoDir, { recursive: true, force: true }); } catch {}
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n[42] Phase 1: browser capability & navigation policy (pure)');
+  {
+    // B1 — runtime detection is injectable and never throws.
+    ok('runtime available when the module resolves', browserRuntimeAvailable(() => 'playwright') === true);
+    ok('runtime unavailable when resolution throws', browserRuntimeAvailable(() => { throw new Error('Cannot find module'); }) === false);
+
+    // B2 — allowlist parsing normalizes messy input.
+    ok('parses newline/comma list, strips scheme/path/port',
+      JSON.stringify(parseAllowedDomains('github.com\nhttps://api.example.com/foo, localhost:3000'))
+        === JSON.stringify(['github.com', 'api.example.com', 'localhost']));
+    ok('non-string domains blob is an empty list', parseAllowedDomains(undefined).length === 0);
+    ok('hostOf extracts a lowercased host', hostOf('HTTPS://GitHub.com/a/b') === 'github.com');
+    ok('hostOf returns empty for junk', hostOf('not a url') === '');
+
+    // B2 — the navigation gate.
+    ok('empty allowlist allows anything', isNavigationAllowed('https://anywhere.com', []) === true);
+    ok('exact host allowed', isNavigationAllowed('https://github.com/x', ['github.com']) === true);
+    ok('subdomain of an allowed host allowed', isNavigationAllowed('https://api.github.com', ['github.com']) === true);
+    ok('unlisted host refused', isNavigationAllowed('https://evil.com', ['github.com']) === false);
+    ok('a lookalike suffix is not a subdomain match', isNavigationAllowed('https://notgithub.com', ['github.com']) === false);
+    ok('unparseable url refused when an allowlist is set', isNavigationAllowed('nope', ['github.com']) === false);
+
+    // B8 — settings mapping and defaults (mirror the webview DEFAULT_SETTINGS).
+    const defaults = readBrowserSettings({});
+    ok('browser is off by default (opt-in)', defaults.enabled === false);
+    ok('headless defaults on', defaults.headless === true);
+    ok('no executable path by default', defaults.executablePath === undefined);
+    ok('no allowlist by default', defaults.allowedDomains.length === 0);
+    const custom = readBrowserSettings({
+      browserEnabled: true, browserHeadless: false, browserPath: ' /usr/bin/chrome ',
+      browserViewportWidth: 800, browserViewportHeight: 0, browserScreenshotOnNav: true,
+      browserAllowedDomains: 'github.com',
+    });
+    ok('enabled read through', custom.enabled === true);
+    ok('headless=false read through', custom.headless === false);
+    ok('executable path trimmed', custom.executablePath === '/usr/bin/chrome');
+    ok('positive viewport width kept', custom.viewportWidth === 800);
+    ok('non-positive viewport height dropped', custom.viewportHeight === undefined);
+    ok('screenshotOnNav read through', custom.screenshotOnNav === true);
+
+    // B1 — usability requires both the switch and the runtime.
+    ok('not usable when disabled', isBrowserUsable(defaults, true) === false);
+    ok('not usable when runtime missing', isBrowserUsable(custom, false) === false);
+    ok('usable when enabled and runtime present', isBrowserUsable(custom, true) === true);
+
+    // B1 — tool gating.
+    const sampleTools = [{ name: 'read_file' }, { name: 'browser_open' }, { name: 'browser_close' }, { name: 'web_search' }];
+    const gated = filterToolsForBrowser(sampleTools, false).map(t => t.name);
+    ok('browser tools removed when unusable', !gated.includes('browser_open') && !gated.includes('browser_close'));
+    ok('non-browser tools survive gating', gated.includes('read_file') && gated.includes('web_search'));
+    ok('all tools kept when usable', filterToolsForBrowser(sampleTools, true).length === sampleTools.length);
+    ok('BROWSER_TOOL_NAMES covers all six', BROWSER_TOOL_NAMES.length === 6);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n[43] Phase 4: selectable vs internal pipeline-phase modes');
+  {
+    const loader = new ModeLoader();
+    await loader.loadAll('/empty');
+    const selectable = loader.getSelectableModes().map(m => m.name).sort();
+    const all = loader.getAllModes().map(m => m.name);
+
+    const expectedSelectable = ['Agent', 'Ask', 'Backend', 'DevOps', 'Frontend', 'Manager', 'Plan', 'Sr Architect'];
+    ok('exactly eight user-selectable modes', selectable.length === 8, selectable);
+    ok('the eight selectable modes are the documented set',
+      JSON.stringify(selectable) === JSON.stringify(expectedSelectable), selectable);
+
+    const internalNames = ['Sr Architect HLD', 'Sr Engineer LLD', 'Planner', 'Design Executor', 'Backend Executor', 'Frontend Executor', 'Testing Executor'];
+    ok('all seven internal pipeline-phase modes are hidden from the picker',
+      internalNames.every(n => !selectable.includes(n)));
+    ok('but internal modes remain available to the pipeline via getAllModes/getMode',
+      internalNames.every(n => all.includes(n)) && !!loader.getMode('planner'));
+    ok('getAllModes still returns the full built-in set', all.length >= 15);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n[44] Skills: project profiler (pure)');
+  {
+    const django = detectProjectProfile(['manage.py', 'app/settings.py', 'app/models.py'],
+      { 'requirements.txt': 'Django==5.0\ndjangorestframework==3.15\npytest' });
+    ok('django detected from manage.py + requirements', django.frameworks.includes('django'));
+    ok('DRF detected', django.frameworks.includes('django-rest-framework'));
+    ok('python language inferred', django.languages.includes('python'));
+    ok('pytest test framework inferred', django.testFrameworks.includes('pytest'));
+    ok('django stack has confidence', django.confidence > 0);
+
+    const dotnet = detectProjectProfile(['src/Api.csproj', 'Program.cs'],
+      { csproj: '<Project Sdk="Microsoft.NET.Sdk.Web"><PackageReference Include="Microsoft.EntityFrameworkCore.Design"/><PackageReference Include="xunit"/></Project>' });
+    ok('aspnet-core detected from web SDK', dotnet.frameworks.includes('aspnet-core'));
+    ok('EF Core detected', dotnet.frameworks.includes('entity-framework-core'));
+    ok('csharp language inferred', dotnet.languages.includes('csharp'));
+    ok('xunit test framework inferred', dotnet.testFrameworks.includes('xunit'));
+
+    const rust = detectProjectProfile([], { 'Cargo.toml': '[dependencies]\naxum = "0.7"\n[dev-dependencies]\nproptest = "1"' });
+    ok('rust + axum detected', rust.frameworks.includes('rust') && rust.frameworks.includes('axum'));
+
+    const react = detectProjectProfile(['tsconfig.json'], { 'package.json': JSON.stringify({ dependencies: { react: '18' }, devDependencies: { jest: '29', typescript: '5' } }) });
+    ok('react detected from package.json', react.frameworks.includes('react'));
+    ok('typescript inferred from tsconfig/dep', react.languages.includes('typescript'));
+    ok('jest test framework inferred', react.testFrameworks.includes('jest'));
+
+    const go = detectProjectProfile([], { 'go.mod': 'module x\nrequire github.com/gin-gonic/gin v1.9.0' });
+    ok('go + gin detected', go.frameworks.includes('go') && go.frameworks.includes('gin'));
+
+    const empty = detectProjectProfile([], {});
+    ok('empty repo → no stacks, zero confidence', empty.stacks.length === 0 && empty.confidence === 0);
+
+    // Phase 5 mindmap section is idempotent
+    const section = stackMindmapSection(django);
+    let doc = upsertMarkdownSection('# Mindmap\n', 'Project Stack & Conventions', section);
+    const once = doc;
+    doc = upsertMarkdownSection(doc, 'Project Stack & Conventions', section);
+    ok('mindmap stack section is idempotent (no duplication)', once.trim() === doc.trim());
+    ok('mindmap section names the frameworks', doc.includes('django'));
+  }
+
+  console.log('\n[45] Skills: resolver (pure)');
+  {
+    const skills = [
+      { name: 'django', description: '', instructions: 'x', triggerPatterns: ['django'], roles: ['backend'], stacks: ['django', 'python'], priority: 10 },
+      { name: 'react', description: '', instructions: 'x', triggerPatterns: ['react'], roles: ['frontend'], stacks: ['react'], priority: 10 },
+      { name: 'rest-api-design', description: '', instructions: 'x', triggerPatterns: [], roles: ['backend'], stacks: [], priority: 5 },
+      { name: 'legacy-docker', description: '', instructions: 'x', triggerPatterns: ['docker'], roles: [], stacks: [], priority: 0 },
+    ];
+    const djangoProfile = { stacks: ['django', 'python'] };
+
+    const backend = resolveSkills({ skills, role: 'backend', profile: djangoProfile, prompt: '' }).map(s => s.name);
+    ok('stack-matched django ranks first for backend', backend[0] === 'django');
+    ok('cross-cutting backend skill is included', backend.includes('rest-api-design'));
+    ok('frontend skill excluded in a backend turn', !backend.includes('react'));
+    ok('legacy prompt-only skill excluded without a keyword hit', !backend.includes('legacy-docker'));
+
+    const withPrompt = resolveSkills({ skills, role: 'backend', profile: djangoProfile, prompt: 'set up docker' }).map(s => s.name);
+    ok('legacy skill included when its keyword appears', withPrompt.includes('legacy-docker'));
+
+    const frontend = resolveSkills({ skills, role: 'frontend', profile: { stacks: ['react'] }, prompt: '' }).map(s => s.name);
+    ok('react included for a frontend turn', frontend.includes('react'));
+    ok('django excluded for a frontend turn', !frontend.includes('django'));
+
+    const capped = resolveSkills({ skills, role: 'backend', profile: djangoProfile, prompt: 'docker', maxCount: 1 });
+    ok('maxCount caps the result', capped.length === 1);
+
+    ok('renderSkills emits a section for picks', renderSkills([skills[0]]).includes('django'));
+    ok('renderSkills is empty for no picks', renderSkills([]) === '');
+
+    ok('roleForMode maps Backend Executor → backend', roleForMode('Backend Executor') === 'backend');
+    ok('roleForMode maps Testing Executor → testing', roleForMode('Testing Executor') === 'testing');
+    ok('roleForMode maps Design Executor → design', roleForMode('Design Executor') === 'design');
+    ok('roleForMode leaves generalists unroled', roleForMode('Sr Architect') === undefined && roleForMode('Ask') === undefined);
+  }
+
+  console.log('\n[46] Skills: bundled packs, loading & install (real files)');
+  {
+    const django = SkillsManager.loadSkillDir(path.join(BUNDLED_SKILLS_DIR, 'django'), 'django', 'bundled');
+    ok('bundled django pack loads', !!django);
+    ok('django pack declares the backend role', django.roles.includes('backend'));
+    ok('django pack declares the django stack', django.stacks.includes('django'));
+    ok('django pack carries instructions', django.instructions.length > 50);
+
+    const packs = listBundledPacks(BUNDLED_SKILLS_DIR);
+    ok('at least 16 bundled packs ship', packs.length >= 16, packs.length);
+    ok('packs span all four roles',
+      ['backend', 'frontend', 'design', 'testing'].every(r => packs.some(p => p.roles.includes(r))));
+
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'skillinstall-'));
+    const installed = installSkillPacks(BUNDLED_SKILLS_DIR, dest, ['django', 'react']);
+    ok('install copies the selected packs', installed.length === 2);
+    ok('installed pack lands under .blackide/skills/', fs.existsSync(path.join(dest, '.blackide', 'skills', 'django', 'SKILL.md')));
+    const again = installSkillPacks(BUNDLED_SKILLS_DIR, dest, ['django', 'react']);
+    ok('re-install does not overwrite existing packs', again.length === 0);
+    try { fs.rmSync(dest, { recursive: true, force: true }); } catch {}
   }
 
   server.close();

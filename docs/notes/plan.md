@@ -1,835 +1,417 @@
-A **10/10** version would look less like a collection of agents and more like a complete **AI Software Agency Operating System**. The biggest improvement is adding governance, product management, architecture, execution, quality, documentation, and continuous project memory. Below is a complete end-to-end workflow.
+# Black IDE — Engineering Plan: Project-Aware Agent Skills
+
+**Author:** Principal Engineer (fleet + agent infrastructure)
+**Date:** 2026-07-22
+**Status:** **In progress — Phases 1–5 delivered, Phase 6 partial (2026-07-22).**
+**Scope reference:** `src/stable/extensions/black-ide-agent/`. Every claim below is grounded in
+current code (file:line where it matters).
+
+> ## Delivery status (2026-07-22)
+> Extension `tsc -b` clean · harness **426/426** (+40, suites `[44]`–`[46]`) · webview builds.
+>
+> | Phase | Status | What landed |
+> |---|:--:|---|
+> | 1 — Project Profiler | ✅ | `core/project-profiler.ts` — detects languages/frameworks/test-runners from manifests (Django, .NET, Rust, Go, React, Node, Rails, Spring, Laravel, Flutter…). Wired into a cached `_getProjectProfile()` in `extension.ts`. |
+> | 2 — Skill model + resolver | ✅ | `Skill` gains `roles`/`stacks`/`priority` (backward compatible); `agent/skill-resolver.ts` ranks by stack + role + prompt, with `roleForMode()`. |
+> | 3 — Built-in packs + storage | ✅ | **16 bundled packs** in `resources/skills/` across all 4 roles; `SkillsManager` now resolves bundled → global → workspace (later overrides by name); `black-ide.installSkillPacks` command materializes packs into `.blackide/skills/`. |
+> | 4 — Wire into all agents | ✅ | Chat (`_runAgentTask`) and **pipeline executors** (`_runPipelineCore` → orchestrator `skillsForMode`) now receive resolved skills. The pipeline agents previously received **none**. |
+> | 5 — Project-aware mindmap | ✅ | Detected stack is upserted as an idempotent "Project Stack & Conventions" section in `project_mindmap.md`. |
+> | 6 — Authoring/lifecycle | 🟡 | Hot-reload is satisfied by design (skills are re-discovered every task); skills-fired logging is in place. **Remaining:** dedicated validation diagnostics UI + telemetry-sink events (follow-up). |
+>
+> **Follow-up (not yet done):** expand the built-in library beyond the initial 16 (the catalog
+> below is the target; adding packs is data-only, no code); Phase 6 diagnostics UI.
+
+This plan does two things:
+1. **Part 1** — a maturity map of *every* Black IDE capability, so we know where the product
+   actually stands (Beginning / Mid / Advanced), not where the README says it does.
+2. **Part 2** — the next big initiative: turn the eight agents from fixed-prompt generalists into
+   a **project-aware fleet** that loads the right skills for the stack in front of them (Django,
+   .NET, Rust, React, …), and keeps the mindmap synced to that reality.
 
 ---
 
-# AI Software Agency Operating System (v1.0)
+## Part 1 — Feature Maturity Map
 
-## Vision
+**Legend.** 🟢 **Advanced** — robust, tested, production-quality. 🟡 **Mid** — works, but with a
+real limitation (not wired everywhere, not project-aware, opt-in, or thin). 🔴 **Beginning** —
+exists but naive/experimental, or barely wired.
 
-The AI agency behaves like a senior software company rather than a coding assistant.
+### Agent core & orchestration
 
-It never starts coding immediately.
+| Capability | Level | Why this level |
+|---|:--:|---|
+| Bounded agent loop (context budgeting, execution interlock, native tools) | 🟢 | `agent/agent-loop.ts` + `core/context-manager.ts`; tested |
+| Two-phase planning + human approval gate (persisted across reload) | 🟢 | `PlanningEngine`, Memento-backed approval |
+| Multi-agent pipeline (HLD → LLD → Planner → Executors → reconcile) | 🟢 | `agent/pipeline-orchestrator.ts`; dependency graph, PR/apply modes |
+| Subagent isolation (git worktrees, mutex, delta reconcile) | 🟢 | `agent/worktree-manager.ts`; real-git tests |
+| Concurrent Pipeline Manager (up to 4 runs, durable history) | 🟢 | `core/pipeline-runs.ts` |
+| Request classification / auto-plan / auto-orchestrate triggers | 🟡 | keyword heuristics (`planning-engine.ts`), not learned |
+| Parallel wave execution | 🔴 | experimental, default off, "not verified under extension host" |
 
-Instead it:
+### The agents (fleet)
 
-* Understands business goals
-* Analyzes existing projects
-* Creates architecture
-* Generates implementation plans
-* Waits for approval
-* Develops incrementally
-* Tests everything
-* Updates documentation
-* Maintains long-term project knowledge
+| Capability | Level | Why this level |
+|---|:--:|---|
+| **8 selectable agents** (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect) | 🟡→🟢 | static base prompts in `core/mode-loader.ts`, **now augmented at runtime with project-aware skill packs** (Phase 4). Base prompts still static |
+| 7 internal pipeline-phase agents (HLD, LLD, Planner, Design/Backend/Frontend/Testing Executors) | 🟡→🟢 | **now receive resolved skills** via the orchestrator's `skillsForMode` (Phase 4) — previously got none |
+| Custom modes (YAML frontmatter, 3 scopes, hot-reload, inline diagnostics) | 🟢 | `ModeLoader.watchForChanges` |
+| Per-mode tool allowlists + iteration budgets | 🟢 | enforced in the sandbox gate |
 
-Every decision is traceable.
+### Skills & knowledge — **was the weak spine; now the newest strength** (Part 2 delivered)
 
-Every feature is planned.
+| Capability | Level | Why this level |
+|---|:--:|---|
+| **Skills framework** (`SkillsManager` + `SkillResolver`) | 🔴→🟡 | Now **project- & role-aware**: resolves by stack + role + prompt (`agent/skill-resolver.ts`), **16 bundled packs**, wired into **both chat and pipeline agents**, precedence bundled→global→workspace. Remaining: broader library (16 of ~60), no diagnostics UI yet |
+| **Project-type detection** (Django / .NET / Rust / React / Go / …) | 🔴→🟡 | **Built** (`core/project-profiler.ts`): manifest-based, confidence-scored, tested across ~10 stacks. Rule-based (not learned); framework coverage still growing |
+| Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | solid store + first-run scan; content still generic, not yet stack-specialized from the profile |
+| **Mindmap syncing** (`project_mindmap.md`) | 🟡 | now upserts an idempotent **"Project Stack & Conventions"** section from the profile (Phase 5); still write-mostly — full agent read-back is a follow-up |
+| First-run architecture scan | 🟡 | `summarizeRepoStructure()` lists files + `package.json`; stack now classified separately by the profiler |
 
-Every change is documented.
+### Retrieval & context
+
+| Capability | Level | Why |
+|---|:--:|---|
+| Semantic codebase index (embeddings + BM25 via RRF, AST-aware chunking) | 🟢 | `core/codebase-index.ts`; embeddings are opt-in |
+| Context manager / token budgeting + compaction | 🟢 | `core/context-manager.ts` |
+| Prompt builder (per-section budgets) | 🟢 | `core/prompt-builder.ts` |
+
+### Tools
+
+| Capability | Level | Why |
+|---|:--:|---|
+| File / grep / list / run_command | 🟢 | `tools/tool-runner.ts` |
+| Checkpoints & rollback (reverse hunks, per-message undo) | 🟢 | `core/checkpoint-manager.ts` |
+| **Browser automation** (Playwright, gated + on-demand install) | 🟡 | opt-in after Phase-1 hardening; per-task sessions, allowlist-enforced |
+| **MCP client** (stdio JSON-RPC, tool registration) | 🟡 | works, Agent-mode only; no remote/SSE transport |
+| Web search | 🟡 | DuckDuckGo only (`tools/web-search.ts`); no API-key providers |
+
+### Editor integration & platform
+
+| Capability | Level | Why |
+|---|:--:|---|
+| Inline completion (FIM-aware) | 🟡 | `core/inline-completion.ts`; single-model, no multi-file context |
+| Inline chat (`Cmd+I`) | 🟡 | selection-scoped; solid but narrow |
+| Commit-message generation | 🟡 | works; diff-size naive |
+| Multi-provider LLM (OpenAI/Anthropic/Google/OpenRouter/Ollama/LM Studio) | 🟢 | `core/llm-client.ts` |
+| Output modes (`apply` / `pr`) | 🟢 | `core/git-pr.ts` |
+| Local-only telemetry + diagnostics export | 🟢 | `core/telemetry-sink.ts` |
+
+**Read of the map (updated):** the *engine* (loop, pipeline, checkpoints, index, worktrees) is
+Advanced. The **intelligence layer that makes agents good at a specific stack was Beginning — it is
+now Mid** and rising: Part 2 shipped (Phases 1–5), so skills are project- and role-aware, reach
+**both** chat and pipeline agents, and the stack is detected from manifests and synced to the
+mindmap. The remaining lift is *breadth* (grow the 16-pack library toward the full catalog) and
+*polish* (Phase 6 diagnostics), not architecture.
 
 ---
 
-# Organization Structure
+## Part 2 — Initiative: Project-Aware Dynamic Agent Skills
 
-```text
-                                        USER
-                                          │
-                                          ▼
-                              AI Agency Executive Manager
-                                          │
-            ┌─────────────────────────────┼─────────────────────────────┐
-            │                             │                             │
-            ▼                             ▼                             ▼
-    Customer Success               Product Department          Knowledge Department
-            │                             │                             │
-            ▼                             ▼                             ▼
- Requirement Collection          Business Analysis          Repository Analysis
- Clarifications                  Product Planning           Documentation Analysis
- User Communication              Requirement Validation     Context Builder
-                                                          Long-Term Project Memory
-            │
-            └─────────────────────────────┬─────────────────────────────┐
-                                          ▼
-                               Project Management Office
-                                          │
-                          Scope • Timeline • Risk • Priority
-                                          │
-                                          ▼
-                           Architecture & Planning Department
-                                          │
-              ┌──────────────┬──────────────┬──────────────┐
-              ▼              ▼              ▼              ▼
-      System Architect   Backend Lead   Frontend Lead   UX/UI Lead
-              │              │              │              │
-              └──────────────┼──────────────┼──────────────┘
-                             ▼
-                     Solution Architecture
-                             │
-                             ▼
-                  Technical Planning & Design
-                             │
-                             ▼
-                  Engineering Execution Department
-                             │
-     ┌──────────────┬──────────────┬──────────────┬──────────────┐
-     ▼              ▼              ▼              ▼
- Backend Team   Frontend Team   Database Team   DevOps Team
-     │              │              │              │
-     └──────────────┼──────────────┼──────────────┘
-                    ▼
-            Quality Assurance Department
-                    │
-      Unit Tests • Integration • Security • Performance
-                    │
-                    ▼
-          Documentation & Release Department
-                    │
-      Docs • Changelog • Mindmap • Deployment
-                    │
-                    ▼
-                 Final Delivery
+### Problem statement — and how it now stands
+
+**The original problem (2026-07-22, pre-Part-2):** the eight agents shared fixed, generic system
+prompts. A "Backend" agent wrote the same way whether the repo was Django, ASP.NET, or Actix — no
+loaded knowledge of the stack's idioms, layout, test runner, or pitfalls. Specifically:
+
+- ~~`SkillsManager` triggered only on prompt keywords, shipped no content, and was never called
+  inside the pipeline.~~ → **Resolved (Phases 2–4):** stack+role resolver, 16 bundled packs, wired
+  into `_runAgentTask` *and* the pipeline executors (`skillsForMode`).
+- ~~No project-type detection to key skills off of.~~ → **Resolved (Phase 1):**
+  `core/project-profiler.ts` detects the stack from manifests.
+- ~~The mindmap isn't stack-aware.~~ → **Resolved (Phase 5):** an idempotent "Project Stack &
+  Conventions" section is synced from the profile. *(Agent read-back of the section remains a
+  follow-up.)*
+
+**What's left** is breadth (grow the pack library) and Phase 6 polish (diagnostics + telemetry) —
+the sections below are retained as the design of record and the target catalog.
+
+### Target
+
+When a run starts, Black IDE should:
+1. **Detect the project type** (languages, frameworks, package/test/build tooling) from manifests.
+2. **Resolve the right skills per agent** — Backend-on-Django gets Django ORM/migrations/DRF
+   idioms; Testing-on-Rust gets `cargo test`/proptest idioms; Frontend-on-Next gets App-Router
+   conventions — combining *stack match + agent role + prompt relevance*.
+3. **Inject those skills into every agent**, chat and pipeline alike, within the prompt budget.
+4. **Sync the detected stack + conventions into the mindmap**, and have agents read the relevant
+   section before acting.
+
+### Design overview
+
+```
+manifests ─► ProjectProfiler ─► ProjectProfile {languages, frameworks,
+   (Cargo.toml, *.csproj,          packageManager, testFrameworks, buildTool,
+    requirements.txt, …)           confidence, evidence}
+                                        │
+                 ┌──────────────────────┼───────────────────────┐
+                 ▼                       ▼                       ▼
+          SkillResolver           Mindmap "Stack &          Knowledge base
+   score = stackMatch·w1 +         Conventions" section       (architecture.md
+     roleAffinity·w2 +             (seeded + agent-read)        stack-specialized)
+     promptTrigger·w3
+                 │
+                 ▼
+   per-agent skill injection  ──►  chat (_runAgentTask)  +  pipeline (_runPipelineCore executors)
+   (budgeted via PromptBuilder)
 ```
 
----
+**Data model changes (`agent/skills-manager.ts`)** — extend `Skill`:
+```ts
+interface Skill {
+  name; description; instructions; triggerPatterns; directory;   // existing
+  roles?: string[];    // 'backend' | 'frontend' | 'design' | 'testing' | 'devops' | 'architect'
+  stacks?: string[];   // 'django' | 'fastapi' | 'dotnet' | 'rust' | 'react' | 'nextjs' | …
+  priority?: number;   // tie-breaker for ranking
+}
+```
+Existing keyword-only skills keep working (roles/stacks optional → fall back to `triggerPatterns`).
 
-# Master Workflow
+**Agent → role map** (drives resolution): Backend/Backend-Executor→`backend`; Frontend/
+Frontend-Executor→`frontend`; Design-Executor→`design`; Testing-Executor→`testing`; DevOps→
+`devops`; Sr Architect/HLD/LLD→`architect`; Ask/Plan/Agent/Manager→generalist (role-agnostic,
+stack skills still apply).
 
-```text
-User Request
+### The built-in skill library (catalog by role)
 
-↓
+Every skill is one `SKILL.md` pack that declares its `roles`, `stacks`, and `triggers` in
+frontmatter, and its body carries idioms, canonical project layout, conventions, commands, and
+common pitfalls. The resolver (Phase 2) picks packs by *role + detected stack + prompt*, so a skill
+can be broad (a language) or narrow (a single framework) and still rank correctly.
 
-Request Classification
+Skills come in three grains, and a pack can belong to more than one via multiple `stacks`:
+- **Language skills** — idioms, tooling, packaging for a language (Python, TypeScript, C#, …).
+- **Framework skills** — the specific stack layered on the language (Django on Python, ASP.NET on
+  C#, React on TypeScript).
+- **Cross-cutting skills** — role practices independent of stack (REST API design, a11y, TDD).
 
-↓
+#### 🟩 BACKEND (`roles: [backend]`)
 
-Programming?
-      │
- ┌────┴────┐
- │         │
-No         Yes
- │         │
- ▼         ▼
-General    Project Discovery
-Manager
-            ↓
-      Requirement Analysis
+| Grain | Skills (`stacks`) |
+|---|---|
+| **Languages** | `python-backend`, `nodejs-backend` (JavaScript/TypeScript), `csharp-backend`, `rust-backend`, `go-backend`, `ruby-backend`, `java-backend`, `php-backend` |
+| **Python frameworks** | `django`, `django-rest-framework`, `fastapi`, `flask` |
+| **Node frameworks** | `express`, `nestjs`, `fastify` |
+| **C# / .NET** | `aspnet-core`, `entity-framework-core`, `dotnet-minimal-apis` |
+| **Rust** | `actix-web`, `axum`, `rust-diesel-sea-orm` |
+| **Go** | `gin`, `echo`, `go-net-http`, `gorm` |
+| **Ruby / Java / PHP** | `rails`, `spring-boot` (JPA/Hibernate), `laravel`, `symfony` |
+| **Cross-cutting** | `rest-api-design`, `graphql-api`, `auth-jwt-oauth`, `db-migrations`, `orm-patterns`, `caching-strategies`, `message-queues`, `websockets` |
 
-            ↓
-      Missing Information?
+#### 🟦 FRONTEND (`roles: [frontend]`)
 
-      ┌───────────────┐
-      │               │
-     Yes             No
-      │               │
-      ▼               ▼
+| Grain | Skills (`stacks`) |
+|---|---|
+| **Languages** | `javascript-frontend`, `typescript-frontend` |
+| **Web frameworks** | `react`, `nextjs`, `angular`, `vue`, `svelte-kit`, `solidjs`, `remix`, `astro` |
+| **Mobile / cross-platform** | `react-native` (+ `expo`), `flutter` (Dart) |
+| **State & data** | `redux-toolkit`, `zustand`, `pinia`, `ngrx`, `tanstack-query` |
+| **Styling** | `tailwind`, `css-modules`, `styled-components`, `scss-sass` |
+| **Cross-cutting** | `component-architecture`, `web-performance`, `forms-validation`, `spa-routing` |
 
-Ask Smart        Repository Analysis
-Questions             │
-                      ▼
-          Architecture Discussion Meeting
-                      │
-                      ▼
-               Generate Mind Map
-                      │
-                      ▼
-              Generate Feature List
-                      │
-                      ▼
-             Technical Architecture
-                      │
-                      ▼
-               Generate HLD + LLD
-                      │
-                      ▼
-          Dependency & Risk Analysis
-                      │
-                      ▼
-              Priority Optimization
-                      │
-                      ▼
-             Generate project_plan.md
-                      │
-                      ▼
-               User Approval Gate
-                      │
-          ┌───────────┴────────────┐
-          │                        │
-      Rejected                 Approved
-          │                        │
-          ▼                        ▼
-    Update Plan             Sprint Planning
-                                   │
-                                   ▼
-                         Parallel Development
-                                   │
-                                   ▼
-                            Integration
-                                   │
-                                   ▼
-                             QA Review
-                                   │
-                                   ▼
-                             Bug Fixes
-                                   │
-                                   ▼
-                          Documentation
-                                   │
-                                   ▼
-                          Release Summary
-                                   │
-                                   ▼
-                         Update Knowledge Base
+#### 🟪 DESIGN (`roles: [design]`)
+
+| Grain | Skills (`stacks`) |
+|---|---|
+| **Systems & foundations** | `design-systems-tokens`, `atomic-design`, `responsive-layout` (flexbox/grid), `typography-color` |
+| **Accessibility** | `a11y-wcag-aria` |
+| **Toolkits** | `tailwind-design`, `material-design`, `shadcn-radix` |
+| **Interaction** | `motion-animation`, `ux-patterns`, `figma-to-code` |
+
+#### 🟨 TESTING (`roles: [testing]`)
+
+| Grain | Skills (`stacks`) |
+|---|---|
+| **Python** | `pytest`, `pytest-django`, `python-unittest` |
+| **JS / TS** | `jest`, `vitest`, `react-testing-library`, `playwright-e2e`, `cypress-e2e` |
+| **C#** | `xunit`, `nunit`, `mstest` |
+| **Rust / Go** | `cargo-test` (+ `proptest`), `go-test` (table-driven, `testify`) |
+| **Ruby / Java** | `rspec`, `junit-mockito` |
+| **Cross-cutting** | `test-strategy` (unit/integration/e2e), `mocking-stubbing`, `coverage-tdd`, `contract-testing`, `load-testing` |
+
+#### ⬛ DEVOPS (`roles: [devops]`) — supporting role
+
+`docker`, `docker-compose`, `kubernetes`, `github-actions-ci`, `terraform`, plus stack build/deploy
+notes (e.g. `gunicorn`/`uvicorn` for Python, `dotnet publish`, `cargo build --release`, Go
+multistage images) attached to the relevant framework packs.
+
+#### Compact stack × role view
+
+| Stack ↓ / Role → | backend | frontend | design | testing |
+|---|---|---|---|---|
+| **Python · Django/DRF** | `django`, `django-rest-framework`, `orm-patterns` | — | — | `pytest-django` |
+| **Python · FastAPI/Flask** | `fastapi`, `flask`, `rest-api-design` | — | — | `pytest` |
+| **JS/TS · Node** | `express`, `nestjs`, `auth-jwt-oauth` | — | — | `jest`, `vitest` |
+| **C# · .NET** | `aspnet-core`, `entity-framework-core` | — | — | `xunit`, `nunit` |
+| **Rust** | `axum`, `actix-web` | — | — | `cargo-test`, `proptest` |
+| **Go** | `gin`, `go-net-http`, `gorm` | — | — | `go-test` |
+| **Ruby · Rails** | `rails`, `db-migrations` | — | — | `rspec` |
+| **Java · Spring** | `spring-boot` | — | — | `junit-mockito` |
+| **React / Next.js** | — | `react`, `nextjs`, `tanstack-query` | `design-systems-tokens`, `a11y-wcag-aria` | `react-testing-library`, `playwright-e2e` |
+| **Angular** | — | `angular`, `ngrx` | `a11y-wcag-aria` | `jest`, `cypress-e2e` |
+| **React Native / Expo** | — | `react-native`, `expo` | `responsive-layout` | `jest`, `react-testing-library` |
+| **Vue / Svelte** | — | `vue`+`pinia`, `svelte-kit` | `design-systems-tokens` | `vitest`, `playwright-e2e` |
+| **Any + Tailwind** | — | `tailwind` | `tailwind-design`, `a11y-wcag-aria` | — |
+
+> This is the *initial* library. It is data, not code — new stacks are added by dropping another
+> `SKILL.md`, no release required (see storage model below).
+
+Detection signals the profiler keys on: `manage.py`+`settings.py`→Django; `pyproject.toml`/
+`requirements.txt`→Python; `package.json` deps (`react`,`next`,`@angular/core`,`react-native`,
+`vue`,`svelte`,`express`,`@nestjs/core`)→JS frameworks; `*.csproj`/`*.sln`→.NET; `Cargo.toml`→Rust;
+`go.mod`→Go; `Gemfile`+`config/routes.rb`→Rails; `pom.xml`/`build.gradle`→Spring;
+`composer.json`→Laravel/Symfony; `pubspec.yaml`→Flutter.
+
+### Storage & discovery model — everything lives in `.blackide/skills/`
+
+Skills — **both the built-in library and anything a user writes** — are plain `SKILL.md` folders
+under a `skills/` directory. `SkillsManager` already scans `.blackide/skills/` (workspace) and
+`~/.blackide/skills/` (global); this initiative formalizes it into a clear precedence:
+
+```
+skills/<skill-name>/SKILL.md         ← one folder per skill
+
+Discovery precedence (later overrides earlier by skill name):
+  1. Bundled built-ins   ─ shipped read-only in the extension (resources/skills/)
+  2. Global user skills  ─ ~/.blackide/skills/        (apply to every project)
+  3. Workspace skills    ─ <repo>/.blackide/skills/   (project-specific; highest precedence)
 ```
 
----
+- **Users add dynamic skills** by dropping a folder into `<repo>/.blackide/skills/<name>/SKILL.md`
+  (or the global `~/.blackide/skills/`). Hot-reloaded on save (Phase 6), with validation
+  diagnostics for malformed frontmatter — same UX as custom modes.
+- **Built-ins are materializable into `.blackide/skills/`** too: a "Black IDE: Install Skill Packs"
+  command copies selected bundled packs into `<repo>/.blackide/skills/`, so they are visible,
+  diffable, editable, and **overridable** by name — the folder is the single source of truth the
+  user can see and own, exactly as requested. A user pack named `django` shadows the built-in one.
+- **`SKILL.md` frontmatter** (superset of today's format, backward compatible):
 
-# Request Classification
+  ```markdown
+  ---
+  name: django
+  description: Django + DRF backend idioms, project layout, and pitfalls
+  roles: [backend]
+  stacks: [django, python]
+  triggers: [django, models.py, migrations, drf, serializer]   # optional; legacy still works
+  priority: 10
+  ---
+  # When to use ... / Project layout ... / Conventions ... / Commands ... / Pitfalls ...
+  ```
 
-Every request is classified before any work begins.
-
-## Non-Programming
-
-* General questions
-* Research
-* Writing
-* Documentation
-* Brainstorming
-* Learning
-* Business discussion
-
-Handled by the General AI Manager.
-
----
-
-## Programming
-
-Automatically detect:
-
-* New project
-* Existing project
-* Bug
-* Feature
-* Refactor
-* Performance
-* Security
-* Architecture
-* Documentation
-* DevOps
-* Database
-* Testing
-
-Each type activates different specialists.
+  `roles`/`stacks`/`priority` are optional additions; existing keyword-only skills keep working.
 
 ---
 
-# Requirement Discovery
+## Phased execution
 
-Before planning, the agency validates requirements.
+Each phase ships independently, ends green on the harness (`vscode`-free tier wherever the logic
+allows) plus its own tests, `tsc -b` clean, and the webview building.
 
-Questions include:
+### Phase 1 — Project Profiler (detection foundation)
+- **New:** `core/project-profiler.ts` → `detectProjectProfile(files, manifests): ProjectProfile`
+  (pure, testable). `ProjectProfile { languages[], frameworks[], packageManager, testFrameworks[],
+  buildTool, confidence, evidence[] }`.
+- Cache to `.blackIDE/knowledge/project_profile.json`; refresh on manifest change (reuse the
+  workspace watcher pattern from `ModeLoader`).
+- Fold the profile into the first-run scan (`summarizeRepoStructure` gains a stack line).
+- **Tests:** fixture repos (django / dotnet / rust / react / go) → expected profile; ambiguous/
+  polyglot repos → ranked frameworks with confidence; empty repo → empty profile, no throw.
+- **Ship gate:** detection accuracy on the fixture set; zero effect on runs until Phase 4 consumes it.
 
-* Business goal
-* Target users
-* Success criteria
-* Deadline
-* Constraints
-* Existing system
-* Expected behavior
-* Edge cases
-* Acceptance criteria
+### Phase 2 — Skill model + resolver
+- Extend `Skill` (roles/stacks/priority) and `SkillsManager` parsing (backward compatible).
+- **New:** `SkillResolver.resolve(role, profile, prompt, budget)` → ranked `Skill[]`, scoring
+  `stackMatch·w1 + roleAffinity·w2 + promptTrigger·w3`, capped by count/token budget.
+- **Tests:** (role=backend, stack=django, prompt) → django-backend ranked first; role mismatch
+  demoted; legacy keyword-only skill still resolvable; empty profile → prompt-trigger behavior
+  (today's behavior preserved).
 
-If information is missing, the agency asks concise, high-value questions instead of making assumptions.
+### Phase 3 — Built-in skill pack library + `.blackide/skills` storage
+- Author the catalog above as bundled `SKILL.md` packs (shipped read-only under the extension's
+  `resources/skills/`), each declaring `roles`, `stacks`, `priority`, plus idioms, canonical project
+  layout, conventions, commands, and pitfalls (≤~2 KB injected each — the resolver/PromptBuilder
+  enforces the budget).
+- **Rollout by wave** so value lands early:
+  - *Wave 1 (highest traffic):* backend `django`, `django-rest-framework`, `fastapi`, `express`,
+    `nestjs`, `aspnet-core`, `axum`, `gin`; frontend `react`, `nextjs`, `angular`, `react-native`,
+    `vue`, `tailwind`; design `design-systems-tokens`, `a11y-wcag-aria`, `tailwind-design`; testing
+    `pytest`, `jest`, `react-testing-library`, `xunit`, `cargo-test`, `playwright-e2e`.
+  - *Wave 2:* remaining languages/frameworks (`flask`, `entity-framework-core`, `gorm`, `rails`,
+    `spring-boot`, `laravel`, `svelte-kit`, `solidjs`, `remix`, `astro`, `flutter`) and cross-cutting
+    packs (`rest-api-design`, `auth-jwt-oauth`, `orm-patterns`, `component-architecture`,
+    `test-strategy`, `coverage-tdd`, …).
+- **Storage / discovery (per the model above):** `SkillsManager` resolves bundled → global
+  (`~/.blackide/skills/`) → workspace (`<repo>/.blackide/skills/`), later overriding earlier by name.
+- **New command `black-ide.installSkillPacks`** — copies selected built-in packs into
+  `<repo>/.blackide/skills/` so users can see, edit, and override them, and so project-specific packs
+  live beside them. (Mirrors the `installBrowserSupport` command pattern already in `extension.ts`.)
+- **Tests:** every bundled pack parses and declares ≥1 role and ≥1 stack; a workspace pack shadows a
+  bundled pack of the same name; discovery precedence holds.
 
----
+### Phase 4 — Wire skills into all agents (the highest-leverage step)
+- **Chat** (`_runAgentTask`): resolve by `(role-of-selected-mode, profile, prompt)` instead of
+  prompt-only. Already budgeted through `PromptBuilder`'s `skills` section.
+- **Pipeline** (`_runPipelineCore`): **inject resolved skills per executor**, keyed by each phase
+  mode's role — this is the gap where pipeline agents currently get **nothing**. Add a `skills`
+  section to each executor's prompt build.
+- **Tests:** given a Django profile, the Backend Executor's assembled system prompt contains the
+  django-backend skill; a Rust profile yields cargo-testing for the Testing Executor; no profile →
+  no stack skills injected (safe default).
 
-# Repository Discovery
+### Phase 5 — Project-aware mindmap syncing
+- Give `project_mindmap.md` a **stable, sectioned schema** with a seeded **"Stack & Conventions"**
+  block from `ProjectProfile` (upgrade `syncMindmap` from blind append to sectioned upsert — the
+  `update_mindmap` tool already supports `replace_section`).
+- Have agents **read the relevant mindmap section** before editing (inject a compact digest, like
+  the knowledge base already does), so the mindmap becomes a working memory, not write-only.
+- Cross-link: mindmap ↔ knowledge base ↔ which skills fired this run.
+- **Tests:** sectioned upsert is idempotent (re-sync doesn't duplicate); the stack section reflects
+  the detected profile; a run reads back the section it wrote.
 
-The Knowledge Department builds a complete understanding of the project.
-
-It analyzes:
-
-* Repository structure
-* README
-* Documentation
-* Architecture
-* APIs
-* Database
-* Models
-* Services
-* Routes
-* Components
-* State management
-* Environment variables
-* Existing issues
-* Coding standards
-* Technical debt
-
-Outputs:
-
-* Repository Overview
-* Dependency Graph
-* Architecture Map
-* Project Mind Map
-* Knowledge Index
-
----
-
-# Multi-Agent Architecture Meeting
-
-Specialists meet before implementation.
-
-Participants:
-
-* Product Manager
-* Project Manager
-* System Architect
-* Senior Backend Engineer
-* Senior Frontend Engineer
-* UX/UI Designer
-* Database Engineer
-* DevOps Engineer
-* QA Lead
-* Security Engineer
-* Documentation Engineer
-
-Discussion topics:
-
-* Business impact
-* Existing architecture
-* Risks
-* API contracts
-* Scalability
-* Maintainability
-* UX consistency
-* Testing strategy
-* Performance
-* Deployment
+### Phase 6 — Authoring, lifecycle & observability
+- Hot-reload user skills (mirror `ModeLoader.watchForChanges`) + validation diagnostics for
+  malformed `SKILL.md` (missing roles/stacks/frontmatter).
+- Telemetry: record which skills fired per run (`telemetry-sink.ts`), so we can measure coverage
+  and prune dead packs.
+- Docs: "Authoring stack/role skills" guide in `docs/wiki_docs/`.
 
 ---
 
-# Architecture Planning
+## Sequencing & dependencies
 
-Every feature produces:
-
-## Business Analysis
-
-* Problem
-* Goal
-* Success metrics
-
----
-
-## HLD
-
-* System architecture
-* Modules
-* Services
-* Communication
-* Infrastructure
-
----
-
-## LLD
-
-* Classes
-* Interfaces
-* DTOs
-* Folder structure
-* APIs
-* Database models
-* Validation
-* Error handling
-
----
-
-## DSA Analysis
-
-* Time complexity
-* Space complexity
-* Data structures
-* Search strategy
-* Caching
-* Queue
-* Indexing
-* Algorithms
-
----
-
-# Risk Analysis
-
-Automatically identify:
-
-* Breaking changes
-* API incompatibility
-* Database migration
-* Performance bottlenecks
-* Security concerns
-* Race conditions
-* Dependency conflicts
-* Rollback strategy
-
----
-
-# Dependency Graph
-
-Tasks are linked by dependencies instead of only priority.
-
-Example:
-
-```text
-Database Schema
-        │
-        ▼
-Authentication
-        │
-        ▼
-User API
-        │
-        ▼
-Frontend Login
-        │
-        ▼
-Dashboard
+```
+Phase 1 (profiler) ─► Phase 2 (resolver) ─► Phase 4 (wire-in)  ◄─ the payoff
+                          │
+Phase 3 (packs) ─────────┘  (parallel with 2; needed by 4)
+Phase 5 (mindmap)  depends on Phase 1
+Phase 6 (lifecycle) independent; can trail
 ```
 
----
-
-# Priority Engine
-
-Priority is determined by:
-
-* Business value
-* Dependencies
-* Risk
-* Complexity
-* User impact
-
-Levels:
-
-* Critical
-* High
-* Medium
-* Low
-* Future
-
----
-
-# Sprint Planning
-
-Instead of one long task list:
-
-Sprint 1
-
-* Infrastructure
-* Authentication
-* Database
-
-Sprint 2
-
-* Core APIs
-* Business Logic
-
-Sprint 3
-
-* Frontend
-* Integration
-
-Sprint 4
-
-* Testing
-* Documentation
-* Release
-
----
-
-# Generated Documents
-
-Before approval:
-
-* project_plan.md
-* architecture.md
-* feature_list.md
-* dependency_graph.md
-* risk_analysis.md
-* timeline.md
-* sprint_plan.md
-* api_contract.md
-* database_plan.md
-* ui_plan.md
-
----
-
-# Approval Gate
-
-The user reviews:
-
-* Scope
-* Features
-* Architecture
-* Timeline
-* Risks
-* Priority
-* Cost (if applicable)
-
-Possible responses:
-
-* Approve
-* Request changes
-* Remove features
-* Add features
-* Delay features
-
-No implementation starts without approval.
-
----
-
-# Development Execution
-
-After approval, work proceeds in parallel where possible.
-
-Designer
-
-* User flow
-* Wireframes
-* Design system
-* Figma assets
-
-Backend
-
-* Database
-* APIs
-* Business logic
-* Authentication
-* Security
-
-Frontend
-
-* Components
-* Pages
-* State management
-* API integration
-* Responsive design
-
-DevOps
-
-* CI/CD
-* Containers
-* Deployment
-* Monitoring
-
-Documentation
-
-* Technical docs
-* API docs
-* User guides
-
----
-
-# Continuous Review
-
-Every completed task goes through:
-
-Developer Self Review
-
-↓
-
-Static Analysis
-
-↓
-
-Architecture Review
-
-↓
-
-Peer Review
-
-↓
-
-QA Testing
-
-↓
-
-Bug Fixes
-
-↓
-
-Regression Testing
-
-↓
-
-Approval
-
----
-
-# Testing Pipeline
-
-Automatically perform:
-
-* Unit tests
-* Integration tests
-* API tests
-* UI tests
-* Accessibility tests
-* Performance tests
-* Load tests
-* Security scans
-* Regression tests
-* Smoke tests
-
----
-
-# Documentation Pipeline
-
-Every completed feature updates:
-
-* README
-* API documentation
-* Architecture diagram
-* Mind map
-* Changelog
-* Release notes
-* Technical debt log
-* Feature status
-* ADR (Architecture Decision Records)
-
----
-
-# Architecture Decision Records (ADR)
-
-Every major decision is documented.
-
-Example:
-
-ADR-005
-
-Decision:
-
-Use Redis for caching.
-
-Reason:
-
-Reduce database load and improve response times.
-
-Alternatives:
-
-* In-memory cache
-* Memcached
-
-Trade-offs:
-
-* Additional infrastructure
-* Better scalability
-
----
-
-# Long-Term Project Memory
-
-The agency maintains persistent project knowledge.
-
-Files include:
-
-```text
-knowledge/
-│
-├── architecture.md
-├── coding_guidelines.md
-├── api_contracts.md
-├── decision_log.md
-├── feature_status.md
-├── roadmap.md
-├── technical_debt.md
-├── testing_strategy.md
-├── deployment_notes.md
-├── mindmap.md
-└── glossary.md
-```
-
-Every new request begins by reading and updating this knowledge base.
-
----
-
-# Project Scenarios
-
-## 1. User asks a project-related question
-
-Workflow:
-
-* Read project knowledge
-* Analyze relevant code/docs
-* Generate explanation
-* No code changes
-
-Deliverables:
-
-* Explanation
-* Architecture diagrams
-* Code references
-* Improvement suggestions
-
----
-
-## 2. User wants to understand a repository
-
-Workflow:
-
-* Analyze repository
-* Build architecture map
-* Generate mind map
-* Explain modules
-* Explain data flow
-* Identify improvements
-
-Deliverables:
-
-* Repository overview
-* Architecture report
-* Mind map
-* Dependency graph
-
----
-
-## 3. Backend-only task
-
-Workflow:
-
-* Backend architecture review
-* Database impact analysis
-* API design
-* Security review
-* Testing plan
-* Implementation
-* Documentation
-
-Frontend is notified only if API contracts change.
-
----
-
-## 4. Frontend-only task
-
-Workflow:
-
-* UX review
-* Component planning
-* Existing API validation
-* Responsive design
-* Accessibility checks
-* Implementation
-* Testing
-
-Backend changes are not made unless required.
-
----
-
-## 5. Frontend with API documentation
-
-Workflow:
-
-* Parse API specification
-* Validate request/response models
-* Generate typed API client
-* Build UI
-* Integrate APIs
-* Test integration
-
-No backend implementation unless inconsistencies are found.
-
----
-
-## 6. Frontend with backend source code
-
-Workflow:
-
-* Analyze backend code
-* Discover endpoints automatically
-* Infer authentication flow
-* Build API contracts
-* Generate frontend architecture
-* Implement
-* Test end-to-end
-
----
-
-## 7. Full-stack feature
-
-Workflow:
-
-* Multi-agent architecture meeting
-* Business analysis
-* HLD
-* LLD
-* DSA review
-* Risk analysis
-* Sprint planning
-* User approval
-* Parallel implementation
-* Integration
-* QA
-* Documentation
-* Release
-* Knowledge base update
-
----
-
-## 8. Bug Fix
-
-Workflow:
-
-* Reproduce issue
-* Root cause analysis
-* Impact assessment
-* Implement fix
-* Regression testing
-* Documentation update
-
----
-
-## 9. Refactoring
-
-Workflow:
-
-* Architecture review
-* Dependency analysis
-* Risk assessment
-* Incremental refactoring plan
-* Validation
-* Performance comparison
-
----
-
-# Final Deliverables
-
-Every completed project includes:
-
-* ✅ Updated source code
-* ✅ `project_plan.md`
-* ✅ `architecture.md`
-* ✅ `mindmap.md`
-* ✅ `feature_list.md`
-* ✅ `dependency_graph.md`
-* ✅ `risk_analysis.md`
-* ✅ `api_documentation.md`
-* ✅ `database_documentation.md`
-* ✅ `CHANGELOG.md`
-* ✅ `RELEASE_NOTES.md`
-* ✅ `PROJECT_OVERVIEW.md`
-* ✅ `technical_debt.md`
-* ✅ Updated long-term project knowledge
-
----
-
-# Core Principles
-
-1. **Business Before Code** – Understand the problem before proposing a solution.
-2. **Evidence-Based Decisions** – Analyze the existing system before making changes.
-3. **Plan Before Implementation** – No coding without an approved plan.
-4. **Human Approval Gates** – Major changes require explicit user approval.
-5. **Parallel Specialized Teams** – Independent expert agents collaborate concurrently.
-6. **Dependency-Aware Execution** – Schedule work based on prerequisites, not just priority.
-7. **Quality at Every Stage** – Reviews, testing, and validation are integrated into the workflow.
-8. **Documentation as a First-Class Artifact** – Every architectural and implementation change updates project documentation.
-9. **Persistent Project Knowledge** – The agency maintains a living knowledge base, enabling continuity across future tasks.
-10. **Continuous Improvement** – Every delivery updates architecture, decisions, technical debt, and project understanding, making the AI agency smarter and more effective over time.
-
-This design mirrors how mature software organizations operate while leveraging AI to automate coordination, planning, execution, quality assurance, and documentation in a unified workflow.
+- **1 → 2 → 4** is the critical path to value; **3** runs in parallel with **2**.
+- **5** needs only the profiler (1). **6** can land any time.
+
+## Success metrics
+
+- **Coverage:** on a typed project, every relevant agent (chat *and* pipeline) receives ≥1
+  stack-appropriate skill. Today: pipeline agents receive **zero**.
+- **Detection:** ≥95% correct primary-framework detection on the fixture set; graceful degrade on
+  polyglot/empty repos.
+- **Quality:** measurable drop in wrong-idiom output (e.g. generic SQL where the ORM is idiomatic;
+  wrong test runner) — track via a golden-task set per stack.
+- **Mindmap utility:** agents read the stack section before acting; re-sync is idempotent.
+
+## Risks & mitigations
+
+- **Prompt-budget pressure** from injected skills → the `PromptBuilder` section budget already caps
+  and truncates; resolver ranks so the *most* relevant skill survives truncation.
+- **Wrong detection** on polyglot repos → confidence + evidence in `ProjectProfile`; ambiguous
+  cases inject nothing rather than a wrong pack (fail safe, like the browser allowlist did).
+- **Skill sprawl / staleness** → Phase 6 telemetry + validation; bundled packs are versioned and
+  reviewed, user packs are clearly scoped.
+- **Backward compatibility** → `roles`/`stacks` are optional; existing keyword-only skills and the
+  current chat behavior are preserved when no profile is available.
+
+## Out of scope (named, so it isn't assumed)
+
+- A learned/embedding-based skill router (start rule-based; revisit if precision demands it).
+- Auto-generating skills from a repo (future — could mine conventions into a project-local pack).
+- Remote/marketplace skill distribution.

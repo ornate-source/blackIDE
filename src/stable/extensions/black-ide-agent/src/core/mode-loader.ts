@@ -17,6 +17,12 @@ export interface CustomMode {
     icon?: string;       // VS Code codicon name
     source: 'builtin' | 'global' | 'workspace' | 'project';
     filePath?: string;
+    /**
+     * Internal pipeline-phase modes (HLD/LLD/Planner) the orchestrator drives directly. They
+     * are returned by getAllModes()/getMode() for the pipeline but hidden from user-facing mode
+     * pickers, so the eight selectable modes are the only ones a user sees.
+     */
+    internal?: boolean;
 }
 
 /** JSON Schema for mode YAML frontmatter validation */
@@ -221,6 +227,7 @@ You do NOT implement changes yourself. You:
                 description: 'High-Level Design analysis for pipeline orchestration',
                 icon: 'symbol-structure',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 20,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search',
                         'web_search', 'create_artifact', 'complete_task'],
@@ -242,6 +249,7 @@ Do NOT write any source code. Read-only analysis only. Use the update_mindmap to
                 description: 'Low-Level Design and tagged task list generation',
                 icon: 'symbol-method',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 25,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search',
                         'create_artifact', 'complete_task'],
@@ -267,6 +275,7 @@ Do NOT write any source code.`,
                 description: 'Aggregates analysis into features_plan.md for user approval',
                 icon: 'checklist',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 15,
                 tools: ['read_file', 'list_directory', 'write_file', 'create_artifact',
                         'complete_task'],
@@ -294,6 +303,7 @@ Write the file using write_file, then call complete_task.`,
                 description: 'Executes [design] phase tasks from approved plan',
                 icon: 'paintcan',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 40,
                 tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task'],
                 systemPrompt: `You are a Senior UI/UX Designer executing the [design] phase.
@@ -306,6 +316,7 @@ Use modern design practices: CSS custom properties, responsive layouts, accessib
                 description: 'Executes [backend] phase tasks from approved plan',
                 icon: 'server',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 40,
                 tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task'],
                 systemPrompt: `You are a Senior Backend Engineer executing the [backend] phase.
@@ -318,6 +329,7 @@ Always validate input, use parameterized queries, implement proper error handlin
                 description: 'Executes [frontend] phase tasks from approved plan',
                 icon: 'browser',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 40,
                 tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task'],
                 systemPrompt: `You are a Senior Frontend Engineer executing the [frontend] phase.
@@ -330,6 +342,7 @@ Use semantic HTML, ARIA attributes, and responsive design.`,
                 description: 'Executes [testing] phase tasks from approved plan',
                 icon: 'beaker',
                 source: 'builtin',
+                internal: true,
                 maxIterations: 30,
                 tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task',
                         'browser_open', 'browser_screenshot', 'browser_click', 'browser_type', 'browser_read', 'browser_close'],
@@ -489,6 +502,11 @@ update_mindmap tool.`,
 
     getAllModes(): CustomMode[] {
         return Array.from(this.modes.values());
+    }
+
+    /** User-selectable modes only — excludes internal pipeline-phase modes (HLD/LLD/Planner). */
+    getSelectableModes(): CustomMode[] {
+        return this.getAllModes().filter(m => !m.internal);
     }
 
     dispose(): void {
