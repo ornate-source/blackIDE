@@ -1,4 +1,0 @@
-line1
-LINE2-CHANGED
-line3
-USER-ADDED-THIS
