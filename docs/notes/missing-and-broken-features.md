@@ -95,7 +95,7 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | `remember` / knowledge tools, `create_artifact`, `update_plan`, `update_mindmap` | ✅ | |
 | `schedule_task` / `cancel_task` (background scheduler) | ✅ | `agent/scheduler.ts` |
 | `spawn_subagent` | ✅ | |
-| Browser tools: `browser_open/read/screenshot/click/type/close` | 🔴 | **B1** — Playwright undeclared & not installed → every call fails |
+| Browser tools: `browser_open/read/screenshot/click/type/close` | ✅ | **B1 fixed (Phase 1)** — opt-in; gated behind a runtime check + one-click "Install Browser Support", so they're only offered when usable |
 
 ### Long-term memory
 
@@ -118,8 +118,8 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 | **Fast Apply** toggle | 🔴 | **B5** — no runtime consumer; capability does not exist |
 | **Reasoning display** toggle | 🔴 | **B6** — no-op; reasoning always streams |
 | Chat **"Take screenshot"** | 🔴 | **B4** — hardcoded stub |
-| **Browser settings tab** (path / headless / viewport / screenshot-on-nav) | 🔴 | **B2/B8** — 0 runtime reads |
-| **Browser "Allowed Domains"** restriction | 🔴 | **B2** — false security affordance; enforces nothing |
+| **Browser settings tab** (path / headless / viewport / screenshot-on-nav) | ✅ | **B2/B8 fixed (Phase 1)** — all read via `readBrowserSettings` and applied in `BrowserTool` |
+| **Browser "Allowed Domains"** restriction | ✅ | **B2 fixed (Phase 1)** — enforced in `BrowserTool.launch/navigate` via `isNavigationAllowed` (fails closed) |
 
 ### Platform / distribution
 
@@ -142,14 +142,14 @@ The `Ref` column points to the broken-feature IDs (B1–B8) detailed below.
 
 | # | Feature | Type | Severity | Evidence |
 |:-:|---------|------|:--------:|----------|
-| B1 | Browser automation (`browser_*` tools) fails out-of-the-box | Broken | **P0** | `playwright` undeclared/uninstalled |
-| B2 | Browser settings tab is entirely unwired (incl. security domain allowlist) | Broken | **P0** | 0 runtime reads of `browser*` keys |
+| B1 | Browser automation (`browser_*` tools) fails out-of-the-box | ✅ Fixed (Phase 1) | **P0** | `playwright` undeclared/uninstalled |
+| B2 | Browser settings tab is entirely unwired (incl. security domain allowlist) | ✅ Fixed (Phase 1) | **P0** | 0 runtime reads of `browser*` keys |
 | B3 | "Merge subagent" button does nothing | Broken | **P1** | `ParallelSubagents.tsx:101`, no handler |
 | B4 | Chat "Take screenshot" is a hardcoded stub | Broken | **P1** | `extension.ts:614` |
 | B5 | "Fast Apply" toggle (`enableFastApply`) is a no-op | Missing | **P1** | 0 runtime reads |
 | B6 | "Reasoning display" toggle (`enableReasoningDisplay`) is a no-op | Broken | **P2** | 0 runtime reads |
 | B7 | 125 test-fixture files committed under `tmp/`; `.gitignore` gaps | Hygiene | **P2** | `git ls-files …/tmp` |
-| B8 | Browser viewport / headless / screenshot-on-nav settings ignored | Missing | **P2** | 0 runtime reads |
+| B8 | Browser viewport / headless / screenshot-on-nav settings ignored | ✅ Fixed (Phase 1) | **P2** | 0 runtime reads |
 
 Legend — **P0**: advertised feature is non-functional in the shipped build. **P1**: visible
 control with no effect (user-facing dead end). **P2**: quality / correctness / hygiene.
@@ -159,6 +159,13 @@ control with no effect (user-facing dead end). **P2**: quality / correctness / h
 ## Broken features
 
 ### B1 — Browser automation fails out-of-the-box (P0)
+> **✅ Resolved (Phase 1, Option B — detect & gate).** `browserRuntimeAvailable()`
+> (`src/tools/browser-capability.ts`) checks for Playwright without launching; the `browser_*`
+> tools are filtered out of the tool list (`filterToolsForBrowser`) unless the browser is both
+> enabled in settings and a runtime is present, so the model is never offered a tool that would
+> fail. A `black-ide.installBrowserSupport` command + a Settings→Browser button install
+> Playwright + Chromium into the extension on demand. Covered by harness suite `[42]`.
+
 All six `browser_*` agent tools (`browser_open`, `browser_read`, `browser_screenshot`,
 `browser_click`, `browser_type`, `browser_close`) and the pipeline "Testing Executor"
 self-verification depend on Playwright, which is **loaded via `require('playwright')`**
@@ -175,6 +182,12 @@ self-verification depend on Playwright, which is **loaded via `require('playwrig
   detected, and surface a one-click install. Pair with B2 (below).
 
 ### B2 — Browser settings tab is unwired, including a security control (P0)
+> **✅ Resolved (Phase 1).** All `browser*` settings are now read via `readBrowserSettings()` and
+> applied to `BrowserTool` (`configure()`): `browserPath` → `executablePath`, `browserHeadless`,
+> viewport, and `browserEnabled` as a real master switch. **`browserAllowedDomains` is enforced**
+> in `launch()`/`navigate()` via `isNavigationAllowed()` (exact + subdomain match, fails closed on
+> an unparseable URL) — the false-security affordance is gone. Pure logic covered by harness `[42]`.
+
 The Settings → **Browser** tab (`webview/src/App.tsx:2368+`) exposes `browserEnabled`,
 `browserHeadless`, `browserPath`, `browserViewportWidth/Height`, `browserScreenshotOnNav`,
 and **`browserAllowedDomains`**. A grep of the runtime (`src/**`) finds **zero reads** of any
@@ -229,6 +242,10 @@ gate. The feature is named in the UI but does not exist.
   remove the toggle so it stops implying a capability.
 
 ### B8 — Browser viewport / headless / screenshot-on-nav (P2)
+> **✅ Resolved (Phase 1).** Viewport and headless flow through `BrowserTool.launch()`;
+> `browserScreenshotOnNav` auto-captures the loaded page and attaches it as vision input after
+> `browser_open` (`tool-executor.ts`).
+
 Same class as B2: `browserViewportWidth`, `browserViewportHeight`, `browserHeadless`, and
 `browserScreenshotOnNav` are collected in the UI but never passed into `BrowserTool.launch()`,
 which hardcodes `headless: true` and `1280×720` defaults. Listed separately from B2 because

@@ -28,6 +28,8 @@ import { resolveOutputMode, buildPrCommands, compareUrlFallback, shellQuote } fr
 import { summarizeRequest, formatReleaseNotes, formatChangelogEntry, prependChangelogEntry } from './core/completion-docs';
 import { DiffContentProvider } from './tools/diff-provider';
 import { BrowserTool } from './tools/browser-tool';
+import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterToolsForBrowser } from './tools/browser-capability';
+import { installBrowserSupport } from './tools/browser-install';
 import { MCPClient } from './tools/mcp-client';
 import { HistoryStore } from './memory/history-store';
 import { KnowledgeStore } from './memory/knowledge-store';
@@ -114,6 +116,9 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
                 case 'openExtensions':
                     vscode.commands.executeCommand('workbench.action.showExtensions');
+                    break;
+                case 'installBrowserSupport':
+                    vscode.commands.executeCommand('black-ide.installBrowserSupport');
                     break;
                 case 'saveSettings':
                     await secretManager.saveKey('general-settings', data.value);
@@ -275,6 +280,30 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('black-ide.exportDiagnostics', () => {
             provider.exportDiagnostics();
+        })
+    );
+
+    // Opt-in browser support (Option B): Playwright is not bundled, so the browser_* tools
+    // stay hidden until this installs it into the extension's node_modules. Progress streams
+    // to a dedicated output channel; on success the tools become available to new tasks.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.installBrowserSupport', async () => {
+            if (browserRuntimeAvailable()) {
+                vscode.window.showInformationMessage('Browser support is already installed. Enable it in Settings → Browser.');
+                return;
+            }
+            const channel = vscode.window.createOutputChannel('Black IDE — Browser Support');
+            channel.show(true);
+            try {
+                await vscode.window.withProgress(
+                    { location: vscode.ProgressLocation.Notification, title: 'Installing browser support (Playwright + Chromium)…', cancellable: false },
+                    () => installBrowserSupport(context.extensionUri.fsPath, (line) => channel.appendLine(line)),
+                );
+                vscode.window.showInformationMessage('Browser support installed. Enable it in Settings → Browser, then start a new task.');
+            } catch (e: any) {
+                channel.appendLine(`\nInstall failed: ${e?.message || e}`);
+                vscode.window.showErrorMessage(`Browser support install failed: ${e?.message || e}. See the "Black IDE — Browser Support" output for details.`);
+            }
         })
     );
 }
@@ -567,6 +596,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'exportDiagnostics':
                     await this.exportDiagnostics();
+                    break;
+                case 'installBrowserSupport':
+                    vscode.commands.executeCommand('black-ide.installBrowserSupport');
                     break;
                 case 'fetchModels':
                     try {
@@ -1166,6 +1198,11 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 if (s) generalSettings = JSON.parse(s);
             } catch {}
             const autoOpenAllFiles = !!generalSettings.pipelineAutoOpenAllFiles;
+            // Browser gating (B1/B2), same policy as the chat flow: configure the shared
+            // BrowserTool from settings and decide whether browser_* tools are offered at all.
+            const browserSettings = readBrowserSettings(generalSettings);
+            browserTool!.configure(browserSettings);
+            const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
             // Mode name -> LLMConfigEntry id, e.g. routing HLD/LLD scaffolding to a
             // cheap/fast model and execution phases to a stronger one.
             const phaseModelOverrides: Record<string, string> = generalSettings.pipelinePhaseModels || {};
@@ -1251,7 +1288,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 if (mDef?.tools) {
                     tools = tools.filter(t => mDef.tools!.includes(t.name));
                 }
-                return tools;
+                return filterToolsForBrowser(tools, browserUsable);
             };
 
             // One tracker across all phases — the run's cumulative spend. Shared with the
@@ -1680,6 +1717,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             if (customModeDef && customModeDef.tools && customModeDef.tools.length > 0) {
                 tools = tools.filter(t => customModeDef.tools!.includes(t.name));
             }
+
+            // Browser gating (B1/B2): honor the user's settings on the BrowserTool, and hide
+            // the browser_* tools entirely unless the browser is enabled AND a Playwright
+            // runtime is installed — so the model is never offered a tool that would fail.
+            const browserSettings = readBrowserSettings(settings);
+            browserTool.configure(browserSettings);
+            const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
+            tools = filterToolsForBrowser(tools, browserUsable);
 
             // Everything from here publishes with a task envelope: sessionId, taskId, traceId.
             task = this._sessions.beginTask(userPrompt, effectiveMode, modelConfig.model || modelId);

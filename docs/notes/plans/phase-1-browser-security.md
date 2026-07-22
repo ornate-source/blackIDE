@@ -1,5 +1,10 @@
 # Phase 1 — Browser Automation Strategy & Settings Enforcement
 
+> **✅ Status: Delivered (2026-07-22).** Strategy chosen: **Option B — detect & gate + on-demand
+> install**. Extension `tsc -b` clean, webview builds, harness **381/381** (new suite `[42]`,
+> +29 tests). B1/B2/B8 flipped to ✅ in `../missing-and-broken-features.md`. See "Delivery notes"
+> at the end for the exact changes.
+
 **Defects:** B1 (browser tools fail out-of-the-box), B2 (Browser settings tab unwired,
 incl. the `browserAllowedDomains` false-security control), B8 (viewport/headless/screenshot-on-nav ignored).
 **Ship gate:** Required. The `browserAllowedDomains` control claims to restrict navigation and
@@ -117,3 +122,36 @@ The rest of this plan assumes **Option B**; the tasks note where Option A would 
    behavior.
 4. No Browser-tab control is a silent no-op.
 5. `../missing-and-broken-features.md` B1/B2/B8 flipped to ✅ (or the tab documented as gated).
+
+---
+
+## Delivery notes (2026-07-22)
+
+**New files**
+- `src/tools/browser-capability.ts` — pure, vscode-free policy: `browserRuntimeAvailable()`,
+  `parseAllowedDomains()`, `hostOf()`, `isNavigationAllowed()`, `readBrowserSettings()`,
+  `isBrowserUsable()`, `filterToolsForBrowser()`, `BROWSER_TOOL_NAMES`.
+- `src/tools/browser-install.ts` — `installBrowserSupport()`: `npm install playwright` +
+  `npx playwright install chromium` into the extension dir, streaming output.
+
+**Changed files**
+- `src/tools/browser-tool.ts` — constructor/`configure(settings)`; `guardNavigation()` enforces the
+  allowlist in `launch()`/`navigate()`; honors `executablePath`/`headless`/viewport; exposes
+  `shouldScreenshotOnNav`.
+- `src/agent/tool-executor.ts` — `browser_open` auto-screenshots when `screenshotOnNav` is set.
+- `src/extension.ts` — configure `BrowserTool` from settings and gate `browser_*` tools in both the
+  chat flow (`_runAgentTask`) and the pipeline (`_runPipelineCore` / `getToolsForMode`); register
+  `black-ide.installBrowserSupport`; handle the `installBrowserSupport` webview message.
+- `webview/src/App.tsx` — "Install browser support" button under the Browser master toggle.
+- `package.json` — `black-ide.installBrowserSupport` command contribution.
+- `test/harness.js` — suite `[42]` (29 assertions) over the capability/policy logic.
+
+**Decisions & deviations**
+- Chose **Option B**; Playwright stays out of the distribution. Browser is opt-in
+  (`browserEnabled` defaults `false`), matching the webview default.
+- Task 1.5 (honest tab): implemented the install button; did **not** add a live "runtime present?"
+  probe round-trip to the webview — the install command is idempotent and reports "already
+  installed", so the extra IPC wasn't worth it. A future polish could grey the button once the
+  runtime is detected.
+- Allowlist matching is subdomain-aware and **fails closed** on an unparseable URL when a list is
+  set; an empty list stays unrestricted so nobody is opted into restriction silently.

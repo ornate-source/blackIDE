@@ -67,6 +67,10 @@ const { PlanningEngine } = require(path.join(DIST, 'agent/planning-engine.js'));
 const { selectExecutionPhases, resolveModelForPhase, PipelineOrchestrator, buildPipelineContextSummary, isOverTokenBudget } = require(path.join(DIST, 'agent/pipeline-orchestrator.js'));
 const { worktreeManager } = require(path.join(DIST, 'agent/worktree-manager.js'));
 const { ModeLoader } = require(path.join(DIST, 'core/mode-loader.js'));
+const {
+  BROWSER_TOOL_NAMES, browserRuntimeAvailable, parseAllowedDomains, hostOf,
+  isNavigationAllowed, readBrowserSettings, isBrowserUsable, filterToolsForBrowser,
+} = require(path.join(DIST, 'tools/browser-capability.js'));
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓', name); } else { fail++; console.log('  ✗', name, extra !== undefined ? JSON.stringify(extra) : ''); } }
@@ -1421,6 +1425,61 @@ async function main() {
       vscodeStub.workspace.workspaceFolders = savedWorkspaceFolders;
       try { fs.rmSync(repoDir, { recursive: true, force: true }); } catch {}
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n[42] Phase 1: browser capability & navigation policy (pure)');
+  {
+    // B1 — runtime detection is injectable and never throws.
+    ok('runtime available when the module resolves', browserRuntimeAvailable(() => 'playwright') === true);
+    ok('runtime unavailable when resolution throws', browserRuntimeAvailable(() => { throw new Error('Cannot find module'); }) === false);
+
+    // B2 — allowlist parsing normalizes messy input.
+    ok('parses newline/comma list, strips scheme/path/port',
+      JSON.stringify(parseAllowedDomains('github.com\nhttps://api.example.com/foo, localhost:3000'))
+        === JSON.stringify(['github.com', 'api.example.com', 'localhost']));
+    ok('non-string domains blob is an empty list', parseAllowedDomains(undefined).length === 0);
+    ok('hostOf extracts a lowercased host', hostOf('HTTPS://GitHub.com/a/b') === 'github.com');
+    ok('hostOf returns empty for junk', hostOf('not a url') === '');
+
+    // B2 — the navigation gate.
+    ok('empty allowlist allows anything', isNavigationAllowed('https://anywhere.com', []) === true);
+    ok('exact host allowed', isNavigationAllowed('https://github.com/x', ['github.com']) === true);
+    ok('subdomain of an allowed host allowed', isNavigationAllowed('https://api.github.com', ['github.com']) === true);
+    ok('unlisted host refused', isNavigationAllowed('https://evil.com', ['github.com']) === false);
+    ok('a lookalike suffix is not a subdomain match', isNavigationAllowed('https://notgithub.com', ['github.com']) === false);
+    ok('unparseable url refused when an allowlist is set', isNavigationAllowed('nope', ['github.com']) === false);
+
+    // B8 — settings mapping and defaults (mirror the webview DEFAULT_SETTINGS).
+    const defaults = readBrowserSettings({});
+    ok('browser is off by default (opt-in)', defaults.enabled === false);
+    ok('headless defaults on', defaults.headless === true);
+    ok('no executable path by default', defaults.executablePath === undefined);
+    ok('no allowlist by default', defaults.allowedDomains.length === 0);
+    const custom = readBrowserSettings({
+      browserEnabled: true, browserHeadless: false, browserPath: ' /usr/bin/chrome ',
+      browserViewportWidth: 800, browserViewportHeight: 0, browserScreenshotOnNav: true,
+      browserAllowedDomains: 'github.com',
+    });
+    ok('enabled read through', custom.enabled === true);
+    ok('headless=false read through', custom.headless === false);
+    ok('executable path trimmed', custom.executablePath === '/usr/bin/chrome');
+    ok('positive viewport width kept', custom.viewportWidth === 800);
+    ok('non-positive viewport height dropped', custom.viewportHeight === undefined);
+    ok('screenshotOnNav read through', custom.screenshotOnNav === true);
+
+    // B1 — usability requires both the switch and the runtime.
+    ok('not usable when disabled', isBrowserUsable(defaults, true) === false);
+    ok('not usable when runtime missing', isBrowserUsable(custom, false) === false);
+    ok('usable when enabled and runtime present', isBrowserUsable(custom, true) === true);
+
+    // B1 — tool gating.
+    const sampleTools = [{ name: 'read_file' }, { name: 'browser_open' }, { name: 'browser_close' }, { name: 'web_search' }];
+    const gated = filterToolsForBrowser(sampleTools, false).map(t => t.name);
+    ok('browser tools removed when unusable', !gated.includes('browser_open') && !gated.includes('browser_close'));
+    ok('non-browser tools survive gating', gated.includes('read_file') && gated.includes('web_search'));
+    ok('all tools kept when usable', filterToolsForBrowser(sampleTools, true).length === sampleTools.length);
+    ok('BROWSER_TOOL_NAMES covers all six', BROWSER_TOOL_NAMES.length === 6);
   }
 
   server.close();
