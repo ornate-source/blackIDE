@@ -5,13 +5,11 @@ import * as os from 'os';
 
 // ─── Module Imports ─────────────────────────────────────────────────────────
 import { SecretManager } from './core/secret-manager';
-import { LLMClient, supportsNativeTools } from './core/llm-client';
+import { LLMClient } from './core/llm-client';
 import { AgentMode, LLMConfigEntry, ChatMessage, ToolCall, ToolResult } from './core/types';
 import { TokenTracker } from './core/token-tracker';
 import { BlackIdeInlineCompletionProvider } from './core/inline-completion';
-import { InlineChatController } from './core/inline-chat-controller';
-import { toolsForMode, renderToolDocs } from './core/tools';
-import { PipelineOrchestrator, buildPipelineContextSummary, isOverTokenBudget } from './agent/pipeline-orchestrator';
+import { buildPipelineContextSummary } from './agent/pipeline-orchestrator';
 import { CheckpointManager, diffStat } from './core/checkpoint-manager';
 import { CommandPolicy } from './core/command-policy';
 import { CodebaseIndex } from './core/codebase-index';
@@ -19,33 +17,23 @@ import { EventBus } from './core/event-bus';
 import { TelemetrySink } from './core/telemetry-sink';
 import { PipelineRunSummary, reconcileInterruptedRuns, capRunHistory, mergeRunViews } from './core/pipeline-runs';
 import { KnowledgeBase, summarizeRepoStructure } from './core/knowledge-base';
-import { SessionManager, TaskEmitter } from './core/session-manager';
-import { PromptBuilder } from './core/prompt-builder';
-import { ContextManager } from './core/context-manager';
-import { ToolRunner } from './tools/tool-runner';
-import { gitMutex } from './agent/git-mutex';
-import { resolveOutputMode, buildPrCommands, compareUrlFallback, shellQuote } from './core/git-pr';
-import { summarizeRequest, formatReleaseNotes, formatChangelogEntry, prependChangelogEntry } from './core/completion-docs';
-import { DiffContentProvider } from './tools/diff-provider';
-import { BrowserTool } from './tools/browser-tool';
-import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterToolsForBrowser } from './tools/browser-capability';
-import { installBrowserSupport } from './tools/browser-install';
-import { MCPClient } from './tools/mcp-client';
+import { SessionManager } from './core/session-manager';
 import { HistoryStore } from './memory/history-store';
-import { KnowledgeStore } from './memory/knowledge-store';
 import { ModeLoader } from './core/mode-loader';
-import { performFetchModels } from './agent/model-fetcher';
 import { PlanningEngine } from './agent/planning-engine';
-import { SkillsManager } from './agent/skills-manager';
-import { resolveSkills, renderSkills, roleForMode } from './agent/skill-resolver';
 import { detectProjectProfile, formatProfileLine, MANIFEST_FILENAMES, ProjectProfile, stackMindmapSection, upsertMarkdownSection, STACK_MINDMAP_HEADING } from './core/project-profiler';
-import { installSkillPacks, listBundledPacks } from './tools/skill-install';
-import { ArtifactManager } from './agent/artifact-manager';
 import { AgentScheduler } from './agent/scheduler';
-import { AgentHooks } from './agent/hooks';
-import { AgentToolExecutor, ApprovalRequest, ExecutorDeps, readAttachments } from './agent/tool-executor';
-import { runAgentLoop } from './agent/agent-loop';
-import { worktreeManager } from './agent/worktree-manager';
+import { ApprovalRequest } from './agent/tool-executor';
+import { generateCommitMessage as generateCommitMessageCore } from './core/commit-message';
+import { getHtmlForWebview as buildWebviewHtml } from './core/webview-html';
+import { SettingsPanel } from './core/settings-panel';
+import { ManagerPanel } from './core/manager-panel';
+import { registerCommands } from './core/command-registry';
+import { runPipelineCore, buildApprovalGate, trackAndEmitUsage } from './agent/pipeline-entry';
+import { SkillDiagnostics } from './agent/skill-diagnostics';
+import { ChatSession } from './core/chat-session';
+import { runAgentTask, pruneForPersistence } from './agent/chat-task';
+import { handleWebviewMessage, WebviewMessageHost } from './core/webview-message-handler';
 
 // ─── Extension Activation ───────────────────────────────────────────────────
 
@@ -55,171 +43,14 @@ export function activate(context: vscode.ExtensionContext) {
     const secretManager = new SecretManager(context.secrets);
     const historyStore = new HistoryStore(context.workspaceState);
 
-    let settingsPanel: vscode.WebviewPanel | undefined = undefined;
+    // Declared before the provider because the provider's settings callback opens the
+    // panel, and the panel's host is the provider — assigned immediately below.
+    let settingsPanel: SettingsPanel | undefined;
 
-    function openSettingsPanel() {
-        if (settingsPanel) {
-            settingsPanel.reveal(vscode.ViewColumn.Active);
-            return;
-        }
+    const provider = new BlackIdeChatProvider(context, secretManager, historyStore, () => settingsPanel?.open());
 
-        settingsPanel = vscode.window.createWebviewPanel(
-            'black-ide-settings',
-            '✦ Black IDE Settings',
-            vscode.ViewColumn.Active,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [
-                    vscode.Uri.joinPath(context.extensionUri, 'dist'),
-                    vscode.Uri.joinPath(context.extensionUri, 'resources')
-                ]
-            }
-        );
-
-        settingsPanel.webview.html = provider.getHtmlForWebview(settingsPanel.webview, 'settings');
-
-        const broadcastMessage = (message: any) => {
-            if (provider.activeWebview) {
-                provider.activeWebview.postMessage(message);
-            }
-            if (settingsPanel) {
-                settingsPanel.webview.postMessage(message);
-            }
-        };
-
-        settingsPanel.webview.onDidReceiveMessage(async (data: any) => {
-            switch (data.type) {
-                case 'showError':
-                    vscode.window.showErrorMessage(data.value);
-                    break;
-                case 'showInfo':
-                    vscode.window.showInformationMessage(data.value);
-                    break;
-                case 'loadLlmConfig':
-                    const config = await secretManager.getKey('llm-config');
-                    settingsPanel?.webview.postMessage({ type: 'setLlmConfig', value: config });
-                    break;
-                case 'saveLlmConfig':
-                    await secretManager.saveKey('llm-config', data.value);
-                    vscode.window.showInformationMessage(`LLM Configuration saved successfully!`);
-                    broadcastMessage({ type: 'setLlmConfig', value: data.value });
-                    break;
-                case 'loadSettings':
-                    {
-                        const settingsJson = await secretManager.getKey('general-settings');
-                        settingsPanel?.webview.postMessage({
-                            type: 'setSettings',
-                            value: settingsJson
-                        });
-                    }
-                    break;
-                case 'openEditorSettings':
-                    vscode.commands.executeCommand('workbench.action.openSettings');
-                    break;
-                case 'openExtensions':
-                    vscode.commands.executeCommand('workbench.action.showExtensions');
-                    break;
-                case 'installBrowserSupport':
-                    vscode.commands.executeCommand('black-ide.installBrowserSupport');
-                    break;
-                case 'saveSettings':
-                    await secretManager.saveKey('general-settings', data.value);
-                    broadcastMessage({ type: 'setSettings', value: data.value });
-                    await provider.onSettingsSaved();
-                    break;
-                case 'fetchModels':
-                    try {
-                        const fetched = await performFetchModels(data.value);
-                        settingsPanel?.webview.postMessage({
-                            type: 'fetchedModelsResult',
-                            success: true,
-                            provider: data.value?.provider,
-                            value: fetched
-                        });
-                    } catch (err: any) {
-                        settingsPanel?.webview.postMessage({
-                            type: 'fetchedModelsResult',
-                            success: false,
-                            provider: data.value?.provider,
-                            error: err.message || 'Discovery connection failed'
-                        });
-                    }
-                    break;
-            }
-        });
-
-        settingsPanel.onDidDispose(() => {
-            settingsPanel = undefined;
-        }, null, context.subscriptions);
-    }
-
-    let managerPanel: vscode.WebviewPanel | undefined = undefined;
-
-    function openManagerPanel() {
-        if (managerPanel) {
-            managerPanel.reveal(vscode.ViewColumn.Active);
-            return;
-        }
-
-        managerPanel = vscode.window.createWebviewPanel(
-            'black-ide-pipeline-manager',
-            '✦ Pipeline Manager',
-            vscode.ViewColumn.Active,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [
-                    vscode.Uri.joinPath(context.extensionUri, 'dist'),
-                    vscode.Uri.joinPath(context.extensionUri, 'resources')
-                ]
-            }
-        );
-
-        managerPanel.webview.html = provider.getHtmlForWebview(managerPanel.webview, 'manager');
-
-        managerPanel.webview.onDidReceiveMessage(async (data: any) => {
-            if (!managerPanel) return;
-            switch (data.type) {
-                case 'startPipelineRun': {
-                    const result = provider.startManagedPipelineRun(data.value?.prompt || '', data.value?.modelId || '', managerPanel.webview);
-                    if ('error' in result) {
-                        vscode.window.showWarningMessage(result.error);
-                        managerPanel.webview.postMessage({ type: 'pipelineRunStartFailed', value: result.error });
-                    } else {
-                        managerPanel.webview.postMessage({ type: 'pipelineRunListSync', value: provider.listManagedPipelineRuns() });
-                    }
-                    break;
-                }
-                case 'cancelPipelineRun':
-                    provider.cancelManagedPipelineRun(data.value?.runId);
-                    break;
-                case 'approvePipelineRun':
-                    provider.approveManagedPipelineRun(data.value?.runId);
-                    break;
-                case 'rejectPipelineRun':
-                    provider.rejectManagedPipelineRun(data.value?.runId);
-                    managerPanel.webview.postMessage({ type: 'pipelineRunListSync', value: provider.listManagedPipelineRuns() });
-                    break;
-                case 'listPipelineRuns':
-                    // Sent on mount — repopulates the panel with in-flight/completed runs
-                    // if it was closed and reopened while the extension host stayed alive.
-                    managerPanel.webview.postMessage({ type: 'pipelineRunListSync', value: provider.listManagedPipelineRuns() });
-                    break;
-                case 'loadLlmConfig': {
-                    const config = await secretManager.getKey('llm-config');
-                    managerPanel.webview.postMessage({ type: 'setLlmConfig', value: config });
-                    break;
-                }
-            }
-        });
-
-        managerPanel.onDidDispose(() => {
-            managerPanel = undefined;
-        }, null, context.subscriptions);
-    }
-
-    const provider = new BlackIdeChatProvider(context, secretManager, historyStore, () => openSettingsPanel());
+    settingsPanel = new SettingsPanel(context, secretManager, provider);
+    const managerPanel = new ManagerPanel(context, secretManager, provider);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
@@ -240,99 +71,10 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.openSettings', async () => {
-            const selection = await vscode.window.showQuickPick([
-                { label: '✦ Black IDE Settings', description: 'Configure AI agents, models, permissions' },
-                { label: '⚙️ Editor Settings', description: 'Open native VS Code settings' },
-                { label: '🧩 Extensions', description: 'Manage installed extensions' }
-            ], {
-                placeHolder: 'Select a setting option to open'
-            });
-
-            if (selection) {
-                if (selection.label.includes('Black IDE Settings')) {
-                    openSettingsPanel();
-                } else if (selection.label.includes('Editor Settings')) {
-                    vscode.commands.executeCommand('workbench.action.openSettings');
-                } else if (selection.label.includes('Extensions')) {
-                    vscode.commands.executeCommand('workbench.action.showExtensions');
-                }
-            }
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.generateCommitMessage', async () => {
-            await provider.generateCommitMessage();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.inlineEdit', async () => {
-            await InlineChatController.start(context, secretManager);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.openPipelineManager', () => {
-            openManagerPanel();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.exportDiagnostics', () => {
-            provider.exportDiagnostics();
-        })
-    );
-
-    // Opt-in browser support (Option B): Playwright is not bundled, so the browser_* tools
-    // stay hidden until this installs it into the extension's node_modules. Progress streams
-    // to a dedicated output channel; on success the tools become available to new tasks.
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.installBrowserSupport', async () => {
-            if (browserRuntimeAvailable()) {
-                vscode.window.showInformationMessage('Browser support is already installed. Enable it in Settings → Browser.');
-                return;
-            }
-            const channel = vscode.window.createOutputChannel('Black IDE — Browser Support');
-            channel.show(true);
-            try {
-                await vscode.window.withProgress(
-                    { location: vscode.ProgressLocation.Notification, title: 'Installing browser support (Playwright + Chromium)…', cancellable: false },
-                    () => installBrowserSupport(context.extensionUri.fsPath, (line) => channel.appendLine(line)),
-                );
-                vscode.window.showInformationMessage('Browser support installed. Enable it in Settings → Browser, then start a new task.');
-            } catch (e: any) {
-                channel.appendLine(`\nInstall failed: ${e?.message || e}`);
-                vscode.window.showErrorMessage(`Browser support install failed: ${e?.message || e}. See the "Black IDE — Browser Support" output for details.`);
-            }
-        })
-    );
-
-    // Materialize built-in skill packs into <repo>/.blackide/skills/ so users can see, edit, and
-    // override them — and so their own project packs live in the same place (Phase 3).
-    context.subscriptions.push(
-        vscode.commands.registerCommand('black-ide.installSkillPacks', async () => {
-            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!root) { vscode.window.showErrorMessage('Open a workspace folder first.'); return; }
-            const bundledDir = path.join(context.extensionUri.fsPath, 'resources', 'skills');
-            const packs = listBundledPacks(bundledDir);
-            if (!packs.length) { vscode.window.showWarningMessage('No built-in skill packs are bundled.'); return; }
-
-            const picked = await vscode.window.showQuickPick(
-                packs.map(p => ({ label: p.name, description: [p.roles.join('/'), p.stacks.join(', ')].filter(Boolean).join(' · '), detail: p.description, picked: true })),
-                { canPickMany: true, placeHolder: 'Select skill packs to install into .blackide/skills/ (already-present packs are skipped)' }
-            );
-            if (!picked || !picked.length) return;
-            const installed = installSkillPacks(bundledDir, root, picked.map(p => p.label));
-            vscode.window.showInformationMessage(
-                installed.length
-                    ? `Installed ${installed.length} skill pack(s) into .blackide/skills/: ${installed.join(', ')}. Edit them there to customize.`
-                    : 'Selected packs already exist in .blackide/skills/ — nothing overwritten.'
-            );
-        })
-    );
+    registerCommands(context, secretManager, provider, {
+        openSettingsPanel: () => settingsPanel!.open(),
+        openManagerPanel: () => managerPanel.open(),
+    });
 }
 
 export function deactivate() {}
@@ -354,8 +96,12 @@ interface PipelineRunRecord extends PipelineRunSummary {
 class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'black-ide-chat-view';
     private _view?: vscode.WebviewView;
-    private _abortController?: AbortController;
-    private _isGenerating = false;
+    /**
+     * All mutable state for this chat lane. A single object rather than a set of
+     * fields so the chat task can be moved out of this file without readers seeing
+     * a stale snapshot after it reassigns `conversation` — see core/chat-session.ts.
+     */
+    private readonly _session = new ChatSession();
     private readonly _scheduler = new AgentScheduler();
 
     // Infrastructure lives for the whole session, not one task. Checkpoints and the
@@ -365,24 +111,13 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     private readonly _checkpoints: CheckpointManager;
     private readonly _index: CodebaseIndex;
     private readonly _modeLoader: ModeLoader;
-    private readonly _subagentAbortControllers = new Map<string, AbortController>();
+    /** Long-lived owner of the skills Problems-panel collection (per-task managers must not own one). */
+    private readonly _skillDiagnostics = new SkillDiagnostics();
 
     /** Prior turns, replayed into each task so the agent remembers the conversation. */
-    private _conversation: ChatMessage[] = [];
     /** Active thread identity, used to key conversation persistence in Memento. */
-    private _activeThreadId: string = 'default';
 
     /** Pending plan approval state — survives between the two loop invocations (Antigravity pattern). */
-    private _pendingApproval: {
-        planContent: string;
-        taskContent: string;
-        planPath: string;
-        taskPath: string;
-        originalPrompt: string;
-        modelId: string;
-        attachments?: any[];
-        mode?: string;
-    } | null = null;
 
     /**
      * Pending pipeline-plan approval — mirrors _pendingApproval's role but for
@@ -391,11 +126,6 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
      * as poorly as the native dialog it replaced did; a webview-only reload is fine
      * since the resolver reference stays alive in this class instance.
      */
-    private _pendingPipelineApproval: {
-        planContent: string;
-        planPath: string;
-        resolve: (approved: boolean) => void;
-    } | null = null;
 
     /**
      * Concurrent pipeline runs started from the Manager panel — a separate concurrency
@@ -431,6 +161,10 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     ) {
         const storageDir = (_context.storageUri ?? _context.globalStorageUri).fsPath;
         try { fs.mkdirSync(storageDir, { recursive: true }); } catch {}
+
+        // Owned by the extension lifetime so the Problems-panel collection is torn down
+        // on deactivate rather than lingering with stale skill warnings.
+        _context.subscriptions.push(this._skillDiagnostics);
 
         this._sessions = new SessionManager(this._bus);
         this._checkpoints = new CheckpointManager(storageDir);
@@ -583,6 +317,35 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         } catch { /* keep the default */ }
     }
 
+    /**
+     * Adapter onto `WebviewMessageHost`. The provider's members are private and
+     * underscore-prefixed, so it cannot satisfy the interface structurally; naming the
+     * mapping here keeps the router's dependencies explicit. Rebuilt per message, which
+     * is what keeps `view` current — `session` is the same object either way.
+     */
+    private get _webviewHost(): WebviewMessageHost {
+        return {
+            session: this._session,
+            view: this._view,
+            context: this._context,
+            secretManager: this._secretManager,
+            historyStore: this._historyStore,
+            checkpoints: this._checkpoints,
+            modeLoader: this._modeLoader,
+            sessions: this._sessions,
+            onOpenSettings: this._onOpenSettings,
+            getHtmlForWebview: (wv, vt) => this.getHtmlForWebview(wv, vt),
+            getActiveEditorSelectionContext: () => this._getActiveEditorSelectionContext(),
+            postCheckpoints: (wv) => this._postCheckpoints(wv),
+            reportUndo: (r, wv) => this._reportUndo(r, wv),
+            refreshTelemetryEnabled: () => this._refreshTelemetryEnabled(),
+            runAgentTask: (p, m, a, mo) => this._runAgentTask(p, m, a, mo),
+            runAgentTaskExecution: (op, m, pc, tc, a, mo) => this._runAgentTaskExecution(op, m, pc, tc, a, mo),
+            runPipeline: (p, m) => this._runPipeline(p, m),
+            exportDiagnostics: () => this.exportDiagnostics(),
+        };
+    }
+
     public get activeWebview(): vscode.Webview | undefined {
         return this._view?.webview;
     }
@@ -602,7 +365,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtmlForWebview(webviewView.webview, 'chat');
 
         // Restore conversation context from last session so multi-turn memory survives reload
-        this._conversation = this._historyStore.getConversationState(this._activeThreadId) || [];
+        this._session.conversation = this._historyStore.getConversationState(this._session.activeThreadId) || [];
 
         // Broadcast persisted checkpoints so the timeline is visible immediately after reload
         this._postCheckpoints(webviewView.webview);
@@ -623,10 +386,10 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
         // Restore pending plan approval if it survived a window reload (Antigravity pattern)
         try {
-            const pendingRaw = this._historyStore.getConversationState(`pending-plan-${this._activeThreadId}`);
+            const pendingRaw = this._historyStore.getConversationState(`pending-plan-${this._session.activeThreadId}`);
             if (pendingRaw && pendingRaw.length > 0) {
                 const pending = JSON.parse(pendingRaw[0].content);
-                this._pendingApproval = pending;
+                this._session.pendingApproval = pending;
                 // Re-post the plan approval card to the webview
                 webviewView.webview.postMessage({
                     type: 'planApprovalRequested',
@@ -642,347 +405,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
         // Receive commands from Webview (bridge)
         webviewView.webview.onDidReceiveMessage(async (data: any) => {
-            switch (data.type) {
-                case 'openSettingsPanel':
-                    if (this._onOpenSettings) {
-                        this._onOpenSettings();
-                    }
-                    break;
-                case 'showError':
-                    vscode.window.showErrorMessage(data.value);
-                    break;
-                case 'showInfo':
-                    vscode.window.showInformationMessage(data.value);
-                    break;
-                case 'loadLlmConfig':
-                    const config = await this._secretManager.getKey('llm-config');
-                    webviewView.webview.postMessage({ type: 'setLlmConfig', value: config });
-                    break;
-                case 'saveLlmConfig':
-                    await this._secretManager.saveKey('llm-config', data.value);
-                    vscode.window.showInformationMessage(`LLM Configuration saved successfully!`);
-                    webviewView.webview.postMessage({ type: 'llmConfigSaved', success: true });
-                    break;
-                case 'loadSettings':
-                    {
-                        const settingsJson = await this._secretManager.getKey('general-settings');
-                        webviewView.webview.postMessage({
-                            type: 'setSettings',
-                            value: settingsJson
-                        });
-                    }
-                    break;
-                case 'openEditorSettings':
-                    vscode.commands.executeCommand('workbench.action.openSettings');
-                    break;
-                case 'openExtensions':
-                    vscode.commands.executeCommand('workbench.action.showExtensions');
-                    break;
-                case 'saveSettings':
-                    await this._secretManager.saveKey('general-settings', data.value);
-                    // Pick up an anonymous-telemetry toggle without needing a restart.
-                    await this._refreshTelemetryEnabled();
-                    break;
-                case 'exportDiagnostics':
-                    await this.exportDiagnostics();
-                    break;
-                case 'installBrowserSupport':
-                    vscode.commands.executeCommand('black-ide.installBrowserSupport');
-                    break;
-                case 'fetchModels':
-                    try {
-                        const fetched = await performFetchModels(data.value);
-                        webviewView.webview.postMessage({
-                            type: 'fetchedModelsResult',
-                            success: true,
-                            provider: data.value?.provider,
-                            value: fetched
-                        });
-                    } catch (err: any) {
-                        webviewView.webview.postMessage({
-                            type: 'fetchedModelsResult',
-                            success: false,
-                            provider: data.value?.provider,
-                            error: err.message || 'Discovery connection failed'
-                        });
-                    }
-                    break;
-                case 'attachFile':
-                    const fileUris = await vscode.window.showOpenDialog({
-                        canSelectMany: false,
-                        openLabel: 'Attach',
-                        filters: {
-                            'All Files': ['*'],
-                            'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'],
-                            'Documents': ['md', 'txt', 'pdf', 'json', 'yaml', 'yml'],
-                        }
-                    });
-                    if (fileUris && fileUris.length > 0) {
-                        const uri = fileUris[0];
-                        const fileName = path.basename(uri.fsPath);
-                        const ext = path.extname(fileName).toLowerCase();
-                        const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext);
-                        webviewView.webview.postMessage({
-                            type: 'fileAttached',
-                            value: {
-                                name: fileName,
-                                path: uri.fsPath,
-                                type: isImage ? 'image' : 'file',
-                            }
-                        });
-                    }
-                    break;
-                case 'startAgentTask':
-                    // Guard: block new messages while a plan is pending review
-                    if (this._pendingApproval || this._pendingPipelineApproval) {
-                        vscode.window.showWarningMessage('A plan is pending review. Please approve or reject it before sending a new message.');
-                        break;
-                    }
-                    // Intercept slash commands — Feature 7: Enhanced slash commands
-                    let modifiedPrompt = data.prompt || '';
-                    if (modifiedPrompt.startsWith('/explain')) {
-                        const codeContext = await this._getActiveEditorSelectionContext();
-                        modifiedPrompt = `Explain the following code block:\n\n\`\`\`\n${codeContext}\n\`\`\`\n\nUser Question: ${modifiedPrompt.replace('/explain', '').trim()}`;
-                    } else if (modifiedPrompt.startsWith('/test')) {
-                        const codeContext = await this._getActiveEditorSelectionContext();
-                        modifiedPrompt = `Write comprehensive unit tests for the following code block:\n\n\`\`\`\n${codeContext}\n\`\`\`\n\nUser Request: ${modifiedPrompt.replace('/test', '').trim()}`;
-                    } else if (modifiedPrompt.startsWith('/fix')) {
-                        const codeContext = await this._getActiveEditorSelectionContext();
-                        modifiedPrompt = `Find bugs, issues, or compile errors in the following code block and suggest fixes:\n\n\`\`\`\n${codeContext}\n\`\`\`\n\nUser Request: ${modifiedPrompt.replace('/fix', '').trim()}`;
-                    } else if (modifiedPrompt.startsWith('/commit')) {
-                        await this._runAgentTask(`Generate a conventional commit message for the git diff.`, data.modelId, data.attachments, data.mode);
-                        return;
-                    } else if (modifiedPrompt.startsWith('/refactor')) {
-                        const codeContext = await this._getActiveEditorSelectionContext();
-                        modifiedPrompt = `Refactor the following code for better readability, performance, and maintainability:\n\n\`\`\`\n${codeContext}\n\`\`\`\n\nUser Request: ${modifiedPrompt.replace('/refactor', '').trim()}`;
-                    } else if (modifiedPrompt.startsWith('/docs')) {
-                        const codeContext = await this._getActiveEditorSelectionContext();
-                        modifiedPrompt = `Generate comprehensive documentation (JSDoc/docstrings/comments) for:\n\n\`\`\`\n${codeContext}\n\`\`\`\n\n${modifiedPrompt.replace('/docs', '').trim()}`;
-                    } else if (modifiedPrompt.startsWith('/search')) {
-                        modifiedPrompt = `Search the workspace for: ${modifiedPrompt.replace('/search', '').trim()}. Use the grep_search tool to find relevant code.`;
-                    } else if (modifiedPrompt.startsWith('/plan')) {
-                        modifiedPrompt = modifiedPrompt.replace('/plan', '').trim();
-                        // Planning mode will be auto-detected by PlanningEngine
-                    }
-                    
-                    if (PlanningEngine.shouldOrchestrate(modifiedPrompt, data.mode)) {
-                        modifiedPrompt = modifiedPrompt.replace('/orchestrate', '').trim();
-                        await this._runPipeline(modifiedPrompt, data.modelId);
-                    } else {
-                        // Strip the /single opt-out marker so it never reaches the model.
-                        modifiedPrompt = modifiedPrompt.replace(/^\/single\b/, '').trim();
-                        await this._runAgentTask(modifiedPrompt, data.modelId, data.attachments, data.mode);
-                    }
-                    break;
-                case 'openModeSelector':
-                    const allModes = this._modeLoader.getSelectableModes();
-                    const currentMode = data.value || 'agent';
-                    const items = allModes.map(m => ({
-                        label: `${m.icon ? `$(${m.icon}) ` : ''}${m.name}`,
-                        description: m.description,
-                        detail: `Source: ${m.source}`,
-                        modeName: m.name.toLowerCase()
-                    }));
-                    
-                    const selected = await vscode.window.showQuickPick(items, {
-                        placeHolder: 'Select Agent Mode',
-                        matchOnDescription: true
-                    });
-                    
-                    if (selected) {
-                        webviewView.webview.postMessage({ type: 'setMode', value: selected.modeName });
-                    }
-                    break;
-                case 'stopAgentTask':
-                    if (this._abortController) {
-                        this._abortController.abort();
-                        webviewView.webview.postMessage({ type: 'log', value: '[Agent] Cancellation requested.' });
-                    }
-                    break;
-                case 'restoreCheckpoint': {
-                    // Undo a whole task by id, or the most recent one if none is given.
-                    const target = data.value?.checkpointId || this._checkpoints.latest?.id;
-                    if (!target) { vscode.window.showInformationMessage('No checkpoint available to restore.'); break; }
-                    this._reportUndo(this._checkpoints.undo(target), webviewView.webview);
-                    break;
-                }
-                case 'undoMessage': {
-                    // Per-message undo: revert exactly the files that one agent response changed.
-                    const cp = this._checkpoints.forMessage(data.value);
-                    if (!cp) { vscode.window.showInformationMessage('That response made no file changes.'); break; }
-                    this._reportUndo(this._checkpoints.undo(cp.id), webviewView.webview);
-                    break;
-                }
-                case 'redoCheckpoint': {
-                    const r = this._checkpoints.redo(data.value?.checkpointId);
-                    vscode.window.showInformationMessage(`Re-applied ${r.restored.length} file(s).`);
-                    this._postCheckpoints(webviewView.webview);
-                    break;
-                }
-                case 'keepFile':
-                    this._checkpoints.keepFile(data.value?.checkpointId, data.value?.path);
-                    this._postCheckpoints(webviewView.webview);
-                    break;
-                case 'restoreFile': {
-                    const r = this._checkpoints.restoreFile(data.value?.checkpointId, data.value?.path);
-                    this._reportUndo(r, webviewView.webview);
-                    break;
-                }
-                case 'listCheckpoints':
-                    this._postCheckpoints(webviewView.webview);
-                    break;
-                case 'getCheckpointDiff': {
-                    const diffLines = this._checkpoints.getInlineDiffPreview(data.value?.checkpointId, data.value?.path);
-                    webviewView.webview.postMessage({ 
-                        type: 'checkpointDiffResult', 
-                        value: { checkpointId: data.value?.checkpointId, path: data.value?.path, diff: diffLines } 
-                    });
-                    break;
-                }
-                case 'cancelSubagent': {
-                    const controller = this._subagentAbortControllers.get(data.value);
-                    if (controller) {
-                        controller.abort();
-                    }
-                    break;
-                }
-                case 'approvePlan': {
-                    if (this._pendingPipelineApproval) {
-                        const pending = this._pendingPipelineApproval;
-                        this._pendingPipelineApproval = null;
-                        pending.resolve(true);
-                        break;
-                    }
-                    if (!this._pendingApproval) {
-                        vscode.window.showErrorMessage('No pending plan to approve.');
-                        break;
-                    }
-                    const pending = this._pendingApproval;
-                    this._pendingApproval = null;
-                    // Clear persisted pending state
-                    await this._historyStore.clearConversationState(`pending-plan-${this._activeThreadId}`);
-                    // Run execution phase with the approved plan injected as context
-                    await this._runAgentTaskExecution(
-                        pending.originalPrompt,
-                        pending.modelId,
-                        pending.planContent,
-                        pending.taskContent,
-                        pending.attachments,
-                        pending.mode
-                    );
-                    break;
-                }
-                case 'rejectPlan': {
-                    const feedback = data.value?.feedback || '';
-                    if (this._pendingPipelineApproval) {
-                        const pending = this._pendingPipelineApproval;
-                        this._pendingPipelineApproval = null;
-                        pending.resolve(false);
-                        webviewView.webview.postMessage({ type: 'planRejected', value: feedback });
-                        webviewView.webview.postMessage({ type: 'taskComplete' });
-                        vscode.window.showInformationMessage('Pipeline plan rejected.');
-                        break;
-                    }
-                    this._pendingApproval = null;
-                    // Clear persisted pending state
-                    await this._historyStore.clearConversationState(`pending-plan-${this._activeThreadId}`);
-                    webviewView.webview.postMessage({ type: 'planRejected', value: feedback });
-                    webviewView.webview.postMessage({ type: 'taskComplete' });
-                    if (feedback) {
-                        vscode.window.showInformationMessage('Plan rejected. Send a new message with revised instructions.');
-                    } else {
-                        vscode.window.showInformationMessage('Plan rejected.');
-                    }
-                    break;
-                }
-                case 'newConversation':
-                    // A fresh thread starts with a clean memory, or the agent answers the
-                    // new question in terms of the old one.
-                    this._conversation = [];
-                    this._activeThreadId = data.value || `thread-${Date.now()}`;
-                    this._sessions.newConversation();
-                    await this._historyStore.clearConversationState(this._activeThreadId);
-                    break;
-                case 'switchThread': {
-                    // Abort any in-flight generation to prevent cross-thread contamination
-                    if (this._isGenerating && this._abortController) {
-                        this._abortController.abort();
-                        this._isGenerating = false;
-                    }
-                    this._activeThreadId = data.value;
-                    this._conversation = this._historyStore.getConversationState(data.value) || [];
-                    this._sessions.newConversation(); // Reset session for the new thread
-                    // Clear any pending plan approval to prevent cross-thread contamination
-                    this._pendingApproval = null;
-                    // The pipeline's approval Promise isn't tied to _abortController — resolve
-                    // it as rejected so orchestrator.run() doesn't hang forever on an orphaned thread.
-                    if (this._pendingPipelineApproval) {
-                        this._pendingPipelineApproval.resolve(false);
-                        this._pendingPipelineApproval = null;
-                    }
-                    break;
-                }
-                case 'openArtifact':
-                    try {
-                        const doc = await vscode.workspace.openTextDocument(data.value);
-                        await vscode.window.showTextDocument(doc, { preview: false });
-                    } catch (e: any) {
-                        vscode.window.showErrorMessage(`Could not open artifact: ${e.message}`);
-                    }
-                    break;
-                case 'loadHistory':
-                    const threads = this._historyStore.getThreads();
-                    webviewView.webview.postMessage({ type: 'setHistory', value: threads });
-                    break;
-                case 'saveHistoryThread':
-                    const { id, title, messages } = data.value;
-                    await this._historyStore.saveThread(id, title, messages);
-                    webviewView.webview.postMessage({ type: 'setHistory', value: this._historyStore.getThreads() });
-                    break;
-                case 'deleteHistoryThread':
-                    await this._historyStore.deleteThread(data.value);
-                    webviewView.webview.postMessage({ type: 'setHistory', value: this._historyStore.getThreads() });
-                    break;
-                case 'clearHistory':
-                    await this._historyStore.clear();
-                    webviewView.webview.postMessage({ type: 'setHistory', value: [] });
-                    break;
-                case 'searchFiles':
-                    const query = data.value || '';
-                    const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 100);
-                    const matchingFiles = files
-                        .map((file: vscode.Uri) => vscode.workspace.asRelativePath(file))
-                        .filter((f: string) => f.toLowerCase().includes(query.toLowerCase()))
-                        .slice(0, 15);
-                    webviewView.webview.postMessage({ type: 'searchFilesResponse', value: matchingFiles });
-                    break;
-                case 'autoDetectOllama':
-                    try {
-                        const ollamaResponse = await fetch('http://localhost:11434/api/tags');
-                        if (ollamaResponse.ok) {
-                            const ollamaData: any = await ollamaResponse.json();
-                            if (ollamaData && Array.isArray(ollamaData.models)) {
-                                const detectedModels = ollamaData.models.map((m: any) => ({
-                                    id: `ollama-${m.name}`,
-                                    name: `Ollama: ${m.name}`,
-                                    type: 'local',
-                                    url: 'http://localhost:11434/v1/chat/completions',
-                                    model: m.name,
-                                    enabled: true
-                                }));
-                                webviewView.webview.postMessage({ type: 'ollamaDetected', value: detectedModels });
-                                vscode.window.showInformationMessage(`Successfully auto-detected ${detectedModels.length} Ollama models!`);
-                            } else {
-                                vscode.window.showWarningMessage('Ollama responded but returned no models.');
-                            }
-                        } else {
-                            vscode.window.showErrorMessage('Ollama server returned an error.');
-                        }
-                    } catch (e: any) {
-                        vscode.window.showErrorMessage(`Ollama server unreachable: ${e.message}`);
-                    }
-                    break;
-            }
+            await handleWebviewMessage(this._webviewHost, webviewView.webview, data);
         });
     }
 
@@ -1024,22 +447,6 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
      * Targets `msg.toolResults[].content` — ChatMessage has no 'tool' role;
      * tool results are embedded in user-role messages as ToolResult objects.
      */
-    private _pruneForPersistence(messages: ChatMessage[]): ChatMessage[] {
-        return messages.map(msg => {
-            if (!msg.toolResults?.length) return msg;
-            return {
-                ...msg,
-                toolResults: msg.toolResults.map(tr => ({
-                    ...tr,
-                    content: tr.content.length > 500
-                        ? tr.content.slice(0, 500) + '\n…(truncated for session memory)'
-                        : tr.content,
-                    // Strip binary image data — not useful in replay and massive in storage
-                    images: undefined,
-                })),
-            };
-        });
-    }
 
     private async _getActiveEditorSelectionContext(): Promise<string> {
         const editor = vscode.window.activeTextEditor;
@@ -1080,23 +487,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         response: string,
         emit: (e: any) => void,
     ): { turnTokens: number; totalTokens: number; totalCost: number; summary: ReturnType<TokenTracker['getSessionSummary']> } {
-        const usage = tokenTracker.track(model, 'x'.repeat(Math.min(promptChars, 2_000_000)), response);
-        const summary = tokenTracker.getSessionSummary();
-        const cachedInput = (summary as any).cachedInput;
-        emit({
-            type: 'TokenUsage',
-            inputTokens: summary.totalInput,
-            outputTokens: summary.totalOutput,
-            ...(cachedInput ? { cachedInputTokens: cachedInput } : {}),
-            cost: summary.totalCost,
-            turns: summary.turns,
-        });
-        return {
-            turnTokens: usage.inputTokens + usage.outputTokens,
-            totalTokens: summary.totalInput + summary.totalOutput,
-            totalCost: summary.totalCost,
-            summary,
-        };
+        return trackAndEmitUsage(tokenTracker, model, promptChars, response, emit);
     }
 
     private _buildApprovalGate(opts: {
@@ -1104,41 +495,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         interactive: boolean;
         log: (m: string) => void;
     }): (req: ApprovalRequest) => Promise<boolean> {
-        const { settings, interactive, log } = opts;
-        const autoEdits = !!settings.autoApproveFileEdits;
-        const autoCreate = !!settings.autoApproveFileCreate;
-        const commandPolicy = new CommandPolicy({
-            allow: settings.commandAllowList,
-            deny: settings.commandDenyList,
-            autoApprove: interactive ? !!settings.autoApproveTerminal : false,
-        });
-
-        return async (req: ApprovalRequest): Promise<boolean> => {
-            if (req.kind === 'edit') {
-                if (autoEdits || !interactive) return true;
-                const a = await DiffContentProvider.showDiff(req.originalContent || '', req.updatedContent || '', req.path || 'file');
-                return a === 'Apply';
-            }
-            if (req.kind === 'create') {
-                if (autoCreate || !interactive) return true;
-                const a = await DiffContentProvider.showDiff(req.originalContent || '', req.updatedContent || '', req.path || 'new file');
-                return a === 'Apply';
-            }
-            if (req.kind === 'exec') {
-                const verdict = commandPolicy.evaluate(req.command || '');
-                if (verdict.decision === 'deny') { log(`[Policy] ${verdict.reason} (${req.command})`); return false; }
-                if (verdict.decision === 'allow') return true;
-                if (!interactive) { log(`[Policy] Command needs confirmation — refused in unattended pipeline run: ${req.command}`); return false; }
-                const a = await vscode.window.showWarningMessage(`Run command?\n\n${req.command}`, { modal: true }, 'Run');
-                return a === 'Run';
-            }
-            if (req.kind === 'mcp') {
-                if (!interactive) { log(`[Policy] MCP tool "${req.toolName}" refused in unattended pipeline run.`); return false; }
-                const a = await vscode.window.showInformationMessage(`Allow MCP tool "${req.toolName}"?`, 'Allow', 'Deny');
-                return a === 'Allow';
-            }
-            return false;
-        };
+        return buildApprovalGate(opts);
     }
 
     /**
@@ -1153,10 +510,10 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) return;
         const webview = this._view.webview;
 
-        this._abortController?.abort();
+        this._session.abortController?.abort();
         const controller = new AbortController();
-        this._abortController = controller;
-        this._isGenerating = true;
+        this._session.abortController = controller;
+        this._session.isGenerating = true;
 
         // Resolved again inside _runPipelineCore for the actual run — this lookup is
         // only to preserve the exact prior beginTask() label (the model's own `.model`
@@ -1183,7 +540,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 // approvePlan/rejectPlan handlers the single-agent flow already has,
                 // instead of a blocking native dialog. See _pendingPipelineApproval.
                 requestApproval: (planContent, planPath) => new Promise<boolean>((resolve) => {
-                    this._pendingPipelineApproval = { planContent, planPath, resolve };
+                    this._session.pendingPipelineApproval = { planContent, planPath, resolve };
                     webview.postMessage({
                         type: 'planApprovalRequested',
                         value: {
@@ -1205,27 +562,27 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                     const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
                     const overviewPath = path.join(rootPath, '.blackIDE', 'overview.md');
                     const overviewContent = fs.existsSync(overviewPath) ? fs.readFileSync(overviewPath, 'utf8') : null;
-                    this._conversation.push(
+                    this._session.conversation.push(
                         { role: 'user', content: userPrompt },
                         { role: 'assistant', content: buildPipelineContextSummary(overviewContent) },
                     );
                     await this._historyStore.setConversationState(
-                        this._activeThreadId, this._pruneForPersistence(this._conversation));
+                        this._session.activeThreadId, pruneForPersistence(this._session.conversation));
                     if (modelConfig) {
                         this._generateConversationTitle(userPrompt, modelConfig).catch(() => {});
                     }
                 } catch { /* context splice is best-effort; never fail the run over it */ }
             }
         } finally {
-            this._isGenerating = false;
+            this._session.isGenerating = false;
         }
     }
 
     /**
      * Shared pipeline mechanics — model/settings resolution, worktree-aware executor
      * wiring, and the PipelineOrchestrator invocation itself. Deliberately takes no
-     * dependency on `this._view`/`this._abortController`/`this._isGenerating`/
-     * `this._pendingPipelineApproval`: every caller-specific concern (where events go,
+     * dependency on `this._view`/`this._session.abortController`/`this._session.isGenerating`/
+     * `this._session.pendingPipelineApproval`: every caller-specific concern (where events go,
      * how approval is surfaced, cancellation) is a parameter, so this same method can
      * back both the chat-triggered flow and concurrent Manager-panel runs without the
      * two ever touching each other's state.
@@ -1237,333 +594,15 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         emit: (e: any) => void;
         requestApproval: (planContent: string, planPath: string) => Promise<boolean>;
     }): Promise<boolean> {
-        const { userPrompt, modelId, emit } = params;
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        const log = (msg: string) => emit({ type: 'Log', level: 'info', message: msg });
-
-        // True only if the pipeline reached onPipelineCompleted — orchestrator.run()
-        // resolves normally on rejection/cancellation/failure too, so callers that need
-        // to know it genuinely succeeded (e.g. the chat wrapper's conversation-context
-        // splice) must check this, not just that the await returned.
-        let completed = false;
-
-        // Budget guard: a runaway pipeline (7 loops × up to 40 turns) against a paid API is
-        // the highest-cost operation in the product. When the per-run token budget trips,
-        // this controller aborts the run; it is combined with the caller's cancel signal
-        // below so either can stop the loops. `budgetExceeded` disambiguates the two so a
-        // budget stop reads as a failure, not a silent user cancellation.
-        const budgetController = new AbortController();
-        let budgetExceeded = false;
-        const signal = AbortSignal.any([params.signal, budgetController.signal]);
-
-        // Hoisted so the finally can close them regardless of where the try exits.
-        let browserTool: BrowserTool | undefined;
-        let mcpClient: MCPClient | undefined;
-
-        try {
-            const configJson = await this._secretManager.getKey('llm-config');
-            if (!configJson) throw new Error('No LLM configurations found.');
-            const configs: LLMConfigEntry[] = JSON.parse(configJson);
-            const modelConfig = configs.find(c => c.id === modelId);
-            if (!modelConfig) throw new Error(`Configuration for model "${modelId}" not found.`);
-
-            const allModes = this._modeLoader.getAllModes();
-
-            // Project-aware skills for the pipeline executors (Phase 4). Until now the pipeline
-            // agents received NO skills; this resolves stack+role-appropriate packs per phase and
-            // appends them to each executor's system prompt via the orchestrator's skillsForMode.
-            const pipelineSkills = new SkillsManager();
-            await pipelineSkills.discover(this._bundledSkillsDir);
-            const pipelineProfile = await this._getProjectProfile();
-            // Phase 5: reflect the detected stack in the project mindmap (idempotent).
-            if (rootPath && pipelineProfile.stacks.length) this._syncStackToMindmap(pipelineProfile, rootPath);
-            const skillsForMode = (modeId: string): string => {
-                const picked = resolveSkills({
-                    skills: pipelineSkills.getAll(),
-                    role: roleForMode(modeId),
-                    profile: pipelineProfile,
-                    prompt: userPrompt,
-                });
-                if (picked.length) log(`[Skills] ${modeId}: ${picked.map(s => s.name).join(', ')}`);
-                return renderSkills(picked);
-            };
-
-            browserTool = new BrowserTool();
-            mcpClient = new MCPClient();
-            const artifactManager = new ArtifactManager(this._context);
-            const knowledgeStore = new KnowledgeStore(this._context);
-
-            // Opt-in: auto-open every file the pipeline touches, not just the plan/
-            // mindmap/overview artifacts. Off by default — a multi-file pipeline run
-            // would otherwise flood the tab bar. Lives in the same 'general-settings'
-            // blob as the rest of this extension's user settings (see openSettingsPanel).
-            let generalSettings: any = {};
-            try {
-                const s = await this._secretManager.getKey('general-settings');
-                if (s) generalSettings = JSON.parse(s);
-            } catch {}
-            const autoOpenAllFiles = !!generalSettings.pipelineAutoOpenAllFiles;
-            // Browser gating (B1/B2), same policy as the chat flow: configure the shared
-            // BrowserTool from settings and decide whether browser_* tools are offered at all.
-            const browserSettings = readBrowserSettings(generalSettings);
-            browserTool!.configure(browserSettings);
-            const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
-            // Mode name -> LLMConfigEntry id, e.g. routing HLD/LLD scaffolding to a
-            // cheap/fast model and execution phases to a stronger one.
-            const phaseModelOverrides: Record<string, string> = generalSettings.pipelinePhaseModels || {};
-            // Cumulative (input+output) token ceiling for the whole run. 0 = unlimited.
-            const pipelineTokenBudget = Math.max(0, Number(generalSettings.pipelineTokenBudget) || 0);
-            // 'apply' (default) reconciles onto the live tree; 'pr' leaves the work on its
-            // branch and opens a pull request. Anything unrecognised degrades to 'apply'.
-            const outputMode = resolveOutputMode(generalSettings.pipelineOutputMode);
-            // Default OFF — see core/parallel-execution.ts. Only an explicit `true` enables
-            // it, so a malformed settings blob can never silently opt a user into the
-            // unproven path.
-            const parallelExecution = generalSettings.pipelineParallelExecution === true;
-
-            // Tracks which files each phase touched, keyed by mode id, so the orchestrator
-            // can build a deterministic mindmap entry + overview.md without depending on
-            // the executor agent remembering to call update_mindmap itself.
-            let currentPhaseModeId = '';
-            // modeId -> (livePath -> kind). A file created then edited in the same phase
-            // stays 'created' (net effect from the pipeline's view is a new file).
-            const filesByPhase = new Map<string, Map<string, 'created' | 'modified' | 'deleted'>>();
-
-            // Per-run, in-memory checkpoint store — NOT the shared this._checkpoints.
-            // Every executor snapshots into its deps.checkpoint; sharing one instance
-            // meant a pipeline's (worktree-path) snapshots bled into the next chat task's
-            // commit, and with concurrent Manager runs, multiple pipelines would sweep
-            // each other's pending snapshots. Isolating the store fixes both. Pipeline
-            // execution changes reach the live tree via git (applyDelta) and are
-            // git-undoable; this run-local store is discarded when the run ends.
-            const runCheckpoints = new CheckpointManager();
-
-            // rootPath/onFileChanged are per-call (see executorFactory below) — execution
-            // phases run against an isolated worktree, not the live workspace directly.
-            const baseDeps: Omit<ExecutorDeps, 'rootPath' | 'onFileChanged'> = {
-                mode: 'agent', browserTool: browserTool!, mcpClient: mcpClient!, artifactManager, knowledgeStore,
-                codebaseIndex: this._index, checkpoint: runCheckpoints,
-                log, approve: this._buildApprovalGate({ settings: generalSettings, interactive: false, log }),
-                signal, commandTimeoutMs: 120000,
-                onPlan: () => {}, onArtifact: () => {}, onTerminalChunk: () => {},
-                scheduleTask: () => Promise.resolve(), cancelTask: () => {}, spawnSubagent: async () => 'n/a'
-            };
-
-            // rootPathOverride is set only for execution phases (Design/Backend/Frontend/
-            // Testing), which PipelineOrchestrator runs inside an isolated git worktree.
-            const executorFactory = (mode: any, rootPathOverride?: string) => {
-                const deps: ExecutorDeps = {
-                    ...baseDeps,
-                    rootPath: rootPathOverride || rootPath,
-                    onFileChanged: (p, k) => {
-                        // Translate worktree-local paths back to where the file will actually
-                        // live once the pipeline merges — that's what the chat log, mindmap,
-                        // overview, and auto-open should all reference, even though it doesn't
-                        // exist there yet mid-run.
-                        const liveP = rootPathOverride ? path.join(rootPath, path.relative(rootPathOverride, p)) : p;
-                        emit({ type: 'FileChanged', path: liveP, kind: k });
-                        if (currentPhaseModeId) {
-                            if (!filesByPhase.has(currentPhaseModeId)) filesByPhase.set(currentPhaseModeId, new Map());
-                            const m = filesByPhase.get(currentPhaseModeId)!;
-                            // Keep 'created' sticky: a file created and then edited this phase is still a creation.
-                            m.set(liveP, m.get(liveP) === 'created' ? 'created' : k);
-                        }
-                        if (liveP.endsWith('features_plan.md') || liveP.endsWith('project_mindmap.md')) {
-                            // These are only ever written outside worktree isolation (Planner,
-                            // and the deterministic mindmap sync — both target the live path
-                            // or the worktree directly, never through this callback while
-                            // isolated), so liveP === p here and the file already exists.
-                            if (!rootPathOverride) vscode.commands.executeCommand('vscode.open', vscode.Uri.file(liveP));
-                        } else if (autoOpenAllFiles && k !== 'deleted' && !rootPathOverride) {
-                            // Suppressed while isolated — the live file doesn't exist (or is
-                            // stale) until the pipeline actually merges.
-                            vscode.workspace.openTextDocument(liveP).then(
-                                doc => vscode.window.showTextDocument(doc, { preview: true, preserveFocus: true }),
-                                () => {}
-                            );
-                        }
-                    },
-                };
-                return new AgentToolExecutor(deps);
-            };
-
-            const getToolsForMode = (modeId: string) => {
-                let tools = toolsForMode('agent');
-                const mDef = this._modeLoader.getMode(modeId);
-                if (mDef?.tools) {
-                    tools = tools.filter(t => mDef.tools!.includes(t.name));
-                }
-                return filterToolsForBrowser(tools, browserUsable);
-            };
-
-            // One tracker across all phases — the run's cumulative spend. Shared with the
-            // loopCallbacks below (which every phase's runAgentLoop reports into) so cost
-            // and the budget guard see the whole run, not per-phase slices.
-            const tokenTracker = new TokenTracker();
-            const toolStartedAt = new Map<string, number>();
-
-            let phaseCount = 0;
-            const orchestrator = new PipelineOrchestrator(
-                rootPath, modelConfig, allModes, executorFactory,
-                {
-                    onPipelineStarted: () => {
-                        emit({ type: 'PipelineStarted', phases: ['Architecture Analysis', 'Low Level Design', 'Feature Planning', 'Execution'], ts: Date.now() });
-                    },
-                    onPhaseStarted: (modeId) => {
-                        phaseCount++;
-                        currentPhaseModeId = modeId;
-                        emit({ type: 'PipelinePhaseStarted', phase: modeId, index: phaseCount, total: 4, ts: Date.now() });
-                    },
-                    onPhaseCompleted: (modeId) => {
-                        emit({ type: 'PipelinePhaseCompleted', phase: modeId, ts: Date.now() });
-                    },
-                    onPhaseError: (modeId, err) => {
-                        emit({ type: 'PipelinePhaseError', phase: modeId, error: err, ts: Date.now() });
-                    },
-                    getFilesForPhase: (modeId) =>
-                        Array.from(filesByPhase.get(modeId) || []).map(([p, kind]) => ({ path: p, kind })),
-                    // Per-phase agent-loop instrumentation. Was never provided before, so a
-                    // 7-agent run showed no tool activity and reported zero token cost — the
-                    // most expensive operation in the product was invisible.
-                    loopCallbacks: {
-                        onToolCall: (tc) => {
-                            toolStartedAt.set(tc.id, Date.now());
-                            const arg = tc.arguments?.path || tc.arguments?.command || tc.arguments?.query || '';
-                            emit({ type: 'ToolStarted', toolCallId: tc.id, name: tc.name, summary: String(arg).slice(0, 200), arguments: tc.arguments });
-                        },
-                        onToolResult: (tc, r) => {
-                            emit({
-                                type: 'ToolFinished', toolCallId: tc.id, name: tc.name, ok: !r.isError,
-                                durationMs: Date.now() - (toolStartedAt.get(tc.id) ?? Date.now()),
-                                summary: (r.content || '').slice(0, 200), output: r.content || '',
-                            });
-                        },
-                        onUsage: (promptChars, response) => {
-                            const u = this._trackAndEmitUsage(tokenTracker, modelConfig.model || '', promptChars, response, emit);
-                            if (isOverTokenBudget(u.totalTokens, pipelineTokenBudget) && !budgetExceeded) {
-                                budgetExceeded = true;
-                                log(`[Budget] Token budget of ${pipelineTokenBudget} exceeded (${u.totalTokens} used) — stopping the run.`);
-                                budgetController.abort();
-                            }
-                        },
-                    },
-                    onPipelineCompleted: (overviewPath) => {
-                        completed = true;
-                        emit({ type: 'PipelineCompleted', overviewPath, ts: Date.now() });
-                        emit({ type: 'TaskCompleted', ts: Date.now() });
-                        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(overviewPath));
-                        vscode.window.showInformationMessage('Multi-Agent Pipeline Complete! See overview.md.');
-                        // Long-term memory: record what was built so future sessions (and the
-                        // user) have a durable, curated record beyond the machine mindmap.
-                        try {
-                            const kb = new KnowledgeBase(rootPath);
-                            kb.ensureScaffold();
-                            kb.recordFeature({ feature: userPrompt.slice(0, 80), status: 'done', notes: 'Delivered by the multi-agent pipeline; see overview.md.' });
-                        } catch { /* memory update is best-effort */ }
-                        // Doc regime (P4): keep the project's own CHANGELOG current. Written
-                        // to the live tree, so it is skipped in PR mode where the deliverable
-                        // is the branch and the live tree is deliberately untouched.
-                        if (outputMode !== 'pr') {
-                            try {
-                                const run = {
-                                    prompt: userPrompt,
-                                    phases: [...filesByPhase.keys()],
-                                    files: [...filesByPhase.entries()].flatMap(([, m]) =>
-                                        [...m.entries()].map(([p, kind]) => ({ path: path.relative(rootPath, p), kind }))),
-                                };
-                                const changelogPath = path.join(rootPath, 'CHANGELOG.md');
-                                const existing = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf8') : '';
-                                fs.writeFileSync(changelogPath, prependChangelogEntry(existing, formatChangelogEntry(run)), 'utf8');
-                            } catch { /* doc regime is best-effort */ }
-                        }
-                    },
-                    // PR output mode: publish the run's branch instead of applying it. Runs
-                    // under gitMutex because it pushes — concurrent Manager runs would
-                    // otherwise contend on the same repo's refs.
-                    onPipelinePullRequest: async ({ branch, userPrompt: prPrompt }) => {
-                        const title = summarizeRequest(prPrompt);
-                        const body = formatReleaseNotes({ prompt: prPrompt, phases: [], files: [], branch });
-                        await gitMutex.run(async () => {
-                            const ghCheck = await ToolRunner.executeCommand('gh --version', rootPath, 10000, signal);
-                            if (ghCheck.exitCode === 0) {
-                                for (const cmd of buildPrCommands({ branch, title, body })) {
-                                    const res = await ToolRunner.executeCommand(cmd, rootPath, 120000, signal);
-                                    if (res.exitCode !== 0) throw new Error(`${cmd.split(' ').slice(0, 3).join(' ')} failed: ${res.stderr || res.stdout}`);
-                                }
-                                log(`[PR] Opened a pull request from "${branch}".`);
-                                vscode.window.showInformationMessage(`Pipeline complete — pull request opened from "${branch}".`);
-                                return;
-                            }
-                            // No `gh`: still push, then hand the user a compare URL. Pushing
-                            // matters most — without it the branch is local-only and the URL
-                            // would 404.
-                            const push = await ToolRunner.executeCommand(`git push -u origin ${shellQuote(branch)}`, rootPath, 120000, signal);
-                            if (push.exitCode !== 0) throw new Error(`git push failed: ${push.stderr || push.stdout}`);
-                            const remote = await ToolRunner.executeCommand('git remote get-url origin', rootPath, 10000, signal);
-                            const url = compareUrlFallback((remote.stdout || '').trim(), branch);
-                            if (url) {
-                                log(`[PR] gh not found — opening the compare page instead: ${url}`);
-                                vscode.env.openExternal(vscode.Uri.parse(url));
-                            } else {
-                                vscode.window.showInformationMessage(`Pipeline complete — work pushed to branch "${branch}". Open a PR manually.`);
-                            }
-                        });
-                    },
-                    // Without these, a genuinely failed or cancelled run leaves the caller's
-                    // UI state stuck "in progress" forever — orchestrator.run() otherwise
-                    // swallows both outcomes internally and returns normally either way.
-                    onPipelineFailed: (error) => {
-                        emit({ type: 'TaskFailed', error, durationMs: 0 });
-                    },
-                    onPipelineCancelled: () => {
-                        // A budget stop reaches here (it aborts the run), but it is a failure,
-                        // not a user cancellation — surface it as such with a clear message.
-                        if (budgetExceeded) {
-                            emit({ type: 'TaskFailed', error: `Pipeline stopped: exceeded the ${pipelineTokenBudget}-token budget. Raise or clear it in Settings → Pipeline Token Budget.`, durationMs: 0 });
-                        } else {
-                            emit({ type: 'TaskCancelled', durationMs: 0 });
-                        }
-                    },
-                    requestApproval: params.requestApproval,
-                },
-                signal,
-                getToolsForMode,
-                configs,
-                phaseModelOverrides,
-                outputMode,
-                parallelExecution,
-                skillsForMode
-            );
-
-            // Long-term memory (read side): start the run aware of prior decisions, feature
-            // status, and known tech debt from .blackIDE/knowledge/, instead of re-deriving.
-            const knowledgeDigest = new KnowledgeBase(rootPath).readContext();
-            if (knowledgeDigest) log('[Memory] Injected existing project knowledge into the run.');
-
-            // Requirement discovery: surface unspecified dimensions to the analysis phases
-            // so they resolve them or state explicit assumptions, rather than guessing silently.
-            const openQuestions = PlanningEngine.detectMissingRequirements(userPrompt);
-            if (openQuestions.length) log(`[Requirements] ${openQuestions.length} open question(s) flagged for the Architect.`);
-
-            const runPrompt = [
-                userPrompt,
-                knowledgeDigest ? `\n\n## Existing Project Knowledge (from .blackIDE/knowledge/)\n${knowledgeDigest}` : '',
-                openQuestions.length ? `\n\n## Open questions to resolve (or state your assumptions if unanswered):\n${openQuestions.map(q => `- ${q}`).join('\n')}` : '',
-            ].join('');
-
-            await orchestrator.run(runPrompt);
-
-        } catch (e: any) {
-            vscode.window.showErrorMessage(`Pipeline Error: ${e.message}`);
-            emit({ type: 'TaskFailed', error: e.message, durationMs: 0 });
-        } finally {
-            // Mirror _runAgentTask's finally — a pipeline whose Testing Executor opened a
-            // browser would otherwise leak a headless Chromium (and MCP connections) until
-            // the extension host dies. Keep in sync with the chat-flow cleanup.
-            try { await browserTool?.close(); } catch {}
-            try { await mcpClient?.disconnectAll(); } catch {}
-        }
-        return completed;
+        return runPipelineCore({
+            context: this._context,
+            secretManager: this._secretManager,
+            modeLoader: this._modeLoader,
+            codebaseIndex: this._index,
+            bundledSkillsDir: this._bundledSkillsDir,
+            getProjectProfile: () => this._getProjectProfile(),
+            syncStackToMindmap: (profile, rootPath) => this._syncStackToMindmap(profile, rootPath),
+        }, params);
     }
 
     /**
@@ -1754,517 +793,24 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     // honored auto-approve + activated hooks + semantic index + real subagents.
 
     private async _runAgentTask(userPrompt: string, modelId: string, attachments?: any[], mode?: string) {
-        if (!this._view) return;
-        const webview = this._view.webview;
-
-        // Cancellation: abort any in-flight task, start a fresh controller.
-        this._abortController?.abort();
-        const controller = new AbortController();
-        this._abortController = controller;
-        const signal = controller.signal;
-        this._isGenerating = true;
-
-        const tokenTracker = new TokenTracker();
-        const startedAt = Date.now();
-
-        const browserTool = new BrowserTool();
-        const mcpClient = new MCPClient();
-        const skillsManager = new SkillsManager();
-        const artifactManager = new ArtifactManager(this._context);
-        const knowledgeStore = new KnowledgeStore(this._context);
-        const hooks = new AgentHooks();
-        const checkpoint = this._checkpoints;
-        const codebaseIndex = this._index;
-
-        // `task` is created below once we know the mode and model; until then, log to
-        // the bus without a task envelope is not possible, so config errors surface via
-        // the catch block on the raw webview channel.
-        let task: TaskEmitter | undefined;
-        const log = (msg: string) => {
-            if (task) task.emit({ type: 'Log', level: 'info', message: msg });
-            else webview.postMessage({ type: 'log', value: msg });
-        };
-
-        try {
-            const configJson = await this._secretManager.getKey('llm-config');
-            if (!configJson) throw new Error('No LLM configurations found. Configure a model in Settings first.');
-            const configs: LLMConfigEntry[] = JSON.parse(configJson);
-            const modelConfig = configs.find(c => c.id === modelId);
-            if (!modelConfig) throw new Error(`Configuration for model "${modelId}" not found in Settings.`);
-
-            let settings: any = {};
-            try { const s = await this._secretManager.getKey('general-settings'); if (s) settings = JSON.parse(s); } catch {}
-            // Reasoning display (B6): gate the reasoning stream on the user's toggle. Default
-            // on (unset === true) so existing behavior is preserved; only an explicit `false`
-            // silences it. Controls display only — the model still reasons either way.
-            const showReasoning = settings.enableReasoningDisplay !== false;
-            // Default 25, configurable to 500. Safe to raise only because the context is
-            // now bounded by token budget rather than message count — a long run compacts
-            // instead of overflowing the window.
-            const customModeDef = this._modeLoader.getMode(mode || 'agent');
-            if (customModeDef) {
-                log(`[Telemetry] modes.selected: ${customModeDef.name} (${customModeDef.source})`);
-            }
-
-            const customMaxLoops = customModeDef?.maxIterations;
-            const maxLoops = Math.min(500, Math.max(1, customMaxLoops || Number(settings.maxLoopIterations) || 25));
-
-            const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-
-            let effectiveMode: AgentMode = (customModeDef?.name.toLowerCase() === 'ask' || customModeDef?.name.toLowerCase() === 'plan')
-                ? customModeDef.name.toLowerCase() as AgentMode
-                : 'agent';
-
-            // Classify intent (plan.md "Request Classification"). Logged for visibility and
-            // used to right-size: a pure question never needs the plan-first workflow.
-            const classification = PlanningEngine.classifyRequest(userPrompt);
-            log(`[Classify] ${classification.kind}${classification.isProgramming ? '' : ' (non-programming)'}`);
-
-            if (effectiveMode === 'agent' && classification.kind !== 'question'
-                && PlanningEngine.shouldPlan(userPrompt)) effectiveMode = 'plan';
-            
-            let tools = toolsForMode(effectiveMode);
-            if (customModeDef && customModeDef.tools && customModeDef.tools.length > 0) {
-                tools = tools.filter(t => customModeDef.tools!.includes(t.name));
-            }
-
-            // Browser gating (B1/B2): honor the user's settings on the BrowserTool, and hide
-            // the browser_* tools entirely unless the browser is enabled AND a Playwright
-            // runtime is installed — so the model is never offered a tool that would fail.
-            const browserSettings = readBrowserSettings(settings);
-            browserTool.configure(browserSettings);
-            const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
-            tools = filterToolsForBrowser(tools, browserUsable);
-
-            // Everything from here publishes with a task envelope: sessionId, taskId, traceId.
-            task = this._sessions.beginTask(userPrompt, effectiveMode, modelConfig.model || modelId);
-
-            // Incremental: a warm index only re-reads the files that actually changed.
-            try {
-                const t0 = Date.now();
-                const stats = await codebaseIndex.build(this._secretManager);
-                log(`[Index] ${codebaseIndex.size} chunks — ${stats.indexed} indexed, ${stats.reused} reused, ${stats.removed} removed (${Date.now() - t0}ms).`);
-            } catch (e: any) { log(`[Index] Skipped: ${e?.message || e}`); }
-
-            // Project-aware skills (Phase 2/4): resolve by (agent role + detected stack + prompt),
-            // including the bundled built-in packs, not prompt keywords alone.
-            await skillsManager.discover(this._bundledSkillsDir);
-            const profile = await this._getProjectProfile();
-            const skillRole = roleForMode(customModeDef?.name || effectiveMode);
-            const relevantSkills = resolveSkills({ skills: skillsManager.getAll(), role: skillRole, profile, prompt: userPrompt });
-            const skillInstructions = renderSkills(relevantSkills);
-            if (relevantSkills.length) log(`[Skills] Loaded ${relevantSkills.length}: ${relevantSkills.map(s => s.name).join(', ')}`);
-
-            // MCP tools are exec-class: they hand arguments to an arbitrary external
-            // process. Only Agent mode may call them, so only Agent mode pays the cost
-            // of spawning the servers.
-            let mcpToolDocs = '';
-            if (effectiveMode === 'agent') {
-                const mcpConfigs = await mcpClient.loadConfigs();
-                for (const mc of mcpConfigs) { log(`[MCP] Connecting: ${mc.name}...`); await mcpClient.connectServer(mc); }
-                mcpToolDocs = mcpClient.getToolDescriptions();
-            }
-
-            await hooks.loadFromWorkspace(rootPath);
-            const knowledgeContext = await knowledgeStore.getRelevantContext(userPrompt);
-
-            let projectRules = '';
-            const rulesPath = path.join(rootPath, '.blackide', 'AGENTS.md');
-            if (rootPath && fs.existsSync(rulesPath)) { try { projectRules = `Project Rules:\n${fs.readFileSync(rulesPath, 'utf8')}`; } catch {} }
-
-            const useNative = supportsNativeTools(modelConfig);
-            const modeRules =
-                (customModeDef && customModeDef.systemPrompt) ? customModeDef.systemPrompt
-                : effectiveMode === 'plan' ? PlanningEngine.getPlanningPromptExtension()
-                : effectiveMode === 'ask' ? 'ASK MODE: read-only. Answer using read/search tools only; do not edit files or run commands.'
-                : '';
-            if (effectiveMode === 'plan') log('[Agent] Plan mode: research first, then propose a plan.');
-
-            // Sections are budgeted independently, so a 500KB AGENTS.md or a chatty MCP
-            // server can only ever spend its own allowance — it cannot squeeze out the
-            // agent's own instructions, which is what plain concatenation allowed.
-            const modelLimit = ContextManager.getModelLimit(modelConfig.model || '');
-            const promptBudget = Math.min(12000, Math.floor(modelLimit * 0.15));
-            const built = new PromptBuilder()
-                .add({
-                    name: 'system', required: true, budgetTokens: 1200,
-                    content: `You are the Black IDE Agent, an autonomous coding assistant working in the user's workspace at ${rootPath || '(no folder)'}.
-Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_search to locate code, read a file before editing it, and verify your work with run_command. When finished, call complete_task with a concise summary.`,
-                })
-                .add({ name: 'mode', required: true, budgetTokens: 600, content: modeRules })
-                .add({
-                    name: 'tool_protocol', required: true, budgetTokens: 2500,
-                    content: useNative ? '' : `To act, output ONE JSON tool call in a \`\`\`json fenced block:\n${renderToolDocs(tools)}`,
-                })
-                .add({ name: 'project_rules', budgetTokens: 1500, content: projectRules })
-                .add({ name: 'user_instructions', budgetTokens: 800, content: settings.customSystemPrompt ? `User Custom Instructions:\n${settings.customSystemPrompt}` : '' })
-                .add({ name: 'skills', budgetTokens: 1500, content: skillInstructions })
-                .add({ name: 'mcp_tools', budgetTokens: 1200, content: mcpToolDocs ? `External MCP tools available:\n${mcpToolDocs}` : '' })
-                .add({ name: 'knowledge', budgetTokens: 2000, content: knowledgeContext })
-                .build(promptBudget);
-
-            const system = built.text;
-            const overflowed = built.sections.filter(s => s.truncated || s.dropped);
-            if (overflowed.length) {
-                log(`[Prompt] ${built.totalTokens}/${promptBudget} tokens — ${overflowed.map(s => `${s.name} ${s.dropped ? 'dropped' : 'truncated'}`).join(', ')}.`);
-            }
-
-            webview.postMessage({ type: 'agentMode', value: effectiveMode });
-
-            // Advertise each MCP tool with the server's real input schema. Empty outside
-            // Agent mode, since we never connected there.
-            tools.push(...mcpClient.getToolDefinitions());
-
-            const { images, text: attachText } = readAttachments(attachments);
-            const initialMessage: ChatMessage = {
-                role: 'user',
-                content: `${userPrompt}${attachText ? `\n${attachText}` : ''}`,
-                images: images.length ? images : undefined,
-            };
-
-            const approve = this._buildApprovalGate({ settings, interactive: true, log });
-
-            const emit = (e: Parameters<TaskEmitter['emit']>[0]) => task?.emit(e);
-
-            const baseDeps = (spawnSubagent?: ExecutorDeps['spawnSubagent']): ExecutorDeps => ({
-                mode: effectiveMode,
-                rootPath, browserTool, mcpClient, artifactManager, knowledgeStore, codebaseIndex, checkpoint,
-                log, approve, signal, commandTimeoutMs: 120000,
-                onPlan: (steps) => emit({ type: 'PlanUpdated', steps }),
-                onArtifact: (artifact) => emit({ type: 'ArtifactCreated', artifact }),
-                onTerminalChunk: (stream, text) => emit({ type: 'TerminalChunk', stream, text }),
-                onFileChanged: (p, kind) => {
-                    emit({ type: 'FileChanged', path: p, kind });
-                    if (p.endsWith('features_plan.md') || p.endsWith('project_mindmap.md')) {
-                        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(p));
-                    }
-                },
-                scheduleTask: (tc) => this._scheduleAgentTask(tc, modelId, webview, effectiveMode),
-                cancelTask: (id) => this._scheduler.cancel(id),
-                spawnSubagent,
-            });
-
-            // A subagent inherits the parent's mode. Handing it toolsForMode('agent')
-            // would let a read-only Ask/Plan session edit files and run commands through
-            // a delegate that outranks its own parent.
-            const spawnSubagent = async (name: string, task: string, targetMode?: string): Promise<string> => {
-                const subMode = targetMode || effectiveMode;
-                log(`[Subagent: ${name}] Starting in ${subMode} mode with git worktree isolation...`);
-                
-                const subagentId = 'sa_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
-                const branchName = 'sa-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + subagentId;
-                
-                webview.postMessage({
-                    type: 'agentEvent',
-                    value: { type: 'SubagentStarted', subagentId, name, task }
-                });
-
-                const subController = new AbortController();
-                this._subagentAbortControllers.set(subagentId, subController);
-
-                let worktreeDir = '';
-                // Set true if reconciling the subagent's work back to the live tree fails,
-                // so the finally leaves the worktree in place instead of discarding the
-                // (real, completed) work along with it.
-                let preserveWorktree = false;
-                try {
-                    worktreeDir = await worktreeManager.createWorktree(branchName);
-                    // git worktree add only clones committed HEAD — sync the parent's
-                    // uncommitted live state in, then commit a baseline to diff against.
-                    // Without the baseline + delta below, the old mergeWorktree() merged
-                    // zero commits and every file the subagent wrote was silently dropped.
-                    await worktreeManager.syncUncommittedChanges(branchName);
-                    const baseline = await worktreeManager.commitWorktreeChanges(branchName, `subagent baseline: ${name}`);
-                    webview.postMessage({
-                        type: 'agentEvent',
-                        value: { type: 'SubagentProgress', subagentId, progress: 'Isolated worktree created. Starting agent loop...' }
-                    });
-
-                    // Build deps for subagent scoped to worktree root path. Own checkpoint
-                    // store (not the shared this._checkpoints) so worktree-path snapshots
-                    // don't bleed into the parent chat task's undo history.
-                    const subDeps = {
-                        ...baseDeps(undefined),
-                        rootPath: worktreeDir,
-                        checkpoint: new CheckpointManager(),
-                        onTerminalChunk: (stream: 'stdout' | 'stderr', text: string) => {
-                            webview.postMessage({
-                                type: 'agentEvent',
-                                value: { type: 'SubagentProgress', subagentId, progress: text.slice(0, 100) }
-                            });
-                        }
-                    };
-
-                    const subExec = new AgentToolExecutor(subDeps);
-                    const subSystem = `You are a focused sub-agent. Complete ONLY this task, then call complete_task with your result.`;
-                    
-                    let subTools = toolsForMode(subMode as AgentMode);
-                    const subModeDef = this._modeLoader.getMode(subMode);
-                    if (subModeDef?.tools) {
-                        subTools = subTools.filter(t => subModeDef.tools!.includes(t.name));
-                    }
-                    
-                    const res = await runAgentLoop({
-                        modelConfig, system: subSystem, initialMessage: { role: 'user', content: task },
-                        tools: subTools, executor: subExec, maxLoops: 15,
-                        signal: subController.signal,
-                        callbacks: {
-                            onToolCall: (tc) => {
-                                log(`[Subagent: ${name}] calling ${tc.name}`);
-                                webview.postMessage({
-                                    type: 'agentEvent',
-                                    value: { type: 'SubagentProgress', subagentId, progress: `Calling tool: ${tc.name}` }
-                                });
-                            }
-                        },
-                    });
-
-                    if (subController.signal.aborted) {
-                        throw new Error('Cancelled by user');
-                    }
-
-                    webview.postMessage({
-                        type: 'agentEvent',
-                        value: { type: 'SubagentProgress', subagentId, progress: 'Loop finished. Applying changes to workspace...' }
-                    });
-
-                    // Commit the subagent's work, then apply just the baseline→exec delta to
-                    // the live tree (same reconciliation the pipeline uses — a plain git merge
-                    // would spuriously conflict on every file the live tree already had dirty).
-                    const execSha = await worktreeManager.commitWorktreeChanges(branchName, `subagent: ${name}`);
-                    try {
-                        await worktreeManager.applyDelta(branchName, baseline, execSha);
-                    } catch (mergeErr: any) {
-                        preserveWorktree = true;
-                        throw new Error(
-                            `Subagent "${name}" completed, but applying its changes failed: ${mergeErr.message}. ` +
-                            `The work is preserved on git branch "${branchName}" at ${worktreeDir} — apply it with ` +
-                            `'git merge ${branchName}', or discard with 'git worktree remove --force "${worktreeDir}"'.`
-                        );
-                    }
-
-                    webview.postMessage({
-                        type: 'agentEvent',
-                        value: { type: 'SubagentFinished', subagentId, ok: true }
-                    });
-
-                    log(`[Subagent: ${name}] Applied and complete.`);
-                    return res.finalText;
-
-                } catch (err: any) {
-                    log(`[Subagent: ${name}] Failed: ${err.message || err}`);
-                    webview.postMessage({
-                        type: 'agentEvent',
-                        value: { type: 'SubagentFinished', subagentId, ok: false, error: err.message || String(err) }
-                    });
-                    throw err;
-                } finally {
-                    this._subagentAbortControllers.delete(subagentId);
-                    // Leave the worktree in place when reconciliation failed — removing it
-                    // would discard the completed work the error message points the user to.
-                    if (worktreeDir && !preserveWorktree) {
-                        try {
-                            await worktreeManager.removeWorktree(branchName);
-                        } catch (e: any) {
-                            log(`[Subagent: ${name}] Failed removing worktree ${branchName}: ${e.message}`);
-                        }
-                    }
-                }
-            };
-
-            const executor = new AgentToolExecutor(baseDeps(spawnSubagent));
-
-            // Tool timing is measured here, not inside the executor, so the duration in
-            // the timeline is the duration the user actually waited (approval included).
-            const toolStartedAt = new Map<string, number>();
-
-            const result = await runAgentLoop({
-                modelConfig, system, initialMessage,
-                priorMessages: this._conversation,
-                tools, executor, maxLoops, signal,
-                context: new ContextManager(modelLimit),
-                callbacks: {
-                    onTurn: (n, maxTurns) => {
-                        emit({ type: 'TurnStarted', turn: n });
-                        const warningThreshold = Math.floor(maxTurns * 0.8);
-                        if (n === warningThreshold) {
-                            webview.postMessage({
-                                type: 'loopLimitWarning',
-                                value: {
-                                    currentTurn: n,
-                                    maxTurns,
-                                    remaining: maxTurns - n,
-                                }
-                            });
-                        }
-                    },
-                    onLoopLimitReached: async (currentTurn, maxTurns) => {
-                        const action = await vscode.window.showWarningMessage(
-                            `Agent reached the iteration limit (${maxTurns}). Would you like to continue?`,
-                            'Continue (+10 iterations)',
-                            'Continue (+25 iterations)',
-                            'Stop'
-                        );
-                        if (action?.startsWith('Continue')) {
-                            const extra = action.includes('+10') ? 10 : 25;
-                            return { continueWith: extra };
-                        }
-                        return { continueWith: 0 };
-                    },
-                    onReasoningStart: () => { if (showReasoning) webview.postMessage({ type: 'startReasoning' }); },
-                    onToken: (t) => {
-                        // Reasoning tokens stream straight to the view: at 60fps an event
-                        // envelope per token is pure overhead. Suppressed when the user turns
-                        // reasoning display off (B6).
-                        if (showReasoning) webview.postMessage({ type: 'streamReasoning', value: t });
-                    },
-                    onToolCall: (tc) => {
-                        toolStartedAt.set(tc.id, Date.now());
-                        const arg = tc.arguments?.path || tc.arguments?.command || tc.arguments?.query || '';
-                        emit({ 
-                            type: 'ToolStarted', 
-                            toolCallId: tc.id, 
-                            name: tc.name, 
-                            summary: String(arg).slice(0, 200),
-                            arguments: tc.arguments
-                        });
-                    },
-                    onToolResult: async (tc, r) => {
-                        emit({
-                            type: 'ToolFinished',
-                            toolCallId: tc.id,
-                            name: tc.name,
-                            ok: !r.isError,
-                            durationMs: Date.now() - (toolStartedAt.get(tc.id) ?? Date.now()),
-                            summary: (r.content || '').slice(0, 200),
-                            output: r.content || '',
-                        });
-                        if (r.isError) await hooks.run('onError', { action: tc.name, error: r.content });
-                        else await hooks.run('afterToolCall', { action: tc.name });
-                    },
-                    onCompaction: (dropped, total) =>
-                        log(`[Context] Window filled — compacted ${dropped} older messages (now ~${total} tokens).`),
-                    onUsage: (promptChars, response) => {
-                        const u = this._trackAndEmitUsage(tokenTracker, modelConfig.model || '', promptChars, response, emit);
-                        // Chat-only: the status-bar token/cost readout (the pipeline surfaces
-                        // the same data through the TokenUsage event above).
-                        webview.postMessage({ type: 'tokenUsage', value: {
-                            turnTokens: tokenTracker.formatTokens(u.turnTokens),
-                            totalTokens: tokenTracker.formatTokens(u.totalTokens),
-                            totalCost: tokenTracker.formatCost(u.totalCost),
-                            turns: u.summary.turns,
-                        } });
-                    },
-                },
-            });
-
-            await hooks.run('beforeResponse', {});
-
-            // Carry the turns forward so the next prompt is not amnesiac. ContextManager
-            // bounds this on the way into the model, so it can grow without unbounding cost.
-            this._conversation = result.messages;
-
-            // Persist pruned conversation so multi-turn memory survives window reload
-            const pruned = this._pruneForPersistence(this._conversation);
-            await this._historyStore.setConversationState(this._activeThreadId, pruned);
-
-            // Close the transaction. Committing produces the reverse patches that make
-            // undo and per-file restore possible — and pins them to this message.
-            const messageId = task.meta.taskId;
-            const committed = checkpoint.commit(messageId, userPrompt.slice(0, 60), rootPath, messageId);
-            if (committed) {
-                checkpoint.pruneOldest(50);
-                emit({ type: 'CheckpointCreated', checkpointId: committed.id, files: committed.files.map(f => f.relPath) });
-                webview.postMessage({
-                    type: 'checkpointAvailable',
-                    value: {
-                        checkpointId: committed.id,
-                        messageId,
-                        files: committed.files.map(f => ({
-                            path: f.path,
-                            relPath: f.relPath,
-                            kind: f.kind,
-                            stat: diffStat(f),
-                            reviewState: f.reviewState,
-                        })),
-                    },
-                });
-            }
-
-            // ── Plan Detection: Antigravity Two-Phase Gate ──────────────────────
-            // If the planning loop produced implementation_plan + task_list artifacts,
-            // transition to awaiting_approval instead of completing the task.
-            if (!result.aborted && effectiveMode === 'plan') {
-                const allArtifacts = artifactManager.list();
-                const planArtifact = allArtifacts.find(a => a.name.includes('implementation_plan'));
-                const taskArtifact = allArtifacts.find(a => a.name.includes('task_list'));
-
-                if (planArtifact && taskArtifact) {
-                    const planContent = fs.readFileSync(planArtifact.path, 'utf8');
-                    const taskContent = fs.readFileSync(taskArtifact.path, 'utf8');
-
-                    this._pendingApproval = {
-                        planContent, taskContent,
-                        planPath: planArtifact.path,
-                        taskPath: taskArtifact.path,
-                        originalPrompt: userPrompt,
-                        modelId, attachments, mode,
-                    };
-
-                    // Persist so approval survives a window reload
-                    try {
-                        await this._historyStore.setConversationState(
-                            `pending-plan-${this._activeThreadId}`,
-                            [{ role: 'user', content: JSON.stringify(this._pendingApproval) }]
-                        );
-                    } catch {}
-
-                    emit({
-                        type: 'PlanApprovalRequested',
-                        planPath: planArtifact.path,
-                        taskPath: taskArtifact.path,
-                        planContent,
-                        taskContent,
-                    });
-                    webview.postMessage({
-                        type: 'planApprovalRequested',
-                        value: { planContent, taskContent, planPath: planArtifact.path, taskPath: taskArtifact.path }
-                    });
-                    webview.postMessage({ type: 'finalResponse', value: result.finalText });
-                    webview.postMessage({ type: 'taskComplete' });
-                    return; // Exit — do NOT post finalResponse again; await user approval
-                }
-            }
-
-            if (result.aborted) {
-                emit({ type: 'TaskCancelled', durationMs: Date.now() - startedAt });
-                webview.postMessage({ type: 'finalResponse', value: 'Task cancelled by user.' });
-            } else {
-                emit({ type: 'TaskCompleted', finalText: result.finalText, turns: result.turns, durationMs: Date.now() - startedAt });
-                webview.postMessage({ type: 'finalResponse', value: result.finalText });
-                
-                // Generate a title for the conversation asynchronously
-                this._generateConversationTitle(userPrompt, modelConfig).catch(e => log(`[Title] Failed to generate title: ${e.message}`));
-            }
-
-            webview.postMessage({ type: 'taskComplete' });
-        } catch (error: any) {
-            task?.emit({ type: 'TaskFailed', error: error.message, durationMs: Date.now() - startedAt });
-            log(`[Agent Error] ${error.message}`);
-            await hooks.run('onError', { error: error.message });
-            webview.postMessage({ type: 'taskError', value: error.message });
-            vscode.window.showErrorMessage(error.message);
-        } finally {
-            this._isGenerating = false;
-            if (this._abortController === controller) this._abortController = undefined;
-            try { await browserTool.close(); } catch {}
-            try { await mcpClient.disconnectAll(); } catch {}
-        }
+        return runAgentTask({
+            context: this._context,
+            secretManager: this._secretManager,
+            historyStore: this._historyStore,
+            checkpoints: this._checkpoints,
+            codebaseIndex: this._index,
+            modeLoader: this._modeLoader,
+            sessions: this._sessions,
+            scheduler: this._scheduler,
+            skillDiagnostics: this._skillDiagnostics,
+            bundledSkillsDir: this._bundledSkillsDir,
+            session: this._session,
+            view: this._view,
+            getProjectProfile: () => this._getProjectProfile(),
+            generateConversationTitle: (p, m) => this._generateConversationTitle(p, m),
+            scheduleAgentTask: (tc, id, wv, m) => this._scheduleAgentTask(tc, id, wv, m),
+        }, userPrompt, modelId, attachments, mode);
     }
-
-    // ─── Phase 2: Execution Loop (Antigravity Pattern) ──────────────────
-    // Runs after the user approves the plan. Uses full agent mode with the
-    // approved plan + task list injected into the system prompt.
 
     private async _runAgentTaskExecution(
         originalPrompt: string,
@@ -2295,9 +841,9 @@ Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_
     }
 
     private async _generateConversationTitle(userPrompt: string, modelConfig: LLMConfigEntry) {
-        if (!this._activeThreadId) return;
+        if (!this._session.activeThreadId) return;
         const threads = this._historyStore.getThreads();
-        const thread = threads.find((t: any) => t.id === this._activeThreadId);
+        const thread = threads.find((t: any) => t.id === this._session.activeThreadId);
         if (thread && thread.title && thread.title !== 'New Session' && thread.title !== 'New Conversation') return; // Already has a title
 
         try {
@@ -2316,7 +862,7 @@ Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_
                 if (thread) {
                     await this._historyStore.saveThread(thread.id, finalTitle, thread.messages || []);
                 } else {
-                    await this._historyStore.saveThread(this._activeThreadId, finalTitle, []);
+                    await this._historyStore.saveThread(this._session.activeThreadId, finalTitle, []);
                 }
                 
                 if (this._view) {
@@ -2337,7 +883,7 @@ Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_
         const a = tc.arguments || {};
         const id = a.name || `schedule-${Date.now()}`;
         const run = () => {
-            if (this._isGenerating) { webview.postMessage({ type: 'log', value: `[Scheduler] Skipped "${id}" — agent busy.` }); return; }
+            if (this._session.isGenerating) { webview.postMessage({ type: 'log', value: `[Scheduler] Skipped "${id}" — agent busy.` }); return; }
             webview.postMessage({ type: 'log', value: `[Scheduler] Running "${id}" in ${mode} mode...` });
             this._runAgentTask(a.taskPrompt, modelId, undefined, mode);
         };
@@ -2362,176 +908,10 @@ Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_
     }
 
     public async generateCommitMessage() {
-        const rootPath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-        if (!rootPath) {
-            vscode.window.showErrorMessage('No workspace folder open');
-            return;
-        }
-
-        const gitExtension = vscode.extensions.getExtension<any>('vscode.git')?.exports;
-        if (!gitExtension) {
-            vscode.window.showErrorMessage('Git extension not found');
-            return;
-        }
-
-        const git = gitExtension.getAPI(1);
-        const repo = git.repositories[0];
-        if (!repo) {
-            vscode.window.showErrorMessage('No Git repository found in workspace');
-            return;
-        }
-
-        const { exec } = require('child_process');
-
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Generating commit message...",
-            cancellable: false
-        }, async () => {
-            return new Promise<void>((resolve) => {
-                // Get git status porcelain to find all changes (including untracked files)
-                exec('git status --porcelain', { cwd: rootPath }, async (err: any, statusOut: string) => {
-                    const lines = (statusOut || '').trim().split(/\r?\n/).filter(line => line.trim());
-                    if (lines.length === 0) {
-                        vscode.window.showInformationMessage('No changes detected to generate commit message.');
-                        resolve();
-                        return;
-                    }
-
-                    const untrackedFiles: string[] = [];
-                    const trackedChanges: string[] = [];
-
-                    for (const line of lines) {
-                        const status = line.slice(0, 2);
-                        const filePath = line.slice(3).replace(/^"|"$/g, '').trim();
-
-                        if (status === '??') {
-                            untrackedFiles.push(filePath);
-                        } else {
-                            trackedChanges.push(filePath);
-                        }
-                    }
-
-                    // 1. Get diff of tracked files (both staged and unstaged against HEAD)
-                    const getTrackedDiff = () => {
-                        return new Promise<string>((res) => {
-                            if (trackedChanges.length === 0) {
-                                res('');
-                                return;
-                            }
-                            exec('git diff HEAD', { cwd: rootPath }, (errDiff: any, stdoutDiff: string) => {
-                                res(stdoutDiff || '');
-                            });
-                        });
-                    };
-
-                    // 2. Read contents of untracked files to construct mock diffs
-                    const getUntrackedDiffs = () => {
-                        let untrackedDiff = '';
-                        for (const file of untrackedFiles) {
-                            try {
-                                const absPath = path.join(rootPath, file);
-                                if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
-                                    const content = fs.readFileSync(absPath, 'utf8');
-                                    // limit size to prevent context overflow (e.g. max 10KB per untracked file)
-                                    const preview = content.length > 10000 ? content.slice(0, 10000) + '\n... (truncated)' : content;
-                                    untrackedDiff += `\n\n--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${preview.split('\n').length} @@\n`;
-                                    untrackedDiff += preview.split('\n').map(l => '+' + l).join('\n');
-                                }
-                            } catch (e) {
-                                // skip unreadable files
-                            }
-                        }
-                        return untrackedDiff;
-                    };
-
-                    const trackedDiff = await getTrackedDiff();
-                    const untrackedDiff = getUntrackedDiffs();
-
-                    const diffContent = (trackedDiff + untrackedDiff).trim();
-
-                    if (!diffContent) {
-                        vscode.window.showInformationMessage('No readable changes detected.');
-                        resolve();
-                        return;
-                    }
-
-                    await this._requestLlmCommitMessage(diffContent, repo, resolve);
-                });
-            });
-        });
-    }
-
-    private async _requestLlmCommitMessage(diff: string, repo: any, resolve: () => void) {
-        try {
-            const configJson = await this._secretManager.getKey('llm-config');
-            if (!configJson) {
-                vscode.window.showErrorMessage('No LLM configurations found. Please configure models in settings.');
-                resolve();
-                return;
-            }
-
-            const configs: LLMConfigEntry[] = JSON.parse(configJson);
-            let activeModelId = '';
-            try {
-                const settingsRaw = await this._secretManager.getKey('general-settings');
-                if (settingsRaw) {
-                    const settings = JSON.parse(settingsRaw);
-                    activeModelId = settings.selectedModelId || '';
-                }
-            } catch {}
-
-            const modelConfig = configs.find(c => c.id === activeModelId) || configs.find(c => c.enabled !== false) || configs[0];
-            if (!modelConfig) {
-                vscode.window.showErrorMessage('No active or enabled model configured');
-                resolve();
-                return;
-            }
-
-            const prompt = `You are an expert developer. Generate a concise, high-quality git commit message following the Conventional Commits specification for the following changes. Do not include any explanations, greetings, markdown formatting, or bullet points. Output ONLY the raw commit message itself, in a single line if possible, or with a description if the changes are complex.
-
-Here is the git diff:
-${diff}`;
-
-            let commitMessage = '';
-            await LLMClient.streamCompletion(modelConfig, prompt, (token) => {
-                commitMessage += token;
-            });
-
-            if (commitMessage) {
-                repo.inputBox.value = commitMessage.trim();
-            } else {
-                vscode.window.showWarningMessage('Empty commit message generated.');
-            }
-        } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to generate commit message: ${err.message}`);
-        } finally {
-            resolve();
-        }
+        return generateCommitMessageCore(this._secretManager);
     }
 
     public getHtmlForWebview(webview: vscode.Webview, viewType: 'chat' | 'settings' | 'manager' = 'chat'): string {
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'dist', 'webview', 'assets', 'index.js'));
-        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'dist', 'webview', 'assets', 'index.css'));
-        const avatarUri = webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'resources', 'agent-avatar.png'));
-
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Black IDE Assistant</title>
-    <link href="${styleUri}" rel="stylesheet" />
-    <script>
-        window.agentAvatarUri = "${avatarUri}";
-        window.isSettingsPanel = ${viewType === 'settings'};
-        window.isManagerPanel = ${viewType === 'manager'};
-    </script>
-</head>
-<body class="bg-background text-white select-none">
-    <div id="root"></div>
-    <script type="module" src="${scriptUri}"></script>
-</body>
-</html>`;
+        return buildWebviewHtml(webview, this._context.extensionUri, viewType);
     }
 }

@@ -90,7 +90,9 @@ A surgical undo system that keeps the agent from permanently breaking your code:
 
 ### 🔍 Semantic Codebase Indexing
 
-A local RAG pipeline backed by an on-disk index — code chunks in `codebase-index.json` and their embedding vectors in a companion `vectors.bin`, ranked by fusing semantic similarity and BM25 via Reciprocal Rank Fusion (RRF). Chunking is **AST-aware** — code is split on class and function boundaries rather than arbitrary character counts, so retrieved context contains whole functions with intact signatures.
+A local RAG pipeline backed by an on-disk index — code chunks in `codebase-index.json` and their embedding vectors in a companion `vectors.bin`, ranked by fusing semantic similarity and BM25 via Reciprocal Rank Fusion (RRF).
+
+Chunking is currently a **fixed 50-line sliding window with 10 lines of overlap** (`CHUNK_LINES` / `CHUNK_OVERLAP` in `core/codebase-index.ts`), so a retrieved chunk may start or end mid-function. Symbol-aware chunking on function/class boundaries is planned — see [`docs/notes/enhancement.md`](docs/notes/enhancement.md) (E2).
 
 ### 🌲 Parallel Subagent Isolation (Git Worktrees)
 

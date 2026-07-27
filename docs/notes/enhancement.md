@@ -574,14 +574,14 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 
 | ID | Missing capability | Pri | Enh | Phase |
 |---|---|:--:|:--:|:--:|
-| M1 | Doc claims corrected (AST chunking, provider failover) | P0 | E0 | 0 |
-| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 |
-| M3 | Golden-task eval set + scoring | P0 | E0 | 0 |
-| M4 | Vitest migration off the bespoke harness | P0 | E0 | 0 |
-| M5 | Skill validation diagnostics UI + skills-fired telemetry | P1 | E0 | 0 |
-| M6 | On-demand `get_diagnostics` tool | P0 | E22 | 1 |
-| M7 | LSP navigation tools (definition, references, symbols, hover, rename, code actions) | P0 | E22 | 1 |
-| M8 | Structured `run_tests` with per-framework result parsing | P0 | E24 | 1 |
+| M1 | Doc claims corrected (AST chunking, provider failover) | P0 | E0 | 0 ✅ |
+| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ |
+| M3 | Golden-task eval set + scoring | P0 | E0 | 0 ✅ |
+| M4 | Vitest migration off the bespoke harness | P0 | E0 | 0 ✅ |
+| M5 | Skill validation diagnostics UI + skills-fired telemetry | P1 | E0 | 0 ✅ |
+| M6 | On-demand `get_diagnostics` tool | P0 | E22 | 1 ✅ |
+| M7 | LSP navigation tools (definition, references, symbols, hover, rename, code actions) | P0 | E22 | 1 ✅ |
+| M8 | Structured `run_tests` with per-framework result parsing | P0 | E24 | 1 ✅ |
 | M9 | Rules v2 — `.blackide/rules/*.md`, globs, activation modes, priority | P1 | E6 | 2 |
 | M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 |
 | M11 | Team / org shared rules | P2 | E6 | 2 |
@@ -666,6 +666,21 @@ ordered so that each one's dependencies are already merged.
   `docs/mindmap/tech.md`, `docs/wiki_docs/Architecture-and-KT-Guide.md`.
 - Decompose `extension.ts` (2537 → ~5 modules ≤600 LOC): `chat-controller`, `pipeline-entry`,
   `command-registry`, `webview-host`, `settings-host`. Pure move-and-wire, zero behaviour change.
+  > **Done: 2537 → 917 LOC (−64%)**, nine modules — `core/webview-html.ts`,
+  > `core/commit-message.ts`, `core/settings-panel.ts`, `core/manager-panel.ts`,
+  > `core/command-registry.ts`, `core/chat-session.ts`, `core/webview-message-handler.ts`,
+  > `agent/pipeline-entry.ts`, `agent/chat-task.ts`. Harness 426/426, vitest 99/99 and 19
+  > real-host integration tests green after every step.
+  >
+  > The two giants needed a design decision, not a mechanical move. `_runAgentTask`
+  > *reassigns* conversation and approval state partway through while the webview handler
+  > reads it afterwards, so passing values would have handed the extracted code a stale
+  > snapshot — a silent correctness bug of exactly the kind this refactor must not introduce.
+  > `core/chat-session.ts` holds that state in one object shared by reference, which is also
+  > the shape Phase 11's vscode-free `agent-core` needs. The webview router keeps a wide
+  > (18-member) `WebviewMessageHost` interface deliberately: dispatching UI intents onto
+  > provider operations is what a router is, and naming them makes the coupling testable
+  > for the first time.
 - Close out `plan.md` Phase 6: skill validation diagnostics UI + `skillsFired` telemetry.
 - **Golden-task eval set:** 8–10 tasks × 6 stacks (Django, FastAPI, Node/Nest, .NET, React/Next,
   Rust/Go) with a scoring rubric + runner script; publish `docs/notes/eval-baseline.md`.
@@ -687,6 +702,33 @@ extension entry path.
 **Gate:** symbol questions resolve via LSP not grep on the eval set; `rename_symbol` across 5+
 files leaves a compiling tree; a failing suite returns <2 KB where raw output was >50 KB.
 **Why first:** days of work, no new dependencies, and it lifts every later phase's accuracy.
+
+> ### ✅ Delivered 2026-07-27
+> `tools/lsp-tools.ts` (7 tools) · `core/test-report.ts` (pure selection + 7 parsers) ·
+> wired into `agent/tool-executor.ts`, both executor construction sites, all 11 mode
+> allowlists, the chat system prompt and the Testing Executor prompt.
+> **Harness 426/426 · vitest 82/82 (+52) · eval no regression.**
+>
+> **Gate status.** The output-size gate is **met and asserted in CI**: a 30 KB pytest run with
+> 800 passing cases and one failure formats to <2 KB (`__tests__/test-report.test.ts`). The
+> other two gates are **partially met**: they need a live extension host, so what is asserted
+> today is the wiring and the pure logic (tool surface per mode, symbol-position resolution,
+> parser behaviour) rather than end-to-end LSP round-trips. Real-host assertions for
+> `rename_symbol` across 5+ files belong in `test/integration`, and "resolves via LSP not grep"
+> needs the model tier. Both are noted in `eval-baseline.md` rather than claimed.
+>
+> **Two defects found and fixed while building:**
+> - `findSymbolPosition` used `\b` boundaries, which never match before a leading `$` — so
+>   `$scope`, jQuery's `$`, and every PHP variable would silently fail to resolve. Replaced with
+>   identifier-aware lookarounds treating `$` as an identifier character.
+> - The declaration-preference heuristic omitted Go's `func` and C#'s `record`, demoting real
+>   declarations in two of the eval stacks to "first textual hit" (usually an import line).
+>
+> **Trap worth recording:** every built-in mode declares an explicit `tools` allowlist, and
+> `_runAgentTask` filters the advertised list through it. A tool can be registered, implemented
+> and permitted by the sandbox gate and *still* never be offered to the model, silently, in
+> every mode that declares a list. `LSP_READ_TOOLS` in `core/tools.ts` is now the single place
+> to add one, and `__tests__/tool-surface.test.ts` asserts every declaring mode admits them.
 
 ### Phase 2 — Rules, prompts & modes
 *Covers M9–M13.*

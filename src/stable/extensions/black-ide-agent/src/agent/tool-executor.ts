@@ -11,6 +11,9 @@ import { ArtifactManager } from './artifact-manager';
 import { KnowledgeStore } from '../memory/knowledge-store';
 import { CheckpointManager } from '../core/checkpoint-manager';
 import { CodebaseIndex } from '../core/codebase-index';
+import { ProjectProfile } from '../core/project-profiler';
+import { selectTestCommand, parseTestOutput, formatTestReport } from '../core/test-report';
+import * as LspTools from '../tools/lsp-tools';
 
 export interface ApprovalRequest {
     kind: 'edit' | 'create' | 'exec' | 'mcp';
@@ -44,6 +47,12 @@ export interface ExecutorDeps {
     cancelTask?: (id: string) => void;
     /** Provided by the main loop; undefined inside a subagent to prevent recursion. */
     spawnSubagent?: (name: string, task: string) => Promise<string>;
+    /**
+     * Detected stack, used by `run_tests` to pick the project's test command
+     * (Phase 1). Optional: when absent the tool says so and points at run_command
+     * rather than guessing a command for the wrong ecosystem.
+     */
+    getProjectProfile?: () => Promise<ProjectProfile>;
 }
 
 /** Executes a single tool call and returns a structured result for the model. */
@@ -210,6 +219,82 @@ export class AgentToolExecutor {
                     this.d.onFileChanged?.(mindmapPath, 'modified');
                     return this.ok(tc, `Mindmap updated: section "${a.section}".`);
                 }
+                // ─── Language-server tools (Phase 1) ─────────────────────────
+                // Read-only and self-degrading: when no server answers, each falls
+                // back to grep with an explicit note rather than erroring, so a cold
+                // server never turns into a task failure.
+                case 'get_diagnostics':
+                    return this.ok(tc, await LspTools.getDiagnostics(a.path, a.severity));
+                case 'go_to_definition':
+                    return this.ok(tc, await LspTools.goToDefinition(a.path, a.symbol, a.line));
+                case 'find_references':
+                    return this.ok(tc, await LspTools.findReferences(a.path, a.symbol, a.line));
+                case 'workspace_symbols':
+                    return this.ok(tc, await LspTools.workspaceSymbols(a.query));
+                case 'hover':
+                    return this.ok(tc, await LspTools.hoverInfo(a.path, a.symbol, a.line));
+                case 'code_actions':
+                    return this.ok(tc, await LspTools.codeActions(a.path, a.symbol, a.line));
+
+                case 'rename_symbol': {
+                    const plan = await LspTools.planRename(a.path, a.symbol, a.new_name, a.line);
+                    if ('error' in plan) return this.ok(tc, plan.error);
+
+                    // Snapshot every affected file *before* asking, so the checkpoint
+                    // exists no matter which way approval goes and a rejected-then-
+                    // retried rename cannot lose the pre-rename content.
+                    for (const file of plan.files) this.d.checkpoint.snapshot(file);
+
+                    const summary = LspTools.describeRenamePlan(plan, a.symbol, a.new_name);
+                    // A project-wide rename is reviewed as one edit: the diff view takes
+                    // a single before/after, so the file list is what the user approves.
+                    const approved = await this.d.approve({
+                        kind: 'edit',
+                        path: `${plan.files.length} file(s)`,
+                        originalContent: summary,
+                        updatedContent: summary,
+                    });
+                    if (!approved) return this.ok(tc, `User rejected the rename of "${a.symbol}".`);
+
+                    const applied = await vscode.workspace.applyEdit(plan.workspaceEdit);
+                    if (!applied) return this.err(tc, `The editor refused the rename edit for "${a.symbol}".`);
+
+                    // applyEdit leaves the documents dirty; without saving, the change
+                    // is invisible to git, to the test runner, and to the next tool call.
+                    for (const file of plan.files) {
+                        try {
+                            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+                            if (doc.isDirty) await doc.save();
+                        } catch { /* a file the provider touched but we cannot reopen */ }
+                        this.d.onFileChanged?.(file, 'modified');
+                    }
+                    return this.ok(tc, `${summary}\nApplied and saved.`);
+                }
+
+                case 'run_tests': {
+                    const profile = await this.d.getProjectProfile?.();
+                    if (!profile) return this.ok(tc, 'Project profile unavailable, so no test command could be selected. Use run_command with the project\'s own test command.');
+
+                    const selected = selectTestCommand(profile, a.scope);
+                    if (!selected) {
+                        return this.ok(tc, `No test framework detected for this project (stacks: ${profile.stacks.join(', ') || 'none'}). Use run_command with the project's own test command.`);
+                    }
+
+                    // Exec-class: goes through the same approval/policy gate as run_command.
+                    const approved = await this.d.approve({ kind: 'exec', command: selected.command });
+                    if (!approved) return this.ok(tc, `User/policy rejected the test command: ${selected.command}`);
+
+                    const r = await ToolRunner.executeCommand(
+                        selected.command, this.d.rootPath,
+                        // Test suites legitimately run longer than a normal command.
+                        Math.max(this.d.commandTimeoutMs ?? 120000, 300000),
+                        this.d.signal,
+                        (stream, text) => this.d.onTerminalChunk?.(stream, text),
+                    );
+                    const report = parseTestOutput(selected.framework, r, selected.command);
+                    return this.ok(tc, formatTestReport(report));
+                }
+
                 case 'remember': {
                     await this.d.knowledgeStore.save(a.key, {
                         summary: a.summary,

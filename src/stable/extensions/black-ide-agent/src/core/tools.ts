@@ -7,6 +7,19 @@ import { AgentMode, ToolDefinition } from './types';
 
 const s = (description: string) => ({ type: 'string' as const, description });
 
+/**
+ * Read-only language-server tools (Phase 1).
+ *
+ * Exported as a group because every built-in mode declares an explicit `tools`
+ * allowlist, and a tool absent from that list is filtered out before the model ever
+ * sees it — being `risk: 'safe'` is not enough. Referencing this constant from
+ * `mode-loader.ts` means a future LSP tool is added to every mode in one edit
+ * instead of thirteen.
+ */
+export const LSP_READ_TOOLS = [
+    'get_diagnostics', 'go_to_definition', 'find_references', 'workspace_symbols', 'hover', 'code_actions',
+] as const;
+
 /** @public — required by the test harness (test/harness.js). */
 export const BASE_TOOLS: ToolDefinition[] = [
     {
@@ -282,6 +295,120 @@ export const BASE_TOOLS: ToolDefinition[] = [
                 }
             },
             required: ['key', 'summary', 'content'],
+        },
+    },
+    // ─── Language-server tools (Phase 1) ─────────────────────────────────────
+    // Black IDE is a VS Code fork, so a language server is already running for the
+    // user's languages. These expose it. Prefer them over grep for any question
+    // about symbols: grep cannot tell a definition from a mention in a comment.
+    // All read-only ones are 'safe', so Ask and Plan modes get them automatically.
+    {
+        name: 'get_diagnostics',
+        description: 'Read current compiler/linter problems from the language server, for one file or the whole workspace. Use this to check whether an earlier edit is still broken, or to survey the repo before starting.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Optional workspace-relative file. Omit for all problems in the workspace.'),
+                severity: { type: 'string', description: 'Which problems to report', enum: ['error', 'warning', 'all'] },
+            },
+            required: [],
+        },
+    },
+    {
+        name: 'go_to_definition',
+        description: 'Find where a symbol is actually defined, using the language server. Much more reliable than grep for "where does this come from?".',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that mentions the symbol'),
+                symbol: s('The identifier to resolve, e.g. "PipelineOrchestrator"'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol'],
+        },
+    },
+    {
+        name: 'find_references',
+        description: 'Find every real usage of a symbol, grouped by file, using the language server. Use before changing or deleting anything to see what depends on it.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that declares or mentions the symbol'),
+                symbol: s('The identifier to find usages of'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol'],
+        },
+    },
+    {
+        name: 'workspace_symbols',
+        description: 'Search the whole project for a symbol by name (classes, functions, methods) without knowing which file it lives in.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: { query: s('Symbol name or fragment to search for') },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'hover',
+        description: 'Get the type signature and documentation for a symbol, as shown on editor hover.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that mentions the symbol'),
+                symbol: s('The identifier to inspect'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol'],
+        },
+    },
+    {
+        name: 'code_actions',
+        description: 'List the quick fixes and refactorings the language server offers at a location. Advisory: apply the change with edit_file.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file'),
+                symbol: s('Optional identifier to locate the position'),
+                line: { type: 'number', description: 'Optional 1-based line, used when no symbol is given' },
+            },
+            required: ['path'],
+        },
+    },
+    {
+        // A write: renames every reference across the project in one step, so it is
+        // approval-gated and checkpointed per file like any other edit.
+        name: 'rename_symbol',
+        description: 'Rename a symbol and every reference to it across the project, using the language server (import- and scope-aware). Safer than find-and-replace. Requires approval.',
+        risk: 'edit',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that declares the symbol'),
+                symbol: s('Current identifier name'),
+                new_name: s('New identifier name'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol', 'new_name'],
+        },
+    },
+    {
+        // Exec-class: it runs the project's test command.
+        name: 'run_tests',
+        description: 'Run the project test suite using the framework detected for this repo, returning a compact report of failures only (not the full output). Prefer this over run_command for tests.',
+        risk: 'exec',
+        parameters: {
+            type: 'object',
+            properties: {
+                scope: s('Optional path or test filter to narrow the run, e.g. "tests/test_api.py"'),
+            },
+            required: [],
         },
     },
     {

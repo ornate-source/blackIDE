@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-07-27T12:59:34.161Z",
+  "bundledPackCount": 16,
+  "stackDetectionAccuracyPct": 100,
+  "stackDetectionPassed": 8,
+  "stackDetectionTotal": 8,
+  "skillExactMatchPct": 100,
+  "skillAnyHitPct": 100,
+  "coverableTasks": 14,
+  "knownGapTasks": 4,
+  "totalTasks": 19,
+  "failSafePassed": 1,
+  "failSafeTotal": 1
+}

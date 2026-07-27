@@ -199,9 +199,11 @@ flowchart TD
 
 ## 6. Semantic Codebase Indexing
 Black IDE features a local RAG (Retrieval-Augmented Generation) pipeline.
-- It uses a local SQLite database to store vector embeddings.
-- **AST-Aware Chunking**: Instead of chunking code arbitrarily by character count (which breaks functions in half), the indexer parses the Abstract Syntax Tree (AST) to chunk code intelligently by class and function boundaries.
-- The agent uses internal semantic search tools to retrieve exact function signatures without guessing file paths.
+- Storage is a pair of on-disk files, **not** a SQL database: chunk metadata in `codebase-index.json` and vectors in `vectors.bin`, a flat `Float32` binary store.
+- Embeddings are **opt-in and provider-side** — OpenAI `text-embedding-3-small` or Ollama `nomic-embed-text`. With no provider configured, retrieval falls back to BM25 keyword ranking.
+- **Line-window chunking**: files are split into fixed 50-line windows with 10 lines of overlap (`CHUNK_LINES` / `CHUNK_OVERLAP` in `core/codebase-index.ts`). Chunk boundaries are *not* symbol-aware, so a chunk can begin or end mid-function. Symbol-aware chunking on class/function boundaries is planned — see [`notes/enhancement.md`](notes/enhancement.md) (E2).
+- Ranking fuses embedding similarity and BM25 through Reciprocal Rank Fusion (RRF).
+- The agent reaches this index through the `codebase_search` tool.
 
 ## 7. Build System & Packaging Architecture
 

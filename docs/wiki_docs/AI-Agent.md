@@ -63,6 +63,40 @@ so quick questions stay fast.
 
 ---
 
+## 🧭 Code Intelligence Tools
+
+Black IDE is a VS Code fork, so a language server is already running for every language you
+have an extension for. The agent uses it directly instead of inferring structure from text —
+grep cannot tell a definition from a mention in a comment.
+
+| Tool | What the agent uses it for |
+|---|---|
+| `go_to_definition` | Where a symbol is actually defined |
+| `find_references` | Every real usage, grouped by file — checked before changing or deleting anything |
+| `workspace_symbols` | Finding a symbol by name without knowing its file |
+| `hover` | Type signature and doc comment for a symbol |
+| `get_diagnostics` | Current compiler/linter problems, per file or workspace-wide |
+| `code_actions` | Which quick fixes the language server offers at a location |
+| `rename_symbol` | Scope- and import-aware rename across the whole project |
+| `run_tests` | Runs your test suite and reports **failures only** |
+
+Symbols are addressed by **name**, not line and column, and a repeated name can be
+disambiguated with an optional `line`.
+
+**When no language server is available** for a file type, these fall back to a text search
+and say so explicitly, rather than failing — a cold server never turns into a failed task.
+
+**`rename_symbol` is a write.** It goes through the same approval gate as any edit, and every
+file it touches is checkpointed first, so a project-wide rename is undoable like anything else.
+
+**`run_tests`** picks the command from the detected stack (`pytest`, `jest`, `vitest`,
+`dotnet test`, `cargo test`, `go test`, `rspec`, Gradle) and returns a compact tally plus the
+failing cases. Passing-test output is discarded: it is the bulk of the noise and the agent can
+act on none of it. A non-zero exit with no parsed failures is reported as a probable build or
+config error rather than as failing assertions, and a timeout is never reported as a pass.
+
+---
+
 ## 🔁 How a Request Is Handled
 
 Black IDE picks one of three paths:

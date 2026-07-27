@@ -1,0 +1,70 @@
+import { ChatMessage } from './types';
+
+/**
+ * Mutable state for the chat sidebar's single conversation lane.
+ *
+ * Extracted from `BlackIdeChatProvider` (Phase 0, M2 follow-up) so that the chat
+ * task can move out of `extension.ts`. It exists specifically to solve a
+ * stale-read problem: `_runAgentTask` *reassigns* `conversation` and
+ * `pendingApproval` partway through, and the webview message handler reads them
+ * afterwards. Passing the individual values would have handed the extracted code a
+ * snapshot, so a later read would see pre-reassignment data — a silent correctness
+ * bug of exactly the kind a "pure move" refactor must not introduce. Passing this
+ * object by reference means every reader and writer shares one source of truth.
+ *
+ * Deliberately a plain data holder with no behaviour and no `vscode` import: the
+ * Phase 11 `agent-core` extraction needs the chat loop to be host-agnostic, and
+ * this is the state it will carry.
+ *
+ * Scope note: this covers only the chat lane. Manager-panel pipeline runs are a
+ * separate concurrency lane keyed by `runId` (`_pipelineRuns`) and deliberately do
+ * not share any of this — that separation is what lets a Manager run proceed
+ * without corrupting the chat's streaming message.
+ */
+export class ChatSession {
+    /** The live conversation. Reassigned wholesale when the agent loop returns. */
+    conversation: ChatMessage[] = [];
+
+    /** Which persisted thread `conversation` belongs to. */
+    activeThreadId = 'default';
+
+    /** True while a task holds the lane; the UI gates input on it. */
+    isGenerating = false;
+
+    /** Cancels the in-flight task. Replaced per task, cleared on completion. */
+    abortController?: AbortController;
+
+    /**
+     * A plan awaiting the user's approval. Persisted separately via Memento so the
+     * gate survives a window reload; this field is the in-memory half.
+     */
+    pendingApproval: {
+        planContent: string;
+        taskContent: string;
+        planPath: string;
+        taskPath: string;
+        originalPrompt: string;
+        modelId: string;
+        attachments?: any[];
+        mode?: string;
+    } | null = null;
+
+    /**
+     * Pending pipeline-plan approval. Unlike `pendingApproval` this holds a live
+     * resolver, so it cannot be reconstructed after an extension-host restart —
+     * only a webview reload is survivable.
+     */
+    pendingPipelineApproval: {
+        planContent: string;
+        planPath: string;
+        resolve: (approved: boolean) => void;
+    } | null = null;
+
+    /** Per-subagent cancellation, keyed by subagent id. Mutated in place. */
+    readonly subagentAbortControllers = new Map<string, AbortController>();
+
+    /** True when either kind of approval gate is open. */
+    get hasPendingApproval(): boolean {
+        return this.pendingApproval !== null || this.pendingPipelineApproval !== null;
+    }
+}

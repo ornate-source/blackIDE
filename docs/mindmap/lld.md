@@ -74,11 +74,17 @@ classDiagram
     
     %% Semantic Engine
     class CodebaseIndex {
-        -SQLiteDB db
-        +indexWorkspace()
+        -Map~string,FileEntry~ files
+        -Map~string,number~ df
+        +build(secretManager, maxFiles) BuildStats
         +search(query, k) SearchResult[]
-        -chunkFileAst(content) string[]
+        +size() number
+        -reindexTerms()
+        -load()
+        -persist()
+        -chunkFile(rel, content) Chunk[]
     }
+    note for CodebaseIndex "chunkFile is a fixed 50-line window with 10-line overlap, not an AST splitter. Persists to codebase-index.json plus vectors.bin; there is no SQL database."
     
     %% Interactive UI
     class InlineChatController {

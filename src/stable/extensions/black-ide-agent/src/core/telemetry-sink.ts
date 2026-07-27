@@ -50,6 +50,13 @@ export function toTelemetryRecord(env: any): TelemetryRecord | null {
         case 'PipelinePhaseCompleted': return { type: env.type, ...base, phase: env.phase };
         case 'PipelinePhaseError':   return { type: env.type, ...base, phase: env.phase, errorClass: classifyError(env.error) };
         case 'PipelineCompleted':    return { type: env.type, ...base };
+        // Which skill packs actually fired, so bundled-pack coverage is measurable and
+        // dead packs can be pruned (plan.md Phase 6). Names are carried for *bundled*
+        // packs only: those are a closed set we ship, so they identify nothing about the
+        // user. A workspace/global pack name is user-authored and can encode project or
+        // client detail, so those contribute a count and nothing more — same reasoning
+        // that keeps prompts and file paths out of this file.
+        case 'SkillsFired':          return { type: env.type, ...base, mode: env.mode, total: env.total, bundled: env.bundled, userCount: env.userCount };
         default:                     return null;
     }
 }

@@ -27,17 +27,8 @@ const Module = require('module');
 // AgentToolExecutor and its tool modules require 'vscode', which only exists inside the
 // extension host. Resolve it to a stub so the sandbox gate can be tested where it is
 // actually enforced rather than only at the predicate.
-const vscodeStub = {
-  workspace: { workspaceFolders: [], findFiles: async () => [], asRelativePath: (p) => String(p), openTextDocument: async () => ({}) },
-  window: { showInformationMessage: async () => undefined, showWarningMessage: async () => undefined, showErrorMessage: async () => undefined },
-  languages: {
-    getDiagnostics: () => [],
-    createDiagnosticCollection: () => ({ set: () => {}, delete: () => {}, clear: () => {}, dispose: () => {} }),
-  },
-  Uri: { file: (p) => ({ fsPath: p }), joinPath: (...p) => ({ fsPath: p.join('/') }) },
-  Range: class {},
-  Position: class {},
-};
+// Shared with the vitest tier via resolve.alias — see test/vscode-stub.js.
+const vscodeStub = require('./vscode-stub');
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, ...rest) {
   if (request === 'vscode') return 'vscode';

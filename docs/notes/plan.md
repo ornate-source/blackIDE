@@ -71,7 +71,8 @@ exists but naive/experimental, or barely wired.
 
 | Capability | Level | Why |
 |---|:--:|---|
-| Semantic codebase index (embeddings + BM25 via RRF, AST-aware chunking) | 🟢 | `core/codebase-index.ts`; embeddings are opt-in |
+| Semantic codebase index — retrieval & ranking (embeddings + BM25 via RRF) | 🟢 | `core/codebase-index.ts`; embeddings are opt-in |
+| Semantic codebase index — **chunking** | 🟡 | **Corrected 2026-07-27:** this row previously claimed "AST-aware chunking". It is not — `chunkFile()` (`core/codebase-index.ts:420`) is a fixed 50-line window with 10-line overlap (`CHUNK_LINES`/`CHUNK_OVERLAP`), so chunks can split mid-function. Symbol-aware chunking is scheduled as E2 in [`enhancement.md`](./enhancement.md) |
 | Context manager / token budgeting + compaction | 🟢 | `core/context-manager.ts` |
 | Prompt builder (per-section budgets) | 🟢 | `core/prompt-builder.ts` |
 
@@ -405,6 +406,14 @@ Phase 6 (lifecycle) independent; can trail
   and truncates; resolver ranks so the *most* relevant skill survives truncation.
 - **Wrong detection** on polyglot repos → confidence + evidence in `ProjectProfile`; ambiguous
   cases inject nothing rather than a wrong pack (fail safe, like the browser allowlist did).
+  > **Was not actually in place — found 2026-07-27, fixed the same day.** The golden-task eval
+  > disproved this mitigation on its first run: the *profiler* failed safe (an unrecognised repo did
+  > yield an empty profile), but `skill-resolver.ts` treated role affinity alone as a positive
+  > signal, so a Backend-mode turn on a repo with no detected stack received `aspnet-core, django,
+  > fastapi, axum, express`. `resolveSkills` now requires a stack or prompt signal for any pack that
+  > declares `stacks`, exempts genuinely cross-cutting packs, ranks framework matches above bare
+  > language matches, and treats `priority` as a tie-breaker rather than evidence. Fail-safe is now
+  > 1/1 and gated. See finding **F1** in [`eval-baseline.md`](./eval-baseline.md).
 - **Skill sprawl / staleness** → Phase 6 telemetry + validation; bundled packs are versioned and
   reviewed, user packs are clearly scoped.
 - **Backward compatibility** → `roles`/`stacks` are optional; existing keyword-only skills and the
