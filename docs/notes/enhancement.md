@@ -2,9 +2,34 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** Proposed · **rev 2 (2026-07-27)** — re-examined for completeness; the plan now covers
-**all 71 identified gaps**. Supersedes the "next initiative" half of [`plan.md`](./plan.md) (which
-is delivered through its Phase 5).
+**Status:** **In progress · rev 3 (2026-07-27)** — Phases 0, 1 and 2 delivered; 13 of 71 gaps
+closed. Supersedes the "next initiative" half of [`plan.md`](./plan.md) (which is delivered through
+its Phase 5).
+
+| Phase | Status | Covers | Evidence |
+|---|:--:|---|---|
+| 0 — Truth-up & foundations | 🟡 | M1–M5 | 8 docs corrected · `extension.ts` 2537→961 · eval harness + baseline · vitest wired · skill diagnostics. **Gate outstanding:** ≤700 LOC (see G10). |
+| 1 — Language-server tools & tests | ✅ | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; verified in a real extension host. |
+| 2 — Rules, prompts & modes | 🟡 | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel. **Outstanding:** tool toggles in the panel (M10). |
+| 3–12 | — | M14–M71 | Not started. Phase 3 (retrieval substrate) is next and is what Phases 4–6 lean on. |
+
+**Verified at rev 3:** harness 426/426 · vitest 195/195 · 19 real-host integration tests ·
+eval gate green (stack detection 100%, fail-safe 1/1) · webview builds · `tsc -b` clean.
+
+**Open items in delivered phases** — the only work outstanding before Phase 3:
+1. `extension.ts` is **961 LOC against a ≤700 gate**. It fell to 917 in Phase 0 and grew back as
+   Phase 2 wiring landed. Remaining cut: `_runPipeline` + `_runPipelineInManager` + run
+   bookkeeping (~260 lines) into `agent/pipeline-entry.ts`, reusing the deps-object pattern that
+   has now worked three times.
+2. **Tool toggles** in the session panel (M10). Rule toggles shipped; tools were in the same
+   bullet and are not done. Worth more now than when planned, because Phase 2 made per-mode tool
+   allowlists genuinely enforced (B4) — a session toggle would ride that gate rather than being
+   advisory.
+
+Three defects were found by the work itself and fixed: **F1** (skills injected into repos with no
+detected stack), **F2** (`react` undetected in Next.js projects), and the **per-mode allowlist gap**
+(B4). Each is recorded where it was graded, not only where it was fixed.
+
 **Scope:** `src/stable/extensions/black-ide-agent/` + editor-level surfaces in `src/stable/src/vs/`
 
 **Benchmarked against:** Google Antigravity 2.0 · Cursor 3.5 · Continue.dev · NeuralInverse · CortexIDE · A-Coder · OPIDE.
@@ -14,7 +39,7 @@ is delivered through its Phase 5).
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
-> **What changed in rev 2.** A second pass against the code found **four items graded wrongly** in
+> **What changed in rev 2** *(retained for the record; rev 3 delivery is summarised above).* A second pass against the code found **four items graded wrongly** in
 > rev 1 and **eleven gaps missed entirely**. Corrections: `ManagerPanel.tsx` already exists with
 > per-run model and `awaiting_approval` (A6 🔴→🟡); post-edit diagnostics feedback already works
 > (E_10 ✅); `read_file` already paginates (D10 ✅); extension-marketplace compatibility is already
@@ -60,26 +85,26 @@ is delivered through its Phase 5).
 
 | # | Capability | Level | Status | Parity bar / gap |
 |---|---|:--:|:--:|---|
-| B1 | 8 selectable modes (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect) | 🟢 | ✅ | `core/mode-loader.ts`. Ahead of Cursor (3) and A-Coder (4) on breadth. |
+| B1 | **9** selectable modes (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect, **Learn**) | 🟢 | ✅ | `core/mode-loader.ts`. Learn added in Phase 2. Ahead of Cursor (3) and A-Coder (4) on breadth. |
 | B2 | 7 internal pipeline-phase agents | 🟢 | ✅ | Unique to us. |
 | B3 | Custom modes (YAML frontmatter, 3 scopes, hot-reload, inline diagnostics) | 🟢 | ✅ | At Continue's agent-block bar, better DX (diagnostics). |
-| B4 | Per-mode tool allowlist + iteration budget | 🟢 | ✅ | Ahead of Cursor/A-Coder. |
+| B4 | Per-mode tool allowlist + iteration budget | 🟢 | ✅ | **Regraded twice.** Was 🟢 on the assumption the allowlists were enforced; Phase 2 found they were *advertising-only* (`isToolAllowedInMode` knows only the 3 coarse `AgentMode`s, and everything but Ask/Plan resolves to `agent`), so Manager and the pipeline phases could have executed writes they never advertised. A second gate in `agent/tool-executor.ts` now enforces the acting mode's list where tools run — genuinely 🟢 as of Phase 2. Ahead of Cursor/A-Coder. |
 | B5 | **Reviewer agent (PR/diff review that proposes fixes)** | ⬜ | ❌ | Cursor BugBot (~80% claimed resolution). We ship *zero* review capability. → **E8** |
-| B6 | **Learn / teaching mode** | ⬜ | ❌ | A-Coder Student Mode (adaptive difficulty). Cheap differentiator. → **E16** |
+| B6 | Learn / teaching mode | 🟢 | ✅ | **Shipped (Phase 2, M13).** `core/mode-loader.ts`; read-only by construction — no write, command or delegation tools in the allowlist, enforced by the B4 gate rather than by prompt wording. At A-Coder's Student Mode bar minus adaptive difficulty levels. |
 | B7 | Domain-vertical fleets (firmware, legacy modernization) | ⬜ | ❌ | NeuralInverse (357 MCU variants, 61 translation profiles). Deliberately out of our lane, but the skills framework makes it data-only. → **E17** |
 
 ### 1.3 Knowledge, rules & memory
 
 | # | Capability | Level | Status | Parity bar / gap |
 |---|---|:--:|:--:|---|
-| C1 | Skills framework (stack + role + prompt resolution) | 🟡 | ✅ | `agent/skill-resolver.ts` (87 LOC), `agent/skills-manager.ts`. Architecture is at/above bar; **library is 16 packs of a ~60-pack catalog**. → **E9** |
-| C2 | Project profiler (manifest-based stack detection) | 🟡 | ✅ | `core/project-profiler.ts` (255 LOC). Ahead of everyone — no competitor keys prompts off detected stack. |
+| C1 | Skills framework (stack + role + prompt resolution) | 🟡 | ✅ | `agent/skill-resolver.ts`, `agent/skills-manager.ts`. **Resolution precision fixed in Phase 0 (finding F1):** role affinity alone no longer qualifies a stack-scoped pack, framework matches outrank bare language matches, and `priority` is a tie-breaker rather than evidence. Fail-safe now 1/1 and gated. Still 🟡 only because the **library is 16 packs of a ~60-pack catalog**. → **E9** |
+| C2 | Project profiler (manifest-based stack detection) | 🟢 | ✅ | `core/project-profiler.ts`. **100% (8/8) on the eval fixture set** after Phase 0 fixed finding F2 (React-based frameworks now imply `react` instead of excluding it). Ahead of everyone — no competitor keys prompts off detected stack. |
 | C3 | Bundled skill packs | 🔴 | 🟡 | 16 shipped: `django`, `fastapi`, `flask`, `express`, `aspnet-core`, `axum`, `gin`, `rails`, `react`, `nextjs`, `angular`, `react-native`, `tailwind`, `jest`, `pytest`, `a11y-wcag-aria`. Missing all of Wave 2. → **E9** |
-| C4 | **Rules engine (glob-scoped, activation modes, per-session toggles)** | 🔴 | 🟡 | We have one flat `.blackide/AGENTS.md`. Cursor: `.cursor/rules/` with `globs` + `alwaysApply` + agent-requested + manual. Continue: markdown rules + the "notch" toggle panel. → **E6** |
+| C4 | Rules engine (glob-scoped, activation modes, per-session toggles) | 🟢 | ✅ | **Shipped (Phase 2, M9/M10).** `core/rules.ts` + `core/rules-loader.ts`: `.blackide/rules/*.md`, four activation modes (`always`/`glob`/`agent-requested`/`manual`), three scopes, priority, own glob engine, hot-reload, Problems-panel diagnostics, `AGENTS.md` back-compat. Session panel toggles rules and reports what fired. **At Cursor's and Continue's bar**, with `agent-requested` (budget-deferred bodies) as a small edge. Remaining: tool toggles in the panel. |
 | C5 | Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | ✅ | `core/knowledge-base.ts` (308 LOC), `memory/knowledge-store.ts`. Human-readable markdown is a real strength (ADR 007). |
 | C6 | **Automatic memory extraction / dedup / decay / contradiction detection** | 🔴 | ❌ | `remember` tool is model-invoked only — nothing extracts facts automatically, nothing ages them out, nothing detects contradictions. Cursor Memories; OPIDE Engram (3-tier, decay, contradiction detection, idle consolidation). → **E7** |
 | C7 | Mindmap sync (`project_mindmap.md`) | 🟡 | ✅ | Sectioned upsert of detected stack shipped (plan.md Phase 5). Read-back is still thin. |
-| C8 | Team / org-level shared rules & memory | ⬜ | ❌ | Cursor Team Rules. → **E6** |
+| C8 | Team / org-level shared rules | 🟢 | ✅ | **Shipped (Phase 2, M11).** `team-rules/` or `$BLACKIDE_TEAM_RULES`; injected first so they survive truncation, and not user-disableable. At Cursor Team Rules' bar. *(Team-level shared **memory** is separate and still absent — see C6.)* |
 
 ### 1.4 Retrieval & context
 
@@ -112,9 +137,9 @@ is delivered through its Phase 5).
 | E_8 | Agent hooks (`beforeToolCall`/`afterToolCall`/`beforeResponse`/`onError`) | 🟡 | ✅ | `agent/hooks.ts:8`. Present but under-documented and unused by first-party features. |
 | E_9 | Tool circuit breakers / per-tool failure budgets | ⬜ | ❌ | OPIDE ships them. A wedged tool currently burns iterations. → **E15** |
 | E_10 | Post-edit diagnostics feedback | 🟢 | ✅ | *Corrected:* `ToolRunner.collectDiagnostics` (`tools/tool-runner.ts:306`) is called after every edit from `agent/tool-executor.ts:111` — the agent **does** see compiler/linter errors it caused. Better than the first assessment. |
-| E_11 | **On-demand `get_diagnostics` + LSP navigation tools** | 🔴 | 🟡 | Diagnostics are *pushed* after edits but the model cannot **ask** for them, and there is no `go_to_definition` / `find_references` / `workspace_symbols` / `rename_symbol` tool. We ship a VS Code fork with every language server already running and don't expose it to the agent. → **E22** |
+| E_11 | On-demand `get_diagnostics` + LSP navigation tools | 🟢 | ✅ | **Shipped (Phase 1, M6/M7).** `tools/lsp-tools.ts` — `get_diagnostics`, `go_to_definition`, `find_references`, `workspace_symbols`, `hover`, `code_actions`, `rename_symbol`. Symbols addressed by *name* (a model has no character offsets), every provider call raced against a timeout, and a cold/absent server degrades to grep with an explicit note instead of erroring. Verified in a real extension host. **Structural advantage over the extension-only competitors**, who cannot reach a language server this directly. |
 | E_12 | **Sandboxed command execution** | 🔴 | ❌ | `executeCommandInTerminal` (`tool-runner.ts:133`) spawns a real, unrestricted `vscode.window.createTerminal`. Policy-gated (G1) but not *contained*. Cursor 2.0 sandboxed shells; OPIDE QuickJS sandbox + 10-layer model. → **E23** |
-| E_13 | **Test-runner integration** (run one test, parse results structurally) | 🔴 | 🟡 | Only via raw `run_command`; no structured pass/fail parsing even though `ProjectProfile` already knows the test framework. → **E24** |
+| E_13 | Test-runner integration (run one test, parse results structurally) | 🟢 | ✅ | **Shipped (Phase 1, M8).** `core/test-report.ts` — command selection from `ProjectProfile` plus pure parsers for pytest/jest/vitest/dotnet/cargo/go/rspec, returning **failures only**. 30 KB of output with 800 passing cases and one failure formats to <2 KB, asserted in CI. Trusts the exit code over the parse, so a crashed runner is never reported as a pass. |
 
 ### 1.6 Editor integration & platform
 
@@ -136,7 +161,7 @@ is delivered through its Phase 5).
 | F14 | Zero-config free model tier (works before a key is added) | ⬜ | ❌ | NeuralInverse ships free cloud models; first-run with no key currently does nothing useful. → **E26** |
 | F15 | **Multi-model race** (same prompt, N models, compare & pick) | ⬜ | ❌ | Cursor 2.0. `ManagerPanel` already tracks `modelId` per run, so the substrate is closer than it looks. → **E27** |
 | F16 | **Agent inbox / notifications when input is needed** | 🔴 | 🟡 | `status: awaiting_approval` exists in `ManagerPanel.tsx` but there is no notification surface — an unattended run can idle unnoticed. Antigravity has an inbox. → **E28** |
-| F17 | **Reusable prompt / notepad library** | ⬜ | ❌ | Cursor Notepads, Continue prompt blocks. We have fixed slash commands, no user-defined ones. → **E29** |
+| F17 | Reusable prompt / notepad library | 🟢 | ✅ | **Shipped (Phase 2, M12).** `core/prompt-library.ts` + loader: `.blackide/prompts/*.md` become slash commands with `$ARGS`/`$1`…`$9` and cycle-safe `steps:` workflows; built-in names refused at load so a user file cannot silently redefine `/plan`. At Cursor Notepads' and Continue prompt blocks' bar, plus workflow chaining neither has. |
 | F18 | Multi-root / multi-workspace support | 🔴 | 🟡 | Profiler, index and knowledge base all assume a single workspace root. → **E30** |
 | F19 | Voice input | ⬜ | ❌ | Cursor ships it. Genuinely low value for us; scheduled last. → **E31** |
 | F20 | Extension marketplace / Open VSX compatibility | 🟢 | ✅ | `config/product.json` carries full gallery + `extensionKind`/API-proposal compatibility tables. **Already at OPIDE's Open VSX bar** — no work needed. |
@@ -152,12 +177,12 @@ is delivered through its Phase 5).
 | G5 | Append-only audit trail per run (who/what/when/which tool/which model) | 🔴 | 🟡 | Diagnostics export ≠ audit trail. OPIDE ships audit trails; NeuralInverse ships audit export for regulated migrations. → **E15** |
 | G6 | Prompt/log secret redaction | ⬜ | ❌ | We put file contents and command output into prompts and logs with no scrubbing. → **E15** |
 | G7 | Workspace-boundary enforcement on file tools | 🟡 | ✅ | Sandbox tests exist (`test_sandbox_*.js`); not centrally enforced or documented. → **E15** |
-| G8 | Skill validation diagnostics + skills-fired telemetry | 🟡 | 🟡 | plan.md Phase 6 remainder. → **E0** |
-| G9 | Test architecture | 🟡 | ✅ | 46 suites / 426 assertions in a bespoke `test/harness.js` (1613 LOC) + only **2** vitest files in `__tests__/`. Coverage is real but the harness is non-standard and hard for contributors to extend. → **E0** |
+| G8 | Skill validation diagnostics + skills-fired telemetry | 🟢 | ✅ | **Shipped (Phase 0, M5),** closing out plan.md Phase 6. `agent/skill-diagnostics.ts` surfaces malformed packs in the Problems panel — `loadSkillDir` previously collapsed every failure into a silent `undefined`. The two valuable checks catch packs that can *never* fire and packs that would fire on *every* turn. `SkillsFired` telemetry names bundled packs only; user pack names can encode project detail, so those are counted, not named. |
+| G9 | Test architecture | 🟢 | ✅ | **Four tiers as of Phase 2.** Harness 426 assertions (bespoke but pinned as the compatibility tier) · **vitest 195 tests / 13 suites** (was 2 orphaned files that no installed runner could even execute) · **19 real-host integration tests** under `@vscode/test-electron` · the eval gate. One shared `vscode` stub (`test/vscode-stub.js`) serves the vscode-free tiers, so a suite cannot pass in one and fail in the other. |
 | G11 | At-rest encryption for agent artifacts / memory | ⬜ | ❌ | OPIDE claims AES-256-GCM. Our `.blackIDE/` is plaintext on disk (defensible — it's the user's repo — but not an option we offer). → **E15** |
 | G12 | Team analytics / admin policy dashboard | ⬜ | ❌ | Cursor ships admin analytics; NeuralInverse ships audit export for regulated work. Our telemetry is local-only by design (G4) — so this must be **opt-in, self-hosted**, never a phone-home. → **E32** |
 | G13 | Issue-tracker / chat integrations (GitHub Issues, Linear, Jira, Slack) | ⬜ | ❌ | Cursor Slack + Linear. Needs the headless core (E14) to be worth building. → **E33** |
-| G10 | `extension.ts` maintainability | 🔴 | ❌ | **2537 LOC** — command wiring, chat orchestration, pipeline entry and webview plumbing in one file. Every enhancement below lands here; this is the #1 velocity tax. → **E0** |
+| G10 | `extension.ts` maintainability | 🟡 | 🟡 | **2537 → 961 LOC (−62%)** across nine modules (Phase 0 M2 + follow-up). The two giants needed a design decision rather than a move: `core/chat-session.ts` holds the mutable lane state one object shared by reference, because `_runAgentTask` reassigns it mid-run while the webview handler reads it afterwards. 🟡 not 🟢 because the **≤700 LOC gate is still unmet** — the file grew back from 917 as Phase 2 wiring landed. Remaining cut: `_runPipeline` + `_runPipelineInManager` + run bookkeeping (~260 lines) into `agent/pipeline-entry.ts`. → **E0 (open)** |
 
 ### 1.8 Scoreboard
 
@@ -166,15 +191,26 @@ is delivered through its Phase 5).
 | Pipeline / SDLC orchestration | 🟢 | — | **We lead.** No competitor ships this. |
 | Safety & command policy | 🟢 | OPIDE | **We lead** on policy; behind on sandboxing/audit. |
 | Checkpoints & undo | 🟢 | CortexIDE | **We lead.** |
-| Project-aware skills | 🟡 | — | **We lead architecturally**, behind on library breadth. |
-| Retrieval & code graph | 🟡 | OPIDE, Cursor | **We are behind.** Chunking is naive; no code graph. |
-| Rules & memory | 🟡 | Cursor, OPIDE | **We are behind.** Flat file + manual memory. |
+| Project-aware skills | 🟡 | — | **We lead architecturally**; resolution precision fixed (F1), still behind on library breadth. |
+| **Code intelligence (LSP tools)** | 🟢 | Cursor, OPIDE | **We lead.** Phase 1 exposed the fork's own language servers; the extension-only competitors cannot reach them this directly. |
+| **Rules & project config** | 🟢 | Cursor, Continue | **At bar** as of Phase 2 — glob/activation/scope rules, team rules, prompt library, session panel. |
+| **Test integration** | 🟢 | A-Coder | **At/above bar.** Failures-only reporting from the detected stack. |
+| Retrieval & code graph | 🟡 | OPIDE, Cursor | **We are behind.** Chunking is naive; no code graph. → Phase 3 |
+| Memory | 🔴 | Cursor, OPIDE | **We are behind.** Durable markdown store, but nothing extracts, ages, dedups or contradicts. → Phase 8 |
 | Daily-driver autocomplete | 🟡 | Cursor | **We are far behind.** No next-edit. |
 | Parallel task agents & steering | 🔴 | Antigravity, Cursor | **We are behind.** |
 | Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
 | Model routing | 🔴 | Continue, OPIDE | **We are behind.** |
 | Review automation | ⬜ | Cursor BugBot | **Absent.** |
 | Distribution / surfaces | ⬜ | Continue Hub, Antigravity CLI/SDK | **Absent.** |
+
+> **Board update after Phases 0–2 (2026-07-27).** Three areas moved from behind to at-or-above
+> bar: code intelligence (Phase 1 exposed the language servers the fork already runs), rules and
+> project config (Phase 2), and test integration (Phase 1). Two graded claims turned out to be
+> false when checked against code and were corrected rather than left standing — "AST-aware
+> chunking" (it is a 50-line window) and "per-mode tool allowlists enforced in the sandbox gate"
+> (they were advertising-only until Phase 2 closed the gap). The three areas we lead — pipeline,
+> command policy, checkpoints — are unchanged. **The next gap is the substrate: retrieval.**
 
 **Read of the board.** The *engine* is genuinely advanced and in two places (pipeline, safety) we
 lead the field. What we lack is (a) the **retrieval substrate** everyone else is now building on
@@ -572,10 +608,12 @@ required to cover every row**, and §4.3 is the coverage matrix that proves it. 
 blocks daily use or other work · **P1** competitive parity · **P2** differentiator or completeness ·
 **P3** low value, done for coverage.
 
-| ID | Missing capability | Pri | Enh | Phase |
-|---|---|:--:|:--:|:--:|
+**Status key:** ✅ delivered · 🟡 partially delivered (note says what is left) · blank = not started.
+
+| ID | Missing capability | Pri | Enh | Phase | Notes |
+|---|---|:--:|:--:|:--:|---|
 | M1 | Doc claims corrected (AST chunking, provider failover) | P0 | E0 | 0 ✅ |
-| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ |
+| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 🟡 | 2537 → 961 LOC across 9 modules; the **≤700 gate is still unmet** (see G10) |
 | M3 | Golden-task eval set + scoring | P0 | E0 | 0 ✅ |
 | M4 | Vitest migration off the bespoke harness | P0 | E0 | 0 ✅ |
 | M5 | Skill validation diagnostics UI + skills-fired telemetry | P1 | E0 | 0 ✅ |
@@ -583,7 +621,7 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M7 | LSP navigation tools (definition, references, symbols, hover, rename, code actions) | P0 | E22 | 1 ✅ |
 | M8 | Structured `run_tests` with per-framework result parsing | P0 | E24 | 1 ✅ |
 | M9 | Rules v2 — `.blackide/rules/*.md`, globs, activation modes, priority | P1 | E6 | 2 ✅ |
-| M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 ✅ |
+| M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 🟡 | panel + rule toggles shipped; **tool toggles not implemented** |
 | M11 | Team / org shared rules | P2 | E6 | 2 ✅ |
 | M12 | User-defined prompts + workflows library | P2 | E29 | 2 ✅ |
 | M13 | Learn / teaching mode | P2 | E16 | 2 ✅ |
@@ -648,6 +686,11 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 
 **Counts:** 71 gaps — P0: 11 · P1: 30 · P2: 23 · P3: 7. All 71 are scheduled.
 
+**Delivered so far (Phases 0–2): 13 of 71** — 11 complete, 2 partial (M2, M10). That clears
+**8 of the 11 P0 items**; the three P0 items outstanding are M14/M15 (tree-sitter chunking and the
+code graph) and M23 (per-role models), all in Phases 3–4. Nothing in Phases 0–2 remains except the
+two partials noted above.
+
 ---
 
 ## 4. Phase-by-phase execution plan (revised for full coverage)
@@ -688,6 +731,28 @@ ordered so that each one's dependencies are already merged.
 
 **Gate:** harness 426/426 green after the split; baseline published; no file over 700 LOC in the
 extension entry path.
+
+> ### 🟡 Delivered 2026-07-27 — one gate outstanding
+> **Met:** harness 426/426 green after every step · baseline published
+> (`docs/notes/eval-baseline.md`, re-recorded after the F1/F2 fixes) · 8 documents corrected ·
+> vitest wired (2 orphaned files that no installed runner could execute → 195 tests / 13 suites) ·
+> skill diagnostics + `SkillsFired` telemetry (closing plan.md Phase 6).
+>
+> **Not met:** *no file over 700 LOC.* `extension.ts` went 2537 → 917 in this phase and grew back
+> to **961** as Phase 2 wiring landed. The remaining cut is `_runPipeline` +
+> `_runPipelineInManager` + the pipeline-run bookkeeping (~260 lines) into `agent/pipeline-entry.ts`.
+> Tracked at **G10**.
+>
+> **Found and fixed by the eval harness on its first run** — the clearest argument for having
+> built it: **F1**, skills injected into repos with no detected stack (`plan.md` claimed the
+> opposite), and **F2**, `react` undetected in Next.js projects. Both have regression cover; stack
+> detection went 87.5% → 100% and fail-safe 0/1 → 1/1. Details in `eval-baseline.md`.
+>
+> **Deliberately not done:** the `extension.ts` split stopped short of `_runAgentTask` and
+> `resolveWebviewView` at first, because both reassign session state that other readers see
+> afterwards. Passing values would have handed the extracted code a stale snapshot — a silent
+> correctness bug. `core/chat-session.ts` (added in the follow-up) holds that state in one object
+> shared by reference, which is also the shape Phase 11's vscode-free core needs.
 
 ### Phase 1 — Language-server tools & test integration *(fastest accuracy win in the document)*
 *Covers M6–M8.*
@@ -745,11 +810,22 @@ files leaves a compiling tree; a failing suite returns <2 KB where raw output wa
 **Gate:** editing a `.ts` file activates only TS-glob rules; the panel's "fired" list byte-matches
 the assembled prompt; `AGENTS.md`-only projects behave identically to today.
 
-> ### ✅ Delivered 2026-07-27
+> ### 🟡 Delivered 2026-07-27 — one item outstanding
 > `core/rules.ts` + `core/rules-loader.ts` (4 activation modes, 3 scopes, glob engine) ·
 > `core/prompt-library.ts` + loader (slash commands, `$ARGS`/`$1`…, cycle-safe workflows) ·
 > Learn mode · session panel in `webview/src/App.tsx` · `rulesFired` / `toggleRule` wiring.
 > **Harness 426/426 · vitest 195/195 (+96) · 19 real-host tests · eval no regression · webview builds.**
+>
+> **Outstanding:** the session-panel bullet reads "toggle rules/**tools**". Rule toggles shipped;
+> **tool toggles did not.** Now worth more than when planned, because this phase made per-mode tool
+> allowlists genuinely enforced (see the security finding below) — a session-scoped tool toggle
+> would ride that same gate instead of being advisory. Tracked at **M10**.
+>
+> **One judgement call to flag:** the phase also called for "*unified* rules+skills assembly through
+> `prompt-builder.ts`". Rules and skills both go through `PromptBuilder` as separate,
+> independently-budgeted sections, which satisfies the stated intent — neither can starve the other.
+> It is *not* a single merged resolution pipeline emitting one section. M9 is marked complete on the
+> weaker reading; if the stronger one was meant, that is a third open item.
 >
 > **Gate status.** All three met and asserted. Glob activation:
 > `__tests__/rules.test.ts`. Panel fidelity: `__tests__/rules-panel-fidelity.test.ts` asserts
