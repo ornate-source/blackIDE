@@ -55,7 +55,7 @@ exists but naive/experimental, or barely wired.
 | **8 selectable agents** (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect) | 🟡→🟢 | static base prompts in `core/mode-loader.ts`, **now augmented at runtime with project-aware skill packs** (Phase 4). Base prompts still static |
 | 7 internal pipeline-phase agents (HLD, LLD, Planner, Design/Backend/Frontend/Testing Executors) | 🟡→🟢 | **now receive resolved skills** via the orchestrator's `skillsForMode` (Phase 4) — previously got none |
 | Custom modes (YAML frontmatter, 3 scopes, hot-reload, inline diagnostics) | 🟢 | `ModeLoader.watchForChanges` |
-| Per-mode tool allowlists + iteration budgets | 🟢 | enforced in the sandbox gate |
+| Per-mode tool allowlists + iteration budgets | 🟢 | enforced in the sandbox gate. **Corrected 2026-07-27:** the allowlists were *advertising-only* until Phase 2 — `isToolAllowedInMode` knows only the three coarse `AgentMode`s, and every mode except Ask/Plan resolves to `agent`, so Manager, Sr Architect and the pipeline phases could have executed a write call they never advertised. A second gate in `tool-executor.ts` now enforces the acting mode's list where tools run |
 
 ### Skills & knowledge — **was the weak spine; now the newest strength** (Part 2 delivered)
 

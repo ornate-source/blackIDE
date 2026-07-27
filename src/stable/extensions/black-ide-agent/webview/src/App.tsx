@@ -489,6 +489,15 @@ export default function App() {
   // Agent surfaces — mode, live plan/TODO, artifacts, checkpoint
   const [agentMode, setAgentMode] = useState<string>('agent');
   const [customModes, setCustomModes] = useState<any[]>([]);
+
+  // ─── Session control panel (Phase 2, M10) ─────────────────────────────────
+  // `firedRules` is the list the host actually assembled into the prompt, not a
+  // recomputation here — that is what keeps the panel honest.
+  const [rules, setRules] = useState<any[]>([]);
+  const [userPrompts, setUserPrompts] = useState<any[]>([]);
+  const [firedRules, setFiredRules] = useState<any[]>([]);
+  const [ruleToggles, setRuleToggles] = useState<{ enabled: string[]; disabled: string[] }>({ enabled: [], disabled: [] });
+  const [showSessionPanel, setShowSessionPanel] = useState(false);
   const [agentArtifacts, setAgentArtifacts] = useState<{ name: string; type: string; path: string }[]>([]);
 
   // Activity, terminal, plan and file-review are all projections of the agent's event
@@ -551,6 +560,7 @@ export default function App() {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const sessionPanelRef = useRef<HTMLDivElement>(null);
 
   // Auto-resize textarea height as content changes
   useEffect(() => {
@@ -572,6 +582,9 @@ export default function App() {
       }
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setShowModelDropdown(false);
+      }
+      if (sessionPanelRef.current && !sessionPanelRef.current.contains(e.target as Node)) {
+        setShowSessionPanel(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -798,6 +811,18 @@ export default function App() {
           if (Array.isArray(message.value)) {
             setCustomModes(message.value);
           }
+          break;
+        case 'rulesLoaded':
+          if (Array.isArray(message.value)) setRules(message.value);
+          break;
+        case 'promptsLoaded':
+          if (Array.isArray(message.value)) setUserPrompts(message.value);
+          break;
+        case 'rulesFired':
+          if (Array.isArray(message.value)) setFiredRules(message.value);
+          break;
+        case 'ruleTogglesChanged':
+          if (message.value) setRuleToggles(message.value);
           break;
         case 'tokenUsage':
           if (message.value) {
@@ -3260,6 +3285,105 @@ export default function App() {
                 >
                   <PlusIcon />
                 </button>
+
+                {/* Session control panel (Phase 2, M10) — rules and prompts for this
+                    conversation. The "fired" list is exactly what the host assembled into
+                    the last prompt, so it can never claim a rule applied when it did not. */}
+                {(rules.length > 0 || userPrompts.length > 0) && (
+                  <div className="flex items-center" ref={sessionPanelRef}>
+                    <button
+                      onClick={() => setShowSessionPanel(!showSessionPanel)}
+                      className="flex items-center gap-1 hover:bg-panel rounded-md px-1.5 py-0.5 transition-colors cursor-pointer border-0 bg-transparent text-muted font-normal hover:text-foreground outline-none text-[10px]"
+                      title="Rules and prompts active in this session"
+                    >
+                      <span className={`w-1 h-1 rounded-full shrink-0 ${firedRules.length ? 'bg-sky-500' : 'bg-muted/40'}`} />
+                      <span>{firedRules.length ? `${firedRules.length} rule${firedRules.length === 1 ? '' : 's'}` : 'Rules'}</span>
+                    </button>
+
+                    {showSessionPanel && (
+                      <div className="absolute left-2 right-2 sm:left-2 sm:right-auto sm:w-[300px] bottom-[calc(100%+8px)] bg-panel border border-border rounded-md shadow-lg py-1 max-h-[320px] overflow-y-auto z-50 text-left animate-slide-up select-none">
+                        {firedRules.length > 0 && (
+                          <>
+                            <div className="px-3 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted/70">Applied to the last message</div>
+                            {firedRules.map((f: any) => (
+                              <div key={`fired-${f.name}`} className="px-3 py-1 text-[10px] flex items-start gap-1.5">
+                                <span className="text-sky-500 mt-[1px]">✓</span>
+                                <span className="flex-1 min-w-0">
+                                  <span className="truncate">{f.name}</span>
+                                  <span className="text-muted/70">
+                                    {f.reason === 'glob-match' && f.matchedGlob ? ` — matched ${f.matchedGlob}` : ''}
+                                    {f.reason === 'always' ? ' — always on' : ''}
+                                    {f.reason === 'manual-enabled' ? ' — enabled by you' : ''}
+                                    {f.reason === 'agent-requested' ? ' — requested by the agent' : ''}
+                                  </span>
+                                </span>
+                              </div>
+                            ))}
+                            <div className="border-t border-border/30 my-1" />
+                          </>
+                        )}
+
+                        <div className="px-3 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted/70">Available rules</div>
+                        {rules.length === 0 && (
+                          <div className="px-3 py-1.5 text-muted text-[10px]">No rules. Add .blackide/rules/*.md</div>
+                        )}
+                        {rules.map((r: any) => {
+                          const isTeam = r.scope === 'team';
+                          const off = ruleToggles.disabled.some((n: string) => n.toLowerCase() === r.name.toLowerCase());
+                          const on = r.activation === 'manual'
+                            ? ruleToggles.enabled.some((n: string) => n.toLowerCase() === r.name.toLowerCase())
+                            : !off;
+                          return (
+                            <div
+                              key={`rule-${r.name}`}
+                              className={`px-3 py-1 text-[10px] flex items-start gap-1.5 ${isTeam ? 'opacity-80' : 'hover:bg-background/40 cursor-pointer'}`}
+                              title={isTeam ? 'Team rule — cannot be disabled' : r.description || r.name}
+                              onClick={() => {
+                                if (isTeam) return;
+                                vscode.postMessage({ type: 'toggleRule', value: { name: r.name, enabled: !on } });
+                              }}
+                            >
+                              <span className={on ? 'text-emerald-500' : 'text-muted/40'}>{on ? '●' : '○'}</span>
+                              <span className="flex-1 min-w-0">
+                                <span className="truncate">{r.name}</span>
+                                <span className="text-muted/70">
+                                  {isTeam ? ' — team' : ''}
+                                  {r.activation === 'glob' ? ` — ${(r.globs || []).slice(0, 2).join(', ')}` : ''}
+                                  {r.activation === 'manual' ? ' — manual' : ''}
+                                  {r.activation === 'agent-requested' ? ' — on request' : ''}
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        })}
+
+                        {userPrompts.length > 0 && (
+                          <>
+                            <div className="border-t border-border/30 my-1" />
+                            <div className="px-3 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted/70">Your prompts</div>
+                            {userPrompts.map((up: any) => (
+                              <div
+                                key={`prompt-${up.name}`}
+                                className="px-3 py-1 text-[10px] flex items-start gap-1.5 hover:bg-background/40 cursor-pointer"
+                                title={up.description || up.name}
+                                onClick={() => {
+                                  setInputText(`/${up.name} `);
+                                  setShowSessionPanel(false);
+                                }}
+                              >
+                                <span className="text-muted/60">/</span>
+                                <span className="flex-1 min-w-0 truncate">
+                                  {up.name}
+                                  {up.steps?.length ? <span className="text-muted/70"> — {up.steps.length}-step workflow</span> : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Plus menu popup */}
                 {showPlusMenu && (

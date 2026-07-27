@@ -27,6 +27,12 @@ export interface ApprovalRequest {
 export interface ExecutorDeps {
     /** The sandbox this executor runs under. Enforced on every call, not just advertised. */
     mode: AgentMode;
+    /**
+     * The acting mode's declared tool allowlist, enforced as a second gate. Undefined
+     * or empty means "no per-mode restriction" (Agent mode, and custom modes that omit
+     * `tools`), matching how the advertised list is built.
+     */
+    allowedTools?: string[];
     rootPath: string;
     browserTool: BrowserTool;
     mcpClient: MCPClient;
@@ -63,6 +69,19 @@ export class AgentToolExecutor {
         return path.isAbsolute(p) ? p : path.join(this.d.rootPath, p);
     }
 
+    /**
+     * Is `name` permitted by the acting mode's declared allowlist?
+     *
+     * MCP tools are discovered at runtime as `mcp_<serverTool>`, so they can never
+     * appear in a hand-written allowlist. A mode opts into MCP by listing `mcp_call`;
+     * without it, no dynamic MCP tool is reachable either.
+     */
+    private isAllowedByMode(name: string): boolean {
+        const allowed = this.d.allowedTools || [];
+        if (name.startsWith('mcp_')) return allowed.includes('mcp_call');
+        return allowed.includes(name);
+    }
+
     private ok(tc: ToolCall, content: string, images?: ImagePart[]): ToolResult {
         return { id: tc.id, name: tc.name, content, images };
     }
@@ -77,6 +96,21 @@ export class AgentToolExecutor {
         // even if it somehow got advertised to the model.
         if (!isToolAllowedInMode(tc.name, this.d.mode)) {
             return this.err(tc, `Tool "${tc.name}" is not available in ${this.d.mode} mode.`);
+        }
+
+        /*
+         * Second gate: the acting mode's own allowlist (Phase 2).
+         *
+         * `isToolAllowedInMode` only knows the three coarse AgentModes, and every mode
+         * except Ask and Plan resolves to `agent` — so until now the `tools` arrays
+         * declared by Manager, Sr Architect, the HLD/LLD/Planner phases and the four
+         * pipeline Executors were *advertising-only*. Manager's prompt says it must not
+         * write code and its allowlist omits every write tool, but a `write_file` call
+         * emitted anyway would have executed. This closes that: the declared allowlist
+         * is now enforced where the tool actually runs.
+         */
+        if (this.d.allowedTools?.length && !this.isAllowedByMode(tc.name)) {
+            return this.err(tc, `Tool "${tc.name}" is not in the allowlist for the acting mode.`);
         }
 
         try {

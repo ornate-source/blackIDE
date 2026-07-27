@@ -582,11 +582,11 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M6 | On-demand `get_diagnostics` tool | P0 | E22 | 1 ✅ |
 | M7 | LSP navigation tools (definition, references, symbols, hover, rename, code actions) | P0 | E22 | 1 ✅ |
 | M8 | Structured `run_tests` with per-framework result parsing | P0 | E24 | 1 ✅ |
-| M9 | Rules v2 — `.blackide/rules/*.md`, globs, activation modes, priority | P1 | E6 | 2 |
-| M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 |
-| M11 | Team / org shared rules | P2 | E6 | 2 |
-| M12 | User-defined prompts + workflows library | P2 | E29 | 2 |
-| M13 | Learn / teaching mode | P2 | E16 | 2 |
+| M9 | Rules v2 — `.blackide/rules/*.md`, globs, activation modes, priority | P1 | E6 | 2 ✅ |
+| M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 ✅ |
+| M11 | Team / org shared rules | P2 | E6 | 2 ✅ |
+| M12 | User-defined prompts + workflows library | P2 | E29 | 2 ✅ |
+| M13 | Learn / teaching mode | P2 | E16 | 2 ✅ |
 | M14 | Tree-sitter symbol chunking | P0 | E2 | 3 |
 | M15 | Code graph (calls, imports, type hierarchy) | P0 | E2 | 3 |
 | M16 | `impact_analysis` + graph-backed `find_references` | P1 | E2 | 3 |
@@ -744,6 +744,40 @@ files leaves a compiling tree; a failing suite returns <2 KB where raw output wa
 
 **Gate:** editing a `.ts` file activates only TS-glob rules; the panel's "fired" list byte-matches
 the assembled prompt; `AGENTS.md`-only projects behave identically to today.
+
+> ### ✅ Delivered 2026-07-27
+> `core/rules.ts` + `core/rules-loader.ts` (4 activation modes, 3 scopes, glob engine) ·
+> `core/prompt-library.ts` + loader (slash commands, `$ARGS`/`$1`…, cycle-safe workflows) ·
+> Learn mode · session panel in `webview/src/App.tsx` · `rulesFired` / `toggleRule` wiring.
+> **Harness 426/426 · vitest 195/195 (+96) · 19 real-host tests · eval no regression · webview builds.**
+>
+> **Gate status.** All three met and asserted. Glob activation:
+> `__tests__/rules.test.ts`. Panel fidelity: `__tests__/rules-panel-fidelity.test.ts` asserts
+> the correspondence in *both* directions — every rule the panel lists has its body in the
+> prompt, and every body in the prompt is listed — so a future change that recomputes the
+> panel list separately fails there. `AGENTS.md` back-compat:
+> `__tests__/rules-loader.test.ts`.
+>
+> One honest deviation on back-compat: the rule *content*, its unconditional activation, the
+> prompt section and the budget are all unchanged, but the wrapper text is not byte-identical
+> — a single always-on rule now renders under a `### AGENTS` heading inside a section that
+> states precedence. That is a deliberate improvement; "identically" holds for behaviour, not
+> for the exact string.
+>
+> **Security finding, fixed.** Adding Learn mode exposed that **per-mode tool allowlists were
+> never enforced** — `isToolAllowedInMode` only knows the three coarse `AgentMode`s and every
+> mode except Ask/Plan resolves to `agent`, so the `tools` arrays on Manager, Sr Architect,
+> the HLD/LLD/Planner phases and all four pipeline Executors shaped only what was
+> *advertised*. Manager's prompt says it must not write code and its allowlist omits every
+> write tool, but a `write_file` call emitted anyway would have executed — in an unattended
+> pipeline run too. `plan.md` graded this 🟢 "enforced in the sandbox gate"; it was not.
+> A second gate in `tool-executor.ts` now enforces the acting mode's allowlist where tools
+> run, wired at both executor construction sites, with cover in
+> `__tests__/mode-allowlist-gate.test.ts`.
+>
+> **Trap worth recording:** a block comment containing a glob (`**/*.ts`) terminates itself —
+> the `*/` inside `**/` closes the comment. It cost a confusing cascade of syntax errors
+> pointing at unrelated lines. Glob examples in comments now use line comments.
 
 ### Phase 3 — Retrieval substrate *(the largest technical phase; everything downstream leans on it)*
 *Covers M14–M22.*

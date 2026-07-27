@@ -1,4 +1,5 @@
 import { ChatMessage } from './types';
+import { RuleActivationReason } from './rules';
 
 /**
  * Mutable state for the chat sidebar's single conversation lane.
@@ -62,6 +63,27 @@ export class ChatSession {
 
     /** Per-subagent cancellation, keyed by subagent id. Mutated in place. */
     readonly subagentAbortControllers = new Map<string, AbortController>();
+
+    // ─── Rules v2 session state (Phase 2) ───────────────────────────────────
+    // Session-scoped, not persisted: a toggle is a decision about *this* conversation.
+    // Persisting them would silently change how a project behaves days later, which is
+    // exactly the kind of invisible state the rules files exist to avoid.
+
+    /** `manual`-activation rules the user switched on for this session. */
+    enabledRules: string[] = [];
+
+    /** Rules the user switched off. Team-scoped rules ignore this by design. */
+    disabledRules: string[] = [];
+
+    /** `agent-requested` rules the model asked for, honoured on the following turn. */
+    requestedRules: string[] = [];
+
+    /**
+     * What actually fired on the last turn, as produced by `selectRules` itself.
+     * The session panel renders this array directly rather than recomputing, which is
+     * what makes "what the panel shows" and "what the model was sent" the same thing.
+     */
+    lastRuleActivations: RuleActivationReason[] = [];
 
     /** True when either kind of approval gate is open. */
     get hasPendingApproval(): boolean {

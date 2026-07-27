@@ -248,8 +248,14 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
         // rootPathOverride is set only for execution phases (Design/Backend/Frontend/
         // Testing), which PipelineOrchestrator runs inside an isolated git worktree.
         const executorFactory = (mode: any, rootPathOverride?: string) => {
-            const deps: ExecutorDeps = {
+            // Each pipeline phase runs under its own mode's allowlist, enforced at the
+            // executor (Phase 2). Previously these arrays only shaped what was advertised,
+            // so a read-only analysis phase (HLD/LLD/Planner) could still have written
+            // files if the model emitted a write call in an unattended run.
+            const phaseMode = deps.modeLoader.getMode(typeof mode === 'string' ? mode : mode?.name || '');
+            const executorDeps: ExecutorDeps = {
                 ...baseDeps,
+                allowedTools: phaseMode?.tools?.length ? phaseMode.tools : undefined,
                 rootPath: rootPathOverride || rootPath,
                 onFileChanged: (p, k) => {
                     // Translate worktree-local paths back to where the file will actually
@@ -280,7 +286,7 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
                     }
                 },
             };
-            return new AgentToolExecutor(deps);
+            return new AgentToolExecutor(executorDeps);
         };
 
         const getToolsForMode = (modeId: string) => {

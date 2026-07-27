@@ -32,6 +32,8 @@ import { registerCommands } from './core/command-registry';
 import { runPipelineCore, buildApprovalGate, trackAndEmitUsage } from './agent/pipeline-entry';
 import { SkillDiagnostics } from './agent/skill-diagnostics';
 import { ChatSession } from './core/chat-session';
+import { RulesLoader } from './core/rules-loader';
+import { PromptLibrary } from './core/prompt-library-loader';
 import { runAgentTask, pruneForPersistence } from './agent/chat-task';
 import { handleWebviewMessage, WebviewMessageHost } from './core/webview-message-handler';
 
@@ -113,6 +115,13 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     private readonly _modeLoader: ModeLoader;
     /** Long-lived owner of the skills Problems-panel collection (per-task managers must not own one). */
     private readonly _skillDiagnostics = new SkillDiagnostics();
+    /**
+     * Rules v2 (Phase 2). Long-lived because it owns a Problems-panel collection and
+     * file watchers; the per-turn selection happens in the chat task.
+     */
+    private readonly _rulesLoader = new RulesLoader();
+    /** User-defined slash commands (Phase 2, M12). Same lifecycle as rules. */
+    private readonly _promptLibrary = new PromptLibrary();
 
     /** Prior turns, replayed into each task so the agent remembers the conversation. */
     /** Active thread identity, used to key conversation persistence in Memento. */
@@ -165,6 +174,8 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         // Owned by the extension lifetime so the Problems-panel collection is torn down
         // on deactivate rather than lingering with stale skill warnings.
         _context.subscriptions.push(this._skillDiagnostics);
+        _context.subscriptions.push(this._rulesLoader);
+        _context.subscriptions.push(this._promptLibrary);
 
         this._sessions = new SessionManager(this._bus);
         this._checkpoints = new CheckpointManager(storageDir);
@@ -323,6 +334,22 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
      * mapping here keeps the router's dependencies explicit. Rebuilt per message, which
      * is what keeps `view` current — `session` is the same object either way.
      */
+    /**
+     * Rule metadata for the session panel. Deliberately excludes rule bodies: the panel
+     * shows what is available and what fired, and shipping every body to the webview on
+     * every reload would be pointless traffic.
+     */
+    private _ruleSummaries() {
+        return this._rulesLoader.getRules().map(r => ({
+            name: r.name,
+            description: r.description,
+            activation: r.activation,
+            scope: r.scope,
+            globs: r.globs,
+            file: r.file,
+        }));
+    }
+
     private get _webviewHost(): WebviewMessageHost {
         return {
             session: this._session,
@@ -334,6 +361,8 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             modeLoader: this._modeLoader,
             sessions: this._sessions,
             onOpenSettings: this._onOpenSettings,
+            promptLibrary: this._promptLibrary,
+            rules: this._rulesLoader.getRules(),
             getHtmlForWebview: (wv, vt) => this.getHtmlForWebview(wv, vt),
             getActiveEditorSelectionContext: () => this._getActiveEditorSelectionContext(),
             postCheckpoints: (wv) => this._postCheckpoints(wv),
@@ -383,6 +412,19 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         this._modeLoader.watchForChanges(rootPath, () => {
             webviewView.webview.postMessage({ type: 'modesLoaded', value: this._modeLoader.getSelectableModes() });
         });
+
+        // Rules v2: same lifecycle as modes — load once, then hot-reload on save so an
+        // edited rule takes effect on the next turn without a window reload.
+        const postRules = () => webviewView.webview.postMessage({ type: 'rulesLoaded', value: this._ruleSummaries() });
+        void this._rulesLoader.loadAll(rootPath).then(postRules);
+        this._rulesLoader.watchForChanges(rootPath, postRules);
+
+        const postPrompts = () => webviewView.webview.postMessage({
+            type: 'promptsLoaded',
+            value: this._promptLibrary.getAll().map(p => ({ name: p.name, description: p.description, steps: p.steps })),
+        });
+        void this._promptLibrary.loadAll(rootPath).then(postPrompts);
+        this._promptLibrary.watchForChanges(rootPath, postPrompts);
 
         // Restore pending plan approval if it survived a window reload (Antigravity pattern)
         try {
@@ -805,6 +847,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             skillDiagnostics: this._skillDiagnostics,
             bundledSkillsDir: this._bundledSkillsDir,
             session: this._session,
+            rules: this._rulesLoader.getRules(),
             view: this._view,
             getProjectProfile: () => this._getProjectProfile(),
             generateConversationTitle: (p, m) => this._generateConversationTitle(p, m),

@@ -10,6 +10,9 @@ import { ChatSession } from './chat-session';
 import { HistoryStore } from '../memory/history-store';
 import { PlanningEngine } from '../agent/planning-engine';
 import { performFetchModels } from '../agent/model-fetcher';
+import { PromptLibrary } from './prompt-library-loader';
+import { parseSlashInvocation, expandPrompt, resolveWorkflow } from './prompt-library';
+import { Rule } from './rules';
 
 /**
  * Router for messages arriving from the chat webview.
@@ -34,6 +37,10 @@ export interface WebviewMessageHost {
     readonly modeLoader: ModeLoader;
     readonly sessions: SessionManager;
     readonly onOpenSettings?: () => void;
+    /** User-defined slash commands (Phase 2, M12). */
+    readonly promptLibrary: PromptLibrary;
+    /** Discovered rules, for the session panel's toggle handling (Phase 2, M10). */
+    readonly rules: Rule[];
 
     getHtmlForWebview(webview: vscode.Webview, viewType: 'chat' | 'settings' | 'manager'): string;
     getActiveEditorSelectionContext(): Promise<string>;
@@ -174,6 +181,31 @@ export async function handleWebviewMessage(
             } else if (modifiedPrompt.startsWith('/plan')) {
                 modifiedPrompt = modifiedPrompt.replace('/plan', '').trim();
                 // Planning mode will be auto-detected by PlanningEngine
+            } else {
+                // User-defined prompts (Phase 2, M12). Checked *after* every built-in, and
+                // reserved names are refused at load time, so a user file can never shadow
+                // `/plan` or `/commit` and silently change what those do.
+                const invocation = parseSlashInvocation(modifiedPrompt);
+                const userPrompt = invocation && host.promptLibrary.get(invocation.name);
+                if (invocation && userPrompt) {
+                    const workflow = resolveWorkflow(userPrompt, new Map(host.promptLibrary.getAll().map(p => [p.name, p])));
+                    if (workflow.cycle) {
+                        vscode.window.showErrorMessage(
+                            `Prompt workflow "/${userPrompt.name}" refers back to itself (${workflow.cycle.join(' → ')}). Fix the "steps" chain.`,
+                        );
+                        break;
+                    }
+                    // A single prompt is just a one-step workflow, so both paths share this.
+                    // Steps run sequentially: each is a full agent task, and the next starts
+                    // only once the previous returns.
+                    const mode = userPrompt.mode || data.mode;
+                    for (const step of workflow.steps) {
+                        const expanded = expandPrompt(step.template, invocation.args);
+                        if (!expanded) continue;
+                        await host.runAgentTask(expanded, data.modelId, data.attachments, step.mode || mode);
+                    }
+                    return;
+                }
             }
             
             if (PlanningEngine.shouldOrchestrate(modifiedPrompt, data.mode)) {
@@ -185,6 +217,32 @@ export async function handleWebviewMessage(
                 await host.runAgentTask(modifiedPrompt, data.modelId, data.attachments, data.mode);
             }
             break;
+        case 'toggleRule': {
+            // Session-scoped rule toggles (Phase 2, M10). A team-scoped rule is not the
+            // user's to switch off — selectRules enforces that, and the panel does not
+            // offer the control, but the message could still arrive from a stale webview.
+            const name = String(data.value?.name || '');
+            const enable = !!data.value?.enabled;
+            if (!name) break;
+
+            const rule = host.rules.find(r => r.name.toLowerCase() === name.toLowerCase());
+            if (rule?.scope === 'team' && !enable) {
+                vscode.window.showWarningMessage(`"${rule.name}" is a team rule and cannot be disabled.`);
+                break;
+            }
+
+            const drop = (xs: string[]) => xs.filter(x => x.toLowerCase() !== name.toLowerCase());
+            if (rule?.activation === 'manual') {
+                host.session.enabledRules = enable ? [...drop(host.session.enabledRules), name] : drop(host.session.enabledRules);
+            } else {
+                host.session.disabledRules = enable ? drop(host.session.disabledRules) : [...drop(host.session.disabledRules), name];
+            }
+            webview.postMessage({
+                type: 'ruleTogglesChanged',
+                value: { enabled: host.session.enabledRules, disabled: host.session.disabledRules },
+            });
+            break;
+        }
         case 'openModeSelector':
             const allModes = host.modeLoader.getSelectableModes();
             const currentMode = data.value || 'agent';

@@ -14,6 +14,7 @@ import { SessionManager, TaskEmitter } from '../core/session-manager';
 import { PromptBuilder } from '../core/prompt-builder';
 import { ContextManager } from '../core/context-manager';
 import { ChatSession } from '../core/chat-session';
+import { Rule, selectRules, renderRules, renderRequestableRules } from '../core/rules';
 import { ProjectProfile } from '../core/project-profiler';
 import { BrowserTool } from '../tools/browser-tool';
 import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterToolsForBrowser } from '../tools/browser-capability';
@@ -58,6 +59,8 @@ export interface ChatTaskDeps {
     bundledSkillsDir: string;
     /** Mutable lane state, shared by reference with the provider and the webview handler. */
     session: ChatSession;
+    /** All discovered rules; which of them apply is decided per turn by selectRules. */
+    rules: Rule[];
     /** The live view. Read once at entry, as the original did. */
     view: vscode.WebviewView | undefined;
     getProjectProfile(): Promise<ProjectProfile>;
@@ -213,9 +216,41 @@ export async function runAgentTask(
         await hooks.loadFromWorkspace(rootPath);
         const knowledgeContext = await knowledgeStore.getRelevantContext(userPrompt);
 
-        let projectRules = '';
-        const rulesPath = path.join(rootPath, '.blackide', 'AGENTS.md');
-        if (rootPath && fs.existsSync(rulesPath)) { try { projectRules = `Project Rules:\n${fs.readFileSync(rulesPath, 'utf8')}`; } catch {} }
+        // Rules v2 (Phase 2). Was a single unconditional read of `.blackide/AGENTS.md`;
+        // now every rule source is resolved and only the ones that apply to *this* turn
+        // are injected. `AGENTS.md` is still loaded — as an always-on project rule — so a
+        // project that only has that file gets byte-identical behaviour.
+        //
+        // `activePaths` is what glob rules key off: the file the user is looking at plus
+        // anything they attached. Without it a glob rule could never fire.
+        const activePaths = collectActivePaths(attachments);
+        const selectedRules = selectRules({
+            rules: deps.rules,
+            activePaths,
+            enabled: deps.session.enabledRules,
+            disabled: deps.session.disabledRules,
+            requested: deps.session.requestedRules,
+        });
+        const projectRules = renderRules(selectedRules);
+        const requestableRules = renderRequestableRules(deps.rules);
+        if (selectedRules.length) {
+            log(`[Rules] ${selectedRules.length} active: ${selectedRules.map(r => `${r.rule.name} (${r.reason})`).join(', ')}`);
+        }
+        // The session panel (M10) renders exactly this, so it cannot drift from what was
+        // actually assembled — it is the same array, not a reconstruction. Posted straight
+        // to the webview rather than onto the bus: rule names are user-authored and can
+        // encode project detail, so they must not reach the telemetry sink.
+        deps.session.lastRuleActivations = selectedRules;
+        webview.postMessage({
+            type: 'rulesFired',
+            value: selectedRules.map(r => ({
+                name: r.rule.name,
+                scope: r.rule.scope,
+                reason: r.reason,
+                matchedPath: r.matchedPath,
+                matchedGlob: r.matchedGlob,
+            })),
+        });
 
         const useNative = supportsNativeTools(modelConfig);
         const modeRules =
@@ -250,6 +285,7 @@ These tools degrade to a text search when no language server is available for a 
                 content: useNative ? '' : `To act, output ONE JSON tool call in a \`\`\`json fenced block:\n${renderToolDocs(tools)}`,
             })
             .add({ name: 'project_rules', budgetTokens: 1500, content: projectRules })
+            .add({ name: 'requestable_rules', budgetTokens: 300, content: requestableRules })
             .add({ name: 'user_instructions', budgetTokens: 800, content: settings.customSystemPrompt ? `User Custom Instructions:\n${settings.customSystemPrompt}` : '' })
             .add({ name: 'skills', budgetTokens: 1500, content: skillInstructions })
             .add({ name: 'mcp_tools', budgetTokens: 1200, content: mcpToolDocs ? `External MCP tools available:\n${mcpToolDocs}` : '' })
@@ -292,6 +328,9 @@ These tools degrade to a text search when no language server is available for a 
                     vscode.commands.executeCommand('vscode.open', vscode.Uri.file(p));
                 }
             },
+            // Enforce the selected mode's allowlist at the executor, not just in what we
+            // advertise — see the second gate in tool-executor.ts.
+            allowedTools: customModeDef?.tools?.length ? customModeDef.tools : undefined,
             scheduleTask: (tc) => deps.scheduleAgentTask(tc, modelId, webview, effectiveMode),
             cancelTask: (id) => deps.scheduler.cancel(id),
             spawnSubagent,
@@ -621,3 +660,25 @@ These tools degrade to a text search when no language server is available for a 
 // ─── Phase 2: Execution Loop (Antigravity Pattern) ──────────────────
 // Runs after the user approves the plan. Uses full agent mode with the
 // approved plan + task list injected into the system prompt.
+
+/**
+ * Workspace-relative paths in play this turn, for glob-rule activation.
+ *
+ * The active editor is the strongest signal for "what is the user working on"; a
+ * visible-editor sweep is included because a side-by-side diff or split view is a
+ * normal way to work, and attachments because an explicitly attached file is an
+ * explicit statement of relevance.
+ */
+export function collectActivePaths(attachments?: any[]): string[] {
+    const paths = new Set<string>();
+    const add = (fsPath?: string) => {
+        if (!fsPath) return;
+        paths.add(vscode.workspace.asRelativePath(fsPath, false).replace(/\\/g, '/'));
+    };
+
+    add(vscode.window.activeTextEditor?.document.uri.fsPath);
+    for (const editor of vscode.window.visibleTextEditors) add(editor.document.uri.fsPath);
+    for (const att of attachments || []) add(att?.path);
+
+    return [...paths];
+}
