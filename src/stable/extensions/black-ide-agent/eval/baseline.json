@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-27T12:59:34.161Z",
+  "generatedAt": "2026-07-29T05:21:11.119Z",
   "bundledPackCount": 16,
   "stackDetectionAccuracyPct": 100,
   "stackDetectionPassed": 8,
@@ -10,5 +10,15 @@
   "knownGapTasks": 4,
   "totalTasks": 19,
   "failSafePassed": 1,
-  "failSafeTotal": 1
+  "failSafeTotal": 1,
+  "compactionSavedPct": 19.5,
+  "compactionSamples": 8,
+  "compactionDeepPathSavedPct": 37.7,
+  "recallAt3Pct": 82.9,
+  "recallAt5Pct": 91.2,
+  "recallAt10Pct": 97.2,
+  "recallAt20Pct": 100,
+  "retrievalQueries": 36,
+  "retrievalCorpusFiles": 82,
+  "retrievalCorpusChunks": 446
 }

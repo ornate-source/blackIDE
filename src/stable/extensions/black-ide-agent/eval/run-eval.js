@@ -15,15 +15,14 @@
  *   3. Skill coverage — what fraction of golden tasks get any appropriate pack?
  *      This is the headline number Phase 10 (library breadth) has to move.
  *   4. Fail-safe behaviour — an unrecognised repo must inject nothing.
+ *   5. Retrieval recall@5/10/20 over a real index built on `eval/retrieval-corpus/`
+ *      (Phase 3). Lexical tier only — see eval/retrieval.js for why that is the
+ *      right baseline rather than a limitation to apologise for.
  *
  * ── What it deliberately does NOT measure yet ────────────────────────────────
- *   - Retrieval recall@k. CodebaseIndex.build() enumerates files through
- *     `vscode.workspace.findFiles`, which the test stub returns empty for, so a
- *     recall number here would be measuring the stub. Wiring a fixture-backed
- *     findFiles belongs with Phase 3, which is the phase that needs the metric.
  *   - End-to-end task success / wrong-idiom rate. Both need real model calls;
  *     scaffolded as the opt-in model tier, not run in CI.
- *   Claiming either of those today would be inventing a baseline we cannot defend.
+ *   Claiming that today would be inventing a baseline we cannot defend.
  */
 
 const path = require('path');
@@ -45,8 +44,13 @@ const { detectProjectProfile } = require(path.join(DIST, 'core/project-profiler.
 const { SkillsManager } = require(path.join(DIST, 'agent/skills-manager.js'));
 const { resolveSkills } = require(path.join(DIST, 'agent/skill-resolver.js'));
 
+const CodebaseIndexModule = require(path.join(DIST, 'core/codebase-index.js'));
+const OutputCompactModule = require(path.join(DIST, 'core/output-compact.js'));
+
 const fixtures = require('./fixtures');
 const tasks = require('./tasks');
+const { measureRetrieval } = require('./retrieval');
+const { measureCompaction } = require('./compaction');
 
 const BUNDLED_SKILLS_DIR = path.join(__dirname, '..', 'resources', 'skills');
 
@@ -177,34 +181,115 @@ function report({ metrics, detection, resolution }) {
     line();
 }
 
-const result = run();
-report(result);
+function reportRetrieval({ metrics, rows, ks }) {
+    const line = (s = '') => process.stdout.write(s + '\n');
+    line('══ Retrieval (recall over eval/retrieval-corpus) ══════════════════════');
+    line(`  corpus                      ${metrics.corpusFiles} files → ${metrics.corpusChunks} chunks`);
+    line(`  index build                 ${metrics.buildMs} ms`);
+    for (const k of ks) {
+        line(`  recall@${String(k).padEnd(20)}${metrics[`recallAt${k}Pct`]}%  (over ${metrics.queries} queries)`);
+    }
+    line();
+    line('  Per-query recall@10 (gold files retrieved / gold files):');
+    for (const r of rows) {
+        const at = r.at[10];
+        const mark = at.recall === 1 ? '✓' : at.recall > 0 ? '~' : '✗';
+        const detail = at.missed.length ? `  missed: ${at.missed.join(', ')}` : '';
+        line(`    ${mark} ${r.id.padEnd(28)} ${at.hits.length}/${r.mustFind.length}${detail}`);
+    }
+    line('═══════════════════════════════════════════════════════════════════════');
+    line();
+}
 
-if (process.argv.includes('--json')) {
-    const out = path.join(__dirname, 'baseline.json');
-    fs.writeFileSync(out, JSON.stringify(result.metrics, null, 2) + '\n', 'utf8');
-    process.stdout.write(`baseline written to ${path.relative(process.cwd(), out)}\n`);
-    process.exit(0);
+function reportCompaction({ metrics, rows, deepPaths }) {
+    const line = (s = '') => process.stdout.write(s + '\n');
+    line('══ Tool-output compaction (M18) ═══════════════════════════════════════');
+    line(`  fixture corpus              ${metrics.savedPct}%  (${metrics.originalChars} → ${metrics.compactChars} chars`
+        + `, ~${metrics.originalTokens} → ~${metrics.compactTokens} tokens; avg path ${metrics.avgPathChars} chars)`);
+    if (deepPaths) {
+        line(`  realistic path depth        ${deepPaths.savedPct}%  (this extension's own src/, ${deepPaths.rows} rows,`
+            + ` avg path ${deepPaths.avgPathChars} chars)`);
+        line('    Grouping removes the repeated path and nothing else, so the reduction is');
+        line('    a ratio of path length to line length. The fixture corpus is a flat demo');
+        line('    app and understates it; the second figure is the realistic one.');
+    }
+    line();
+    for (const row of rows) {
+        line(`    ${String(row.savedPct).padStart(5)}%  ${row.sample.padEnd(34)} ${row.count} rows, ${row.originalChars} → ${row.compactChars}`);
+    }
+    line('═══════════════════════════════════════════════════════════════════════');
+    line();
+}
+
+async function main() {
+    const result = run();
+    report(result);
+
+    const retrieval = await measureRetrieval(vscodeStub, CodebaseIndexModule);
+    reportRetrieval(retrieval);
+
+    const compaction = measureCompaction(OutputCompactModule);
+    reportCompaction(compaction);
+    Object.assign(result.metrics, {
+        compactionSavedPct: compaction.metrics.savedPct,
+        compactionSamples: compaction.metrics.samples,
+        ...(compaction.deepPaths ? { compactionDeepPathSavedPct: compaction.deepPaths.savedPct } : {}),
+    });
+    Object.assign(result.metrics, {
+        recallAt3Pct: retrieval.metrics.recallAt3Pct,
+        recallAt5Pct: retrieval.metrics.recallAt5Pct,
+        recallAt10Pct: retrieval.metrics.recallAt10Pct,
+        recallAt20Pct: retrieval.metrics.recallAt20Pct,
+        retrievalQueries: retrieval.metrics.queries,
+        retrievalCorpusFiles: retrieval.metrics.corpusFiles,
+        retrievalCorpusChunks: retrieval.metrics.corpusChunks,
+    });
+
+    if (process.argv.includes('--json')) {
+        const out = path.join(__dirname, 'baseline.json');
+        fs.writeFileSync(out, JSON.stringify(result.metrics, null, 2) + '\n', 'utf8');
+        process.stdout.write(`baseline written to ${path.relative(process.cwd(), out)}\n`);
+        process.exit(0);
+    }
+
+    return result;
 }
 
 /*
  * The gate is "no regression against the committed baseline", not "everything is
- * perfect". Two real defects are open at the time this baseline was recorded (see
+ * perfect". Two real defects were open when this baseline was first recorded (see
  * docs/notes/eval-baseline.md, findings F1 and F2); a gate that fails on day one
  * would just be switched off, and would never catch the regressions it exists for.
  * Later phases raise these numbers and re-record the baseline.
+ *
+ * Recall is guarded with a small tolerance. The other metrics are exact counts over
+ * fixed inputs and cannot move by a hair; recall is an average over 20 queries where
+ * one gold file crossing the k boundary shifts the mean by ~2.5 points. Failing on
+ * that would make the gate noisy, and a noisy gate is a disabled gate. Anything
+ * larger is a real regression and stops the build.
  */
-const baselinePath = path.join(__dirname, 'baseline.json');
-if (fs.existsSync(baselinePath)) {
+const RECALL_TOLERANCE_PCT = 2.0;
+
+function gate(result) {
+    const baselinePath = path.join(__dirname, 'baseline.json');
+    if (!fs.existsSync(baselinePath)) {
+        process.stdout.write('  No baseline recorded yet — run with --json to create one.\n\n');
+        return;
+    }
+
     const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
     const guarded = [
-        ['stackDetectionAccuracyPct', 'stack detection accuracy'],
-        ['skillExactMatchPct', 'skill exact-match rate'],
-        ['skillAnyHitPct', 'skill any-hit rate'],
-        ['failSafePassed', 'fail-safe passes'],
+        ['stackDetectionAccuracyPct', 'stack detection accuracy', 0],
+        ['skillExactMatchPct', 'skill exact-match rate', 0],
+        ['skillAnyHitPct', 'skill any-hit rate', 0],
+        ['failSafePassed', 'fail-safe passes', 0],
+        ['recallAt5Pct', 'retrieval recall@5', RECALL_TOLERANCE_PCT],
+        ['recallAt10Pct', 'retrieval recall@10', RECALL_TOLERANCE_PCT],
+        ['recallAt20Pct', 'retrieval recall@20', RECALL_TOLERANCE_PCT],
+        ['compactionSavedPct', 'tool-output compaction', 1.0],
     ];
     const regressions = guarded
-        .filter(([k]) => typeof baseline[k] === 'number' && result.metrics[k] < baseline[k])
+        .filter(([k, , tol]) => typeof baseline[k] === 'number' && result.metrics[k] < baseline[k] - tol)
         .map(([k, label]) => `  ✗ ${label}: ${baseline[k]} → ${result.metrics[k]}`);
 
     if (regressions.length) {
@@ -214,6 +299,9 @@ if (fs.existsSync(baselinePath)) {
         process.exit(1);
     }
     process.stdout.write('  No regression against eval/baseline.json.\n\n');
-} else {
-    process.stdout.write('  No baseline recorded yet — run with --json to create one.\n\n');
 }
+
+main().then(gate).catch((err) => {
+    process.stderr.write(`\nFAIL: eval run threw — ${err?.stack || err}\n`);
+    process.exit(1);
+});

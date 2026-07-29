@@ -1,4 +1,4 @@
-import { BASE_TOOLS, LSP_READ_TOOLS, toolsForMode, isToolAllowedInMode } from '../src/core/tools';
+import { BASE_TOOLS, CODE_INTEL_READ_TOOLS, toolsForMode, isToolAllowedInMode } from '../src/core/tools';
 import { ModeLoader } from '../src/core/mode-loader';
 
 /**
@@ -13,6 +13,11 @@ import { ModeLoader } from '../src/core/mode-loader';
  */
 
 const PHASE_1_READ_TOOLS = ['get_diagnostics', 'go_to_definition', 'find_references', 'workspace_symbols', 'hover', 'code_actions'];
+/** Phase 3 added graph-backed (M16), git-history (M22) and compaction (M18) members. */
+const PHASE_3_READ_TOOLS = [
+    'impact_analysis', 'search_history', 'blame', 'why_was_this_changed', 'expand_output',
+];
+const ALL_CODE_INTEL_READ_TOOLS = [...PHASE_1_READ_TOOLS, ...PHASE_3_READ_TOOLS];
 
 describe('Phase 1 tools are registered', () => {
     it('registers every read-only LSP tool as safe', () => {
@@ -23,8 +28,16 @@ describe('Phase 1 tools are registered', () => {
         }
     });
 
-    it('keeps LSP_READ_TOOLS in sync with what is registered', () => {
-        expect([...LSP_READ_TOOLS].sort()).toEqual([...PHASE_1_READ_TOOLS].sort());
+    it('keeps CODE_INTEL_READ_TOOLS in sync with what is registered', () => {
+        expect([...CODE_INTEL_READ_TOOLS].sort()).toEqual([...ALL_CODE_INTEL_READ_TOOLS].sort());
+    });
+
+    it('registers the graph-backed tools as safe too', () => {
+        for (const name of PHASE_3_READ_TOOLS) {
+            const tool = BASE_TOOLS.find(t => t.name === name);
+            expect(tool, name).toBeDefined();
+            expect(tool!.risk, name).toBe('safe');
+        }
     });
 
     it('classifies rename_symbol as a write and run_tests as exec', () => {
@@ -54,9 +67,9 @@ describe('Phase 1 tools are registered', () => {
 });
 
 describe('the sandbox gate', () => {
-    it('allows read-only LSP tools in every mode, including read-only ones', () => {
+    it('allows read-only code-intelligence tools in every mode, including read-only ones', () => {
         for (const mode of ['ask', 'plan', 'agent'] as const) {
-            for (const name of PHASE_1_READ_TOOLS) {
+            for (const name of ALL_CODE_INTEL_READ_TOOLS) {
                 expect(isToolAllowedInMode(name, mode), `${name} in ${mode}`).toBe(true);
             }
         }
@@ -73,20 +86,20 @@ describe('the sandbox gate', () => {
 
     it('advertises the read tools in ask mode', () => {
         const names = toolsForMode('ask').map(t => t.name);
-        for (const name of PHASE_1_READ_TOOLS) expect(names, name).toContain(name);
+        for (const name of ALL_CODE_INTEL_READ_TOOLS) expect(names, name).toContain(name);
     });
 });
 
 describe('per-mode allowlists actually admit the new tools', () => {
     // This is the assertion that would have caught the silent-filtering trap.
-    it('gives every built-in mode that declares a tool list the read-only LSP tools', async () => {
+    it('gives every built-in mode that declares a tool list the read-only code-intelligence tools', async () => {
         const modes = await new ModeLoader().loadAll('/empty');
         const declaring = modes.filter(m => m.tools && m.tools.length > 0);
         expect(declaring.length).toBeGreaterThan(8);
 
         const missing: string[] = [];
         for (const mode of declaring) {
-            for (const name of PHASE_1_READ_TOOLS) {
+            for (const name of ALL_CODE_INTEL_READ_TOOLS) {
                 if (!mode.tools!.includes(name)) missing.push(`${mode.name} lacks ${name}`);
             }
         }

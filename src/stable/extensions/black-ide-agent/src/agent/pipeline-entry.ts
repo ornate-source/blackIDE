@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { LLMConfigEntry } from '../core/types';
 import { TokenTracker } from '../core/token-tracker';
 import { toolsForMode } from '../core/tools';
-import { PipelineOrchestrator, isOverTokenBudget } from './pipeline-orchestrator';
+import { PipelineOrchestrator, isOverTokenBudget, buildPipelineContextSummary } from './pipeline-orchestrator';
 import { CheckpointManager } from '../core/checkpoint-manager';
 import { CommandPolicy } from '../core/command-policy';
 import { CodebaseIndex } from '../core/codebase-index';
@@ -26,6 +26,12 @@ import { resolveSkills, renderSkills, roleForMode, skillsFiredEvent } from './sk
 import { ProjectProfile } from '../core/project-profiler';
 import { ArtifactManager } from './artifact-manager';
 import { AgentToolExecutor, ApprovalRequest, ExecutorDeps } from './tool-executor';
+import { ChatSession } from '../core/chat-session';
+import { SessionManager } from '../core/session-manager';
+import { HistoryStore } from '../memory/history-store';
+import { generateConversationTitle } from '../core/conversation-title';
+import { pruneForPersistence } from './chat-task';
+import { PIPELINE_PLAN_APPROVAL_NOTE } from './managed-runs';
 
 /**
  * Pipeline mechanics, shared by the chat-triggered flow and concurrent
@@ -466,4 +472,102 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
         try { await mcpClient?.disconnectAll(); } catch {}
     }
     return completed;
+}
+
+// ─── Chat-triggered pipeline entry ──────────────────────────────────────────
+
+/** What `runChatPipeline` needs on top of the shared core's dependencies. */
+export interface ChatPipelineDeps extends PipelineCoreDeps {
+    session: ChatSession;
+    sessions: SessionManager;
+    historyStore: HistoryStore;
+    /** Where approval cards and title refreshes go. Absent if the sidebar was never resolved. */
+    view?: vscode.WebviewView;
+}
+
+/**
+ * The chat-triggered pipeline entry point (Phase 0, M2 — the final `extension.ts` cut).
+ *
+ * Owns everything specific to running inside the main chat sidebar: the shared
+ * `ChatSession` abort/generating flags, the in-chat approval card, and the
+ * conversation-context splice that gives follow-up turns memory of what the pipeline
+ * built. The pipeline mechanics themselves are `runPipelineCore`, which Manager-panel
+ * runs (`ManagedRunRegistry`) share.
+ *
+ * `session` is passed by reference for the same reason the chat task takes it that way:
+ * this function reassigns lane state that the webview message handler reads afterwards.
+ */
+export async function runChatPipeline(deps: ChatPipelineDeps, userPrompt: string, modelId: string): Promise<void> {
+    const { session, sessions, historyStore, view } = deps;
+    if (!view) return;
+    const webview = view.webview;
+
+    session.abortController?.abort();
+    const controller = new AbortController();
+    session.abortController = controller;
+    session.isGenerating = true;
+
+    // Resolved again inside runPipelineCore for the actual run — this lookup is only to
+    // preserve the beginTask() label (the model's own `.model` name rather than its
+    // LLMConfigEntry id) and to feed title generation below, and tolerates failure since
+    // a bad modelId still surfaces as a proper thrown error from the core.
+    let modelLabel = modelId;
+    let modelConfig: LLMConfigEntry | undefined;
+    try {
+        const configJson = await deps.secretManager.getKey('llm-config');
+        const configs: LLMConfigEntry[] = configJson ? JSON.parse(configJson) : [];
+        modelConfig = configs.find(c => c.id === modelId);
+        modelLabel = modelConfig?.model || modelId;
+    } catch {}
+    const task = sessions.beginTask(userPrompt, 'agent', modelLabel);
+    const emit = (e: any) => task.emit(e);
+
+    try {
+        const completed = await runPipelineCore(deps, {
+            userPrompt, modelId,
+            signal: controller.signal,
+            emit,
+            // In-chat approval gate — reuses the same PlanApprovalRequested card and
+            // approvePlan/rejectPlan handlers the single-agent flow already has, instead
+            // of a blocking native dialog. See ChatSession.pendingPipelineApproval.
+            requestApproval: (planContent, planPath) => new Promise<boolean>((resolve) => {
+                session.pendingPipelineApproval = { planContent, planPath, resolve };
+                webview.postMessage({
+                    type: 'planApprovalRequested',
+                    value: {
+                        planContent,
+                        taskContent: PIPELINE_PLAN_APPROVAL_NOTE,
+                        planPath,
+                        taskPath: planPath,
+                    },
+                });
+            }),
+        });
+
+        // Give follow-up chat turns memory of what the pipeline built (spec F14). Only on
+        // genuine completion — a rejected/cancelled/failed run must not pollute the thread
+        // with phantom context. Manager-panel runs never reach here; they are not part of
+        // any chat thread.
+        if (completed) {
+            try {
+                const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+                const overviewPath = path.join(rootPath, '.blackIDE', 'overview.md');
+                const overviewContent = fs.existsSync(overviewPath) ? fs.readFileSync(overviewPath, 'utf8') : null;
+                session.conversation.push(
+                    { role: 'user', content: userPrompt },
+                    { role: 'assistant', content: buildPipelineContextSummary(overviewContent) },
+                );
+                await historyStore.setConversationState(
+                    session.activeThreadId, pruneForPersistence(session.conversation));
+                if (modelConfig) {
+                    generateConversationTitle(
+                        { historyStore, activeThreadId: session.activeThreadId, view },
+                        userPrompt, modelConfig,
+                    ).catch(() => {});
+                }
+            } catch { /* context splice is best-effort; never fail the run over it */ }
+        }
+    } finally {
+        session.isGenerating = false;
+    }
 }

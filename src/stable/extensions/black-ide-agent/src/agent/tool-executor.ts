@@ -14,6 +14,9 @@ import { CodebaseIndex } from '../core/codebase-index';
 import { ProjectProfile } from '../core/project-profiler';
 import { selectTestCommand, parseTestOutput, formatTestReport } from '../core/test-report';
 import * as LspTools from '../tools/lsp-tools';
+import { analyseImpact, formatImpact } from '../tools/graph-tools';
+import { compactGrep, RawOutputStore, withRawPointer } from '../core/output-compact';
+import { searchHistory, blame, whyWasThisChanged } from '../tools/git-history';
 
 export interface ApprovalRequest {
     kind: 'edit' | 'create' | 'exec' | 'mcp';
@@ -48,6 +51,8 @@ export interface ExecutorDeps {
     onArtifact?: (a: { name: string; type: string; path: string }) => void;
     /** Live stdout/stderr from run_command, so a long build is watchable. */
     onTerminalChunk?: (stream: 'stdout' | 'stderr', text: string) => void;
+    /** Records a finished command for the `@terminal` provider (Phase 3, M19). */
+    recordTerminal?: (command: string, output: string) => void;
     onFileChanged?: (path: string, kind: 'created' | 'modified' | 'deleted') => void;
     scheduleTask?: (tc: ToolCall) => void;
     cancelTask?: (id: string) => void;
@@ -63,6 +68,16 @@ export interface ExecutorDeps {
 
 /** Executes a single tool call and returns a structured result for the model. */
 export class AgentToolExecutor {
+    /**
+     * Uncompressed copies of recent compacted results (Phase 3, M18), so
+     * `expand_output` can hand back exactly what was grouped away.
+     *
+     * Per-executor, not global: an executor's lifetime is the run's, and an id from a
+     * finished run pointing at a live buffer is a way for one run to read another's
+     * file contents.
+     */
+    private readonly rawOutputs = new RawOutputStore();
+
     constructor(private readonly d: ExecutorDeps) {}
 
     private abs(p: string): string {
@@ -131,7 +146,16 @@ export class AgentToolExecutor {
                 }
                 case 'grep_search': {
                     const results = await ToolRunner.grepSearch(a.query, a.path, { isRegex: a.is_regex, caseInsensitive: a.case_insensitive });
-                    return this.ok(tc, results.length ? results.map(r => `${r.file}:${r.line}: ${r.content}`).join('\n') : 'No matches.');
+                    if (!results.length) return this.ok(tc, 'No matches.');
+                    // Grouped by file (Phase 3, M18). The raw form stays fetchable, so
+                    // this trades repeated path prefixes for context and nothing else.
+                    const raw = results.map(r => `${r.file}:${r.line}: ${r.content}`).join('\n');
+                    const compacted = withRawPointer(compactGrep(results), this.rawOutputs, raw);
+                    return this.ok(tc, compacted.text);
+                }
+                case 'expand_output': {
+                    const raw = this.rawOutputs.get(String(a.id));
+                    return this.ok(tc, raw ?? `No stored output with id "${a.id}". Ids expire once ${this.rawOutputs.size} newer results have been produced; re-run the original tool.`);
                 }
                 case 'codebase_search': {
                     const hits = await this.d.codebaseIndex.search(a.query, 6);
@@ -176,6 +200,11 @@ export class AgentToolExecutor {
                         r.stdout ? `Stdout:\n${r.stdout}` : 'Stdout: (empty)',
                         r.stderr ? `Stderr:\n${r.stderr}` : 'Stderr: (empty)',
                     ];
+                    // Feeds the `@terminal` context provider (Phase 3, M19), so the
+                    // user can hand a previous command's output back to the agent
+                    // without re-running it — which for a slow build or a
+                    // non-idempotent script is the difference between usable and not.
+                    this.d.recordTerminal?.(a.command, parts.join('\n'));
                     return this.ok(tc, parts.join('\n'));
                 }
                 case 'web_search': {
@@ -269,6 +298,32 @@ export class AgentToolExecutor {
                     return this.ok(tc, await LspTools.hoverInfo(a.path, a.symbol, a.line));
                 case 'code_actions':
                     return this.ok(tc, await LspTools.codeActions(a.path, a.symbol, a.line));
+
+                // ─── Graph-backed analysis (Phase 3, M16) ────────────────────
+                // The offline counterpart to find_references: no language server
+                // needed, whole-repo, and ranked by hop distance rather than
+                // returned as a flat location list. Depth is clamped because the
+                // third hop is reliably noise — everything imports the config.
+                // ─── Git history (Phase 3, M22) ──────────────────────────────
+                // All read-only, all shelling out with an argument array rather than
+                // a shell string, and all reporting *why* history is unavailable
+                // rather than returning an empty answer that reads as "no history".
+                case 'search_history':
+                    return this.ok(tc, await searchHistory(String(a.query), {
+                        cwd: this.d.rootPath,
+                        ...(a.max_commits ? { maxCommits: Math.min(Number(a.max_commits), 100) } : {}),
+                    }));
+                case 'blame':
+                    return this.ok(tc, await blame(
+                        String(a.path), Number(a.start_line), Number(a.end_line), { cwd: this.d.rootPath }));
+                case 'why_was_this_changed':
+                    return this.ok(tc, await whyWasThisChanged(String(a.symbol), { cwd: this.d.rootPath }));
+
+                case 'impact_analysis': {
+                    const depth = Math.min(Math.max(Number(a.depth) || 2, 1), 3);
+                    return this.ok(tc, formatImpact(
+                        analyseImpact(this.d.codebaseIndex.graph, String(a.symbol), depth)));
+                }
 
                 case 'rename_symbol': {
                     const plan = await LspTools.planRename(a.path, a.symbol, a.new_name, a.line);

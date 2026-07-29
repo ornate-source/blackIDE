@@ -2,7 +2,7 @@ import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { LSP_READ_TOOLS } from './tools';
+import { CODE_INTEL_READ_TOOLS } from './tools';
 
 /** Schema version for mode definitions */
 const MODE_SCHEMA_VERSION = 1;
@@ -114,7 +114,7 @@ export class ModeLoader {
         const builtins: CustomMode[] = [
             // ── Original 3 modes ──
             { name: 'Ask', description: 'Ask questions (no edits)', systemPrompt: '', tools: [], icon: 'comment-discussion', source: 'builtin' },
-            { name: 'Plan', description: 'Plan & explore (no edits)', systemPrompt: '', tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...LSP_READ_TOOLS], icon: 'map', source: 'builtin' },
+            { name: 'Plan', description: 'Plan & explore (no edits)', systemPrompt: '', tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...CODE_INTEL_READ_TOOLS], icon: 'map', source: 'builtin' },
             { name: 'Agent', description: 'Full agent with all tools', systemPrompt: '', icon: 'robot', source: 'builtin' },
 
             // ── Specialized Agent Roles ──
@@ -164,7 +164,7 @@ When writing backend code:
                 icon: 'terminal',
                 source: 'builtin',
                 maxIterations: 30,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...LSP_READ_TOOLS, 'rename_symbol', 'run_tests'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior DevOps Engineer. Your expertise:
 - Docker/Docker Compose — multi-stage builds, layer optimization
 - CI/CD pipelines (GitHub Actions, GitLab CI, Jenkins)
@@ -190,7 +190,7 @@ When writing infrastructure code:
                 source: 'builtin',
                 maxIterations: 20,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search',
-                        'create_artifact', 'complete_task', ...LSP_READ_TOOLS],
+                        'create_artifact', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a patient senior engineer teaching this codebase to another developer.
 
 Your job is understanding, not delivery. For any question:
@@ -214,7 +214,7 @@ where, then tell them to switch to Agent mode to have it done. Do not pretend to
                 icon: 'organization',
                 source: 'builtin',
                 maxIterations: 15,
-                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'spawn_subagent', 'complete_task', ...LSP_READ_TOOLS],
+                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'spawn_subagent', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Technical Project Manager / Engineering Manager. Your role:
 - Analyze complex tasks and break them into focused, delegatable sub-tasks
 - Use spawn_subagent to delegate implementation work to specialist agents
@@ -235,7 +235,7 @@ You do NOT write code yourself. You:
                 icon: 'symbol-structure',
                 source: 'builtin',
                 maxIterations: 20,
-                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...LSP_READ_TOOLS],
+                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Senior Software Architect. Your role:
 - Evaluate system architecture and identify design improvements
 - Apply SOLID principles, DRY, separation of concerns
@@ -259,7 +259,7 @@ You do NOT implement changes yourself. You:
                 internal: true,
                 maxIterations: 20,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search',
-                        'web_search', 'create_artifact', 'complete_task', ...LSP_READ_TOOLS],
+                        'web_search', 'create_artifact', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Senior Systems Architect performing High-Level Design analysis.
 
 Your deliverable is a structured HLD covering:
@@ -281,7 +281,7 @@ Do NOT write any source code. Read-only analysis only. Use the update_mindmap to
                 internal: true,
                 maxIterations: 25,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search',
-                        'create_artifact', 'complete_task', ...LSP_READ_TOOLS],
+                        'create_artifact', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Senior Full-Stack Engineer performing Low-Level Design.
 
 Convert the HLD into an exhaustive implementation task list. Every task MUST be tagged:
@@ -307,7 +307,7 @@ Do NOT write any source code.`,
                 internal: true,
                 maxIterations: 15,
                 tools: ['read_file', 'list_directory', 'write_file', 'create_artifact',
-                        'complete_task', ...LSP_READ_TOOLS, 'rename_symbol'],
+                        'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol'],
                 systemPrompt: `You are a Planning Agent. Aggregate the HLD and LLD analysis into a
 single features_plan.md file at .blackIDE/features_plan.md.
 
@@ -334,7 +334,7 @@ Write the file using write_file, then call complete_task.`,
                 source: 'builtin',
                 internal: true,
                 maxIterations: 40,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...LSP_READ_TOOLS, 'rename_symbol', 'run_tests'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior UI/UX Designer executing the [design] phase.
 Focus exclusively on tasks tagged [design] in the approved plan.
 After completing your tasks, describe what you built using the update_mindmap tool.
@@ -347,7 +347,7 @@ Use modern design practices: CSS custom properties, responsive layouts, accessib
                 source: 'builtin',
                 internal: true,
                 maxIterations: 40,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...LSP_READ_TOOLS, 'rename_symbol', 'run_tests'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior Backend Engineer executing the [backend] phase.
 Focus exclusively on tasks tagged [backend] in the approved plan.
 After completing your tasks, describe all API routes, models, and middleware using the update_mindmap tool.
@@ -360,7 +360,7 @@ Always validate input, use parameterized queries, implement proper error handlin
                 source: 'builtin',
                 internal: true,
                 maxIterations: 40,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...LSP_READ_TOOLS, 'rename_symbol', 'run_tests'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior Frontend Engineer executing the [frontend] phase.
 Focus exclusively on tasks tagged [frontend] in the approved plan.
 After completing your tasks, describe all components, hooks, and integrations using the update_mindmap tool.
@@ -374,7 +374,7 @@ Use semantic HTML, ARIA attributes, and responsive design.`,
                 internal: true,
                 maxIterations: 30,
                 tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task',
-                        'browser_open', 'browser_screenshot', 'browser_click', 'browser_type', 'browser_read', 'browser_close', ...LSP_READ_TOOLS, 'rename_symbol', 'run_tests'],
+                        'browser_open', 'browser_screenshot', 'browser_click', 'browser_type', 'browser_read', 'browser_close', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior QA/Test Engineer executing the [testing] phase.
 Focus exclusively on tasks tagged [testing] in the approved plan.
 Write comprehensive tests, then run the suite with run_tests — it selects this project's

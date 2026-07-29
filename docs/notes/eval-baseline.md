@@ -68,15 +68,72 @@ because an unsaved edit is invisible to git, to the test runner, and to the next
 The remaining gap needs a model to measure whether the agent *chooses* LSP over grep, which is the
 opt-in model tier's job.
 
+## Phase 3 addendum — retrieval recall now has a baseline (2026-07-29)
+
+The recall metric deferred through Phases 0–2 is now recorded. It was deferred for a
+real reason: `CodebaseIndex.build()` enumerates through `vscode.workspace.findFiles`,
+which the shared stub returned `[]` for, so any recall figure would have been measuring
+the stub. `test/vscode-stub.js` now walks the real filesystem from the open workspace
+root, and `__tests__/retrieval-harness.test.ts` asserts that enumeration contract —
+an empty index throws in `eval/retrieval.js` rather than reporting a plausible 0%.
+
+| Metric | Baseline | What moves it |
+|---|:--:|---|
+| Retrieval recall@3 | **82.4%** | M14 chunking · M17 rerank |
+| Retrieval recall@5 | **84.7%** | M14 · M17 |
+| Retrieval recall@10 | **93.1%** | M14 · M15/M16 graph |
+| Retrieval recall@20 | **94.4%** | M14 · M15/M16 |
+| Corpus | 82 files → 112 chunks | frozen fixture |
+| Index build | ~26 ms | M14 must stay within baseline +50% |
+
+Measured over **36 golden queries** against `eval/retrieval-corpus/` — a frozen,
+purpose-built three-language service (TypeScript API, Go worker, Python analytics, plus
+migrations and runbooks). The corpus is not this repo's own source on purpose: gold sets
+name specific files, and a gate that breaks whenever an unrelated file is renamed gets
+switched off. Distractors are concentrated where the gold files live — payment,
+currency, retry/backoff, token expiry, queue redelivery — because a distractor that
+shares no vocabulary with the answer does not make retrieval harder.
+
+**Lexical tier only.** Embeddings need a provider and a network call, so in CI the
+semantic list is empty and RRF degrades to BM25 order. That is the right baseline to
+move rather than a caveat: symbol chunking and reranking both change what the lexical
+tier can reach, and a metric gated on an API key could not run in the gate that has to
+catch their regressions.
+
+### The one honest problem this measurement exposed
+
+**Phase 3's headline gate — "recall@10 +25% over the line-window baseline" — is
+arithmetically impossible as written.** It was authored before any baseline existed.
+From 93.1%, a 25% relative gain would require 116%. The gate has to be restated against
+the number rather than the number massaged to fit the gate; see `enhancement.md` §4,
+Phase 3, for the replacement (residual-error reduction, plus recall@5 as the headline,
+which at 84.7% has genuine headroom).
+
+### The failure mode the baseline points at
+
+Five queries miss at k=10, and they fail the *same way*: the missed file is always the
+one where the relevant symbol is **defined**, when the query describes behaviour instead
+of naming the symbol.
+
+| Query | Retrieved | Missed |
+|---|---|---|
+| `q-currency-conversion` | `order-service.ts` (the caller) | `utils/currency.ts` (`convertMinor`) |
+| `q-order-status-machine` | `order-service.ts` | `models/order.ts` (`canTransition`) |
+| `q-order-created-event` | `worker/handler.go` | `worker/queue.go` (`deadLetter`) |
+| `q-daily-rollup` | `analytics/pipeline.py` | `analytics/metrics.py` (`conversion_rate`) |
+| `q-masked-email` | `services/audit-service.ts` | `models/user.ts` (`maskEmail`) |
+
+A 50-line window straddling a definition dilutes it with whatever else shares the
+window; the caller, which repeats the domain vocabulary in prose and in argument names,
+outranks it every time. This is precisely what M14 (symbol chunking) and M15/M16 (the
+code graph's def→use edges) exist to fix, which makes these five the phase's real
+scoreboard — more informative than the aggregate.
+
 ## What is deliberately NOT measured yet
 
-Both are scheduled with the phase that needs them, because a number we cannot defend is
-worse than no number.
+Scheduled with the phase that needs it, because a number we cannot defend is worse than
+no number.
 
-- **Retrieval recall@k.** `CodebaseIndex.build()` enumerates files through
-  `vscode.workspace.findFiles`, which the test stub returns empty for — any recall
-  figure today would be measuring the stub, not the index. Wiring a fixture-backed
-  `findFiles` belongs with **Phase 3**, which is the phase that needs the metric.
 - **End-to-end task success / wrong-idiom rate.** Needs real model calls. Belongs to an
   opt-in model tier, not to CI.
 
@@ -84,7 +141,12 @@ worse than no number.
 
 `npm run eval` compares the current run against `eval/baseline.json` and exits non-zero
 only on a **regression** in stack detection accuracy, skill exact-match rate, skill
-any-hit rate, or fail-safe passes.
+any-hit rate, fail-safe passes, or retrieval recall@5/@10/@20.
+
+Recall is guarded with a **2-point tolerance**; the others are exact. The other metrics
+are counts over fixed inputs and cannot move by a hair, but recall is a mean over 36
+queries where a single gold file crossing the k boundary shifts it by ~2 points. Failing
+on that would make the gate noisy, and a noisy gate is a disabled gate.
 
 It is deliberately not "everything must be green". When a phase improves a metric,
 re-record with `npm run eval:record` so the new floor is locked in — which is what

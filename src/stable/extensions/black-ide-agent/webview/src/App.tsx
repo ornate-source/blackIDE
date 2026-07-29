@@ -427,6 +427,20 @@ const getMessageAgentState = (msg: Message): AgentState => {
 };
 
 
+/**
+ * One row in the `@`-mention dropdown (Phase 3, M19).
+ *
+ * `mention` is the text inserted after the `@`. `group` names the provider it came
+ * from; the pseudo-group `providers` is the discovery row (`@problems`, `@git`, …)
+ * whose mention ends in `:` so selecting it narrows rather than completes.
+ */
+interface ContextSuggestion {
+  mention: string;
+  label: string;
+  detail?: string;
+  group: string;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<'chat' | 'settings'>((window as any).isSettingsPanel ? 'settings' : 'chat');
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
@@ -467,7 +481,29 @@ export default function App() {
 
   // Dropdown autocomplete state
   const [showContextDropdown, setShowContextDropdown] = useState(false);
-  const [contextSuggestions, setContextSuggestions] = useState<string[]>([]);
+  // Phase 3 (M19): `@` resolves through the provider registry, not only files.
+  // A suggestion carries the mention text to insert plus what to show for it.
+  const [contextSuggestions, setContextSuggestions] = useState<ContextSuggestion[]>([]);
+
+  /**
+   * Completes an `@` mention from a dropdown row.
+   *
+   * A row whose mention ends in `:` is a *provider*, not a value — selecting
+   * `@git:` should leave the caret ready to pick a value rather than sending a
+   * half-formed mention, so no trailing space is added and the dropdown stays open.
+   */
+  const applyContextSuggestion = (suggestion?: ContextSuggestion) => {
+    if (!suggestion) return;
+    const atIndex = inputText.lastIndexOf('@');
+    const narrowing = suggestion.mention.endsWith(':');
+    setInputText(inputText.slice(0, atIndex) + `@${suggestion.mention}` + (narrowing ? '' : ' '));
+    if (narrowing) {
+      vscode.postMessage({ type: 'contextSuggest', value: suggestion.mention });
+      setContextDropdownIndex(0);
+    } else {
+      setShowContextDropdown(false);
+    }
+  };
   const [contextDropdownIndex, setContextDropdownIndex] = useState(0);
 
   const [showSlashDropdown, setShowSlashDropdown] = useState(false);
@@ -777,8 +813,30 @@ export default function App() {
           setAgentLogs(prev => [...prev, message.value]);
           break;
         case 'searchFilesResponse':
+          // Legacy file-only shape, still handled so an older host keeps working.
           if (message.value) {
-            setContextSuggestions(message.value);
+            setContextSuggestions((message.value as string[]).map((f: string) => ({
+              mention: f, label: f.split('/').pop() || f, detail: f, group: 'file',
+            })));
+          }
+          break;
+        case 'contextSuggestResponse':
+          if (message.value) {
+            const flattened: ContextSuggestion[] = [];
+            for (const group of message.value as { provider: string; items: { id: string; label: string; detail?: string }[] }[]) {
+              for (const item of group.items) {
+                flattened.push({
+                  // A provider row inserts `@problems:` and leaves the caret there,
+                  // so the next keystroke narrows within it.
+                  mention: group.provider === 'providers' ? item.id : (group.provider === 'file' ? item.id : `${group.provider}:${item.id}`),
+                  label: item.label,
+                  detail: item.detail,
+                  group: group.provider,
+                });
+              }
+            }
+            setContextSuggestions(flattened);
+            setContextDropdownIndex(0);
           }
           break;
         case 'setHistory':
@@ -1183,7 +1241,7 @@ export default function App() {
     if (atIndex !== -1 && atIndex >= text.length - 15) {
       const query = text.slice(atIndex + 1);
       if (!query.includes(' ') && !query.includes('\n')) {
-        vscode.postMessage({ type: 'searchFiles', value: query });
+        vscode.postMessage({ type: 'contextSuggest', value: query });
         setShowContextDropdown(true);
         setShowSlashDropdown(false);
         return;
@@ -1230,11 +1288,7 @@ export default function App() {
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        const atIndex = inputText.lastIndexOf('@');
-        const file = contextSuggestions[contextDropdownIndex];
-        const newText = inputText.slice(0, atIndex) + `@${file} `;
-        setInputText(newText);
-        setShowContextDropdown(false);
+        applyContextSuggestion(contextSuggestions[contextDropdownIndex]);
         return;
       }
       if (e.key === 'Escape') {
@@ -3237,20 +3291,18 @@ export default function App() {
 
           {showContextDropdown && contextSuggestions.length > 0 && (
             <div className="absolute left-3 bottom-[calc(100%+8px)] bg-panel border border-border rounded-md shadow-lg overflow-hidden min-w-[200px] max-h-[150px] overflow-y-auto z-50">
-              {contextSuggestions.map((file, i) => (
+              {contextSuggestions.map((suggestion, i) => (
                 <div
-                  key={file}
-                  onClick={() => {
-                    const atIndex = inputText.lastIndexOf('@');
-                    const newText = inputText.slice(0, atIndex) + `@${file} `;
-                    setInputText(newText);
-                    setShowContextDropdown(false);
-                  }}
-                  className={`px-3 py-1.5 hover:bg-focusBorder/20 cursor-pointer text-[10.5px] truncate ${
+                  key={`${suggestion.group}:${suggestion.mention}`}
+                  onClick={() => applyContextSuggestion(suggestion)}
+                  className={`px-3 py-1.5 hover:bg-focusBorder/20 cursor-pointer text-[10.5px] ${
                     contextDropdownIndex === i ? 'bg-focusBorder/20 text-white font-semibold' : 'text-muted'
                   }`}
                 >
-                  @{file}
+                  <div className="truncate">@{suggestion.mention}</div>
+                  {suggestion.detail && (
+                    <div className="truncate text-[9.5px] opacity-60">{suggestion.detail}</div>
+                  )}
                 </div>
               ))}
             </div>

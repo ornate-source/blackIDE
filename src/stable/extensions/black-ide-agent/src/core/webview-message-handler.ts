@@ -13,6 +13,7 @@ import { performFetchModels } from '../agent/model-fetcher';
 import { PromptLibrary } from './prompt-library-loader';
 import { parseSlashInvocation, expandPrompt, resolveWorkflow } from './prompt-library';
 import { Rule } from './rules';
+import { ContextProviderRegistry } from './context-providers';
 
 /**
  * Router for messages arriving from the chat webview.
@@ -41,6 +42,8 @@ export interface WebviewMessageHost {
     readonly promptLibrary: PromptLibrary;
     /** Discovered rules, for the session panel's toggle handling (Phase 2, M10). */
     readonly rules: Rule[];
+    /** `@`-mention providers (Phase 3, M19). */
+    readonly contextProviders: ContextProviderRegistry;
 
     getHtmlForWebview(webview: vscode.Webview, viewType: 'chat' | 'settings' | 'manager'): string;
     getActiveEditorSelectionContext(): Promise<string>;
@@ -416,14 +419,30 @@ export async function handleWebviewMessage(
             await host.historyStore.clear();
             webview.postMessage({ type: 'setHistory', value: [] });
             break;
-        case 'searchFiles':
+        case 'searchFiles': {
+            // Legacy shape, kept working verbatim (Phase 3, M19). The webview's
+            // dropdown now uses `contextSuggest` below; this remains because a
+            // stale webview surviving an extension reload would otherwise get an
+            // empty list with no error, which looks exactly like "no matches".
             const query = data.value || '';
-            const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 100);
-            const matchingFiles = files
-                .map((file: vscode.Uri) => vscode.workspace.asRelativePath(file))
-                .filter((f: string) => f.toLowerCase().includes(query.toLowerCase()))
-                .slice(0, 15);
-            webview.postMessage({ type: 'searchFilesResponse', value: matchingFiles });
+            const groups = await host.contextProviders.suggest(query);
+            const fileGroup = groups.find(g => g.provider === 'file');
+            webview.postMessage({
+                type: 'searchFilesResponse',
+                value: (fileGroup?.items ?? []).map(i => i.id),
+            });
+            break;
+        }
+        case 'contextSuggest': {
+            const groups = await host.contextProviders.suggest(String(data.value ?? ''));
+            webview.postMessage({ type: 'contextSuggestResponse', value: groups });
+            break;
+        }
+        case 'contextProviders':
+            webview.postMessage({
+                type: 'contextProvidersResponse',
+                value: host.contextProviders.list().map(p => ({ id: p.id, title: p.title, description: p.description })),
+            });
             break;
         case 'autoDetectOllama':
             try {

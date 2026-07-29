@@ -15,6 +15,8 @@ import { PromptBuilder } from '../core/prompt-builder';
 import { ContextManager } from '../core/context-manager';
 import { ChatSession } from '../core/chat-session';
 import { Rule, selectRules, renderRules, renderRequestableRules } from '../core/rules';
+import { ContextProviderRegistry } from '../core/context-providers';
+import { resolveMentions } from '../core/mention-resolver';
 import { ProjectProfile } from '../core/project-profiler';
 import { BrowserTool } from '../tools/browser-tool';
 import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterToolsForBrowser } from '../tools/browser-capability';
@@ -61,6 +63,10 @@ export interface ChatTaskDeps {
     session: ChatSession;
     /** All discovered rules; which of them apply is decided per turn by selectRules. */
     rules: Rule[];
+    /** Records finished commands for the `@terminal` provider (Phase 3, M19). */
+    recordTerminal?: (command: string, output: string) => void;
+    /** Resolves `@`-mentions in the user's prompt (Phase 3, M19). */
+    contextProviders: ContextProviderRegistry;
     /** The live view. Read once at entry, as the original did. */
     view: vscode.WebviewView | undefined;
     getProjectProfile(): Promise<ProjectProfile>;
@@ -305,9 +311,25 @@ These tools degrade to a text search when no language server is available for a 
         tools.push(...mcpClient.getToolDefinitions());
 
         const { images, text: attachText } = readAttachments(attachments);
+
+        // Resolve `@`-mentions into their content (Phase 3, M19). Before this, a
+        // mention was only ever *text* — the model saw `@src/a.ts` and had to spend a
+        // turn on read_file to find out what the user was pointing at, and had no way
+        // at all to act on `@problems` or `@git`. Each provider's budget is applied by
+        // the registry, and a truncation is stated in the injected text rather than
+        // being silent.
+        const mentions = await resolveMentions(userPrompt, deps.contextProviders);
+        if (mentions.resolved.length) {
+            log(`[Context] ${mentions.resolved.map(r => r.mention).join(', ')}`);
+        }
+
         const initialMessage: ChatMessage = {
             role: 'user',
-            content: `${userPrompt}${attachText ? `\n${attachText}` : ''}`,
+            content: [
+                userPrompt,
+                mentions.text,
+                attachText ? `\n${attachText}` : '',
+            ].filter(Boolean).join(''),
             images: images.length ? images : undefined,
         };
 
@@ -322,6 +344,7 @@ These tools degrade to a text search when no language server is available for a 
             onPlan: (steps) => emit({ type: 'PlanUpdated', steps }),
             onArtifact: (artifact) => emit({ type: 'ArtifactCreated', artifact }),
             onTerminalChunk: (stream, text) => emit({ type: 'TerminalChunk', stream, text }),
+            recordTerminal: (command, output) => deps.recordTerminal?.(command, output),
             onFileChanged: (p, kind) => {
                 emit({ type: 'FileChanged', path: p, kind });
                 if (p.endsWith('features_plan.md') || p.endsWith('project_mindmap.md')) {
