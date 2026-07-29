@@ -2,39 +2,46 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 4 (2026-07-28)** — Phases 0, 1 and 2 delivered; 13 of 71 gaps
-closed. Supersedes the "next initiative" half of [`plan.md`](./plan.md) (which is delivered through
-its Phase 5).
+**Status:** **In progress · rev 5 (2026-07-29)** — Phases 0–2 delivered, Phase 3 substantially
+delivered; **20 of 71 gaps addressed (16 complete, 4 partial)**. Supersedes the "next initiative"
+half of [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
 | Phase | Status | Covers | Evidence |
 |---|:--:|---|---|
-| 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**623** (≤700 gate **met**) · eval harness + baseline · vitest wired · skill diagnostics. Retrieval recall recorded in Phase 3's opener. |
+| 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**652** (≤700 gate **met**) · eval harness + baseline · vitest wired · skill diagnostics. Retrieval recall recorded in Phase 3's opener. |
 | 1 — Language-server tools & tests | 🟡 | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; 5 of 6 gates asserted, incl. rename across 6 files in a real extension host. **Outstanding:** the LSP-over-grep gate needs the model tier. |
 | 2 — Rules, prompts & modes | 🟡 | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel. M9's stronger reading closed as won't-do. **Outstanding:** tool toggles in the panel (M10). |
 | 3 — Retrieval substrate | 🟡 | M14–M22 | **M14–M18, M22 done; M19 partial; headline gate met.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction 37.7% at realistic path depth · git history tools shipped. **Remaining:** M19's `@symbol`/`@docs`/`@web` providers and **M20/M21** (docs indexing, keyed search providers). |
 | 4–12 | — | M23–M71 | Not started. |
 
-**Re-verified 2026-07-29 by running everything:** harness **426/426** · vitest **206/206 / 14
-suites** · **19** real-host integration tests · eval gate green (stack detection 100% 8/8 · skill
-exact-match 100% · fail-safe 1/1 · recall@10 93.1% · *no regression vs `eval/baseline.json`*) ·
-`tsc -b` clean · `extension.ts` **623 LOC**.
+**Re-verified 2026-07-29 by running everything, after Phase 3:** harness **426/426** · vitest
+**393/393 / 23 suites** · **19** real-host integration tests · eval gate green (stack detection 100%
+8/8 · skill exact-match 100% · fail-safe 1/1 · **recall@5 91.2% · @10 97.2% · @20 100%** ·
+compaction 37.7% · *no regression vs `eval/baseline.json`*) · `tsc -b` clean · webview builds ·
+`extension.ts` **652 LOC**.
 
-### Pending work in the delivered phases (Phases 0–2)
+### Pending work across every started phase (0–3)
 
-Nothing else in Phases 0–2 is outstanding — this is the complete list, ordered by what actually
-blocks progress.
+This is the complete list of what is outstanding in phases that have been started, ordered by what
+actually blocks progress. Phases 4–12 are untouched and are scheduled in §4.
 
-| # | Item | Phase | Tracked at | Blocks Phase 3? | Status |
-|:--:|---|:--:|:--:|:--:|---|
-| 1 | `extension.ts` **960 LOC** against a **≤700** gate | 0 | M2 / G10 | No, but it taxed every later phase that edits this file | ✅ **closed 2026-07-29 — 623 LOC** |
-| 2 | **Tool toggles** in the session panel (rule toggles shipped) | 2 | M10 | No | open, ~1 day |
-| 3 | Rules+skills assembly is two budgeted sections, not one merged pipeline | 2 | M9 (weaker reading) | No | ✅ **closed 2026-07-29 as won't-do** |
-| 4 | Eval set is **19 tasks / 8 fixtures**; §4.2's "record" baselines unrecorded | 0 | M3 | **Was** — recall@10 is Phase 3's own gate | 🟡 **recall recorded 2026-07-29**; task-count breadth still short |
-| 5 | "Symbol questions resolve via LSP not grep" unasserted — needs a model tier | 1 | M6/M7 gate | No | open — tier work, not phase work |
+| # | Item | Phase | Tracked at | Blocked by / blocking | Status |
+|:--:|---|:--:|:--:|---|---|
+| 1 | `extension.ts` **960 LOC** against a **≤700** gate | 0 | M2 / G10 | taxed every later phase editing this file | ✅ **closed 2026-07-29 — 652 LOC** |
+| 2 | **Tool toggles** in the session panel (rule toggles shipped) | 2 | M10 | nothing — self-contained | open, ~1 day |
+| 3 | Rules+skills assembly is two budgeted sections, not one merged pipeline | 2 | M9 (weaker reading) | — | ✅ **closed 2026-07-29 as won't-do** |
+| 4 | Eval set is **19 tasks / 8 fixtures**; §4.2's "record" baselines unrecorded | 0 | M3 | recall half was blocking Phase 3 | 🟡 **recall recorded 2026-07-29**; task-count breadth still short |
+| 5 | "Symbol questions resolve via LSP not grep" unasserted | 1 | M6/M7 gate | needs the opt-in **model tier** | open — tier work, not phase work |
+| 6 | **`@docs` indexing + keyed search providers** not started | 3 | M20 / M21 | nothing — but network-facing, no deterministic gate | open, the largest Phase 3 remainder |
+| 7 | `@symbol` provider missing from the `@`-mention set | 3 | M19 | unblocked — M15 already exposes the graph | open, ~0.5 day |
+| 8 | Rerank cross-encoder absent; only the lexical fallback ships | 3 | M17 | **blocked on Phase 4 (M23)** `rerank` role | sequenced, not skipped |
+| 9 | Phase 3 build-time budget restated, not re-measured on a large repo | 3 | M14 gate | needs a 5 000-file repo to assert against | open — gate agreed, unproven |
 
 Detail on each:
 
-1. **`extension.ts` size (M2/G10) — closed.** 960 → **623 LOC**, clearing the ≤700 gate with room.
+1. **`extension.ts` size (M2/G10) — closed.** 960 → **623 LOC**, clearing the ≤700 gate with room
+   (**652** after Phase 3's M19 wiring — still inside the gate, and the reason M19's provider
+   assembly went into `core/context-provider-setup.ts` rather than inline).
    The cut was `_runPipeline` + `_runPipelineCore` + `_runPipelineInManager` + the managed-run
    bookkeeping, into `agent/pipeline-entry.ts` (+106) and a new `agent/managed-runs.ts` (241), plus
    `core/conversation-title.ts` (54). **One deviation from the plan, deliberately:** the Manager
@@ -44,7 +51,8 @@ Detail on each:
    "running" rows — and moving the methods without the state they guard would have split that
    invariant across two files, which is worse than not moving it. A new `_pipelineCoreDeps` getter
    names exactly the members the shared core reads, mutating none. Verified across all four tiers:
-   harness 426/426 · vitest 206/206 · **19 real-host integration tests** · `tsc -b` clean.
+   harness 426/426 · vitest (206/206 at the time of the cut) · **19 real-host integration tests** ·
+   `tsc -b` clean.
 2. **Tool toggles (M10).** `webview/src/App.tsx:3343` posts `toggleRule`; `core/webview-message-handler.ts:220`
    handles it. There is no `toggleTool` counterpart on either side. Worth more now than when
    planned, because Phase 2 made per-mode tool allowlists genuinely enforced (B4) — a session
@@ -64,10 +72,25 @@ Detail on each:
 5. **Phase 1's last gate.** Five of six Phase 1 gates are asserted, including `rename_symbol`
    across 6 files in a real extension host. Whether the agent *chooses* LSP over grep needs a model
    to observe, so it belongs to the same opt-in tier as the rest of item 4.
+6. **M20/M21 — `@docs` and keyed search.** Not started. The only Phase 3 milestones with no code.
+   Both are network-facing (a crawler, and Brave/Tavily/Google CSE keys) and neither has a
+   deterministic gate the eval harness can hold, which is why they were sequenced last rather than
+   first.
+7. **`@symbol` (M19).** The provider registry, budgets, resolution and webview are all shipped;
+   `@symbol` is one more `ContextProvider` reading `CodebaseIndex.graph`, which M15 already exposes.
+   It is small *because* M15 landed first.
+8. **Rerank cross-encoder (M17).** The `Reranker` interface and the tuned `LexicalReranker` ship and
+   are what run by default. A model-backed implementation assigns `index.reranker` and changes
+   nothing else — but it needs the `rerank` role from **Phase 4's ModelRouter (M23)**, so it is
+   sequenced, not skipped.
+9. **Build-time budget (M14).** The original "+50% of baseline" resolved to ≤39 ms on an 82-file
+   fixture, which measures nothing; it is restated as **≤2 s per 5 000 files**. That restatement is
+   not yet *asserted* against a large repo, so the gate is agreed but unproven.
 
-Three defects were found by the work itself and fixed: **F1** (skills injected into repos with no
-detected stack), **F2** (`react` undetected in Next.js projects), and the **per-mode allowlist gap**
-(B4). Each is recorded where it was graded, not only where it was fixed.
+Three defects were found by the Phase 0–2 work itself and fixed: **F1** (skills injected into repos
+with no detected stack), **F2** (`react` undetected in Next.js projects), and the **per-mode
+allowlist gap** (B4). Each is recorded where it was graded, not only where it was fixed. Phase 3
+found six more — see the rev 5 note below.
 
 **Scope:** `src/stable/extensions/black-ide-agent/` + editor-level surfaces in `src/stable/src/vs/`
 
@@ -78,6 +101,39 @@ detected stack), **F2** (`react` undetected in Next.js projects), and the **per-
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 5 (2026-07-29).** Delivery, plus one arithmetic correction: **§3's
+> priority tally has been wrong since rev 1** — it read "P0: 11 · P2: 23 · P3: 7" where counting the
+> table's own Pri column gives **13 · 30 · 22 · 6**. M28, M54 and M56 are P0 and were never in the
+> P0 total, which is why rev 4 could claim "three P0 items outstanding" while naming only M14, M15
+> and M23. Four P0 items are genuinely open: M23, M28, M54, M56.
+>
+> Otherwise, delivery rather than verification. Phase 0's last gate closed
+> (`extension.ts` 960 → 652, under ≤700), Phase 2's M9 closed as **won't-do** rather than carried,
+> and **Phase 3 delivered M14–M18 and M22** with M17 and M19 partial by dependency. Retrieval:
+> recall@5 **84.7 → 91.2**, @10 **93.1 → 97.2**, @20 **94.4 → 100**; `impact_analysis` at **0 false
+> positives / 0 misses** across six refactors against a ≤2 FP gate.
+>
+> **Two gate corrections, both forced by measuring rather than asserting.** Phase 3's headline
+> "+25% recall@10" was **arithmetically impossible** — authored before any baseline existed, it
+> needed 116% from a 93.1% base; it is restated as recall@5 ≥88.5% plus a ≥25% residual-error
+> reduction at k=10, and both halves are met. The index-build budget "+50% of baseline" resolved to
+> ≤39 ms on an 82-file fixture, which measures nothing; restated as ≤2 s per 5 000 files (agreed,
+> not yet asserted — pending item 9).
+>
+> **One roadmap substitution, decided by the owner:** M14/M15 ship a **dependency-free lexical
+> backend** behind a `ChunkerBackend` seam instead of tree-sitter, which is not vendored here and
+> would mean ~12 MB of grammars plus per-platform packaging in an extension with one runtime
+> dependency. Recorded as a decision with its measurements, not as a shortfall.
+>
+> **Defects found by Phase 3's own work**, each of which passed unit tests and failed only against
+> the corpus: `impact_analysis` computed the impact of a symbol's *file* (31 false positives → 0);
+> graph expansion only *inserted* missing files instead of promoting ranked-low ones, making it a
+> no-op; a plausible damped file-score aggregate cost 12 points of recall@5; the chunker dropped
+> every container symbol and every doc comment; the stemmer disagreed with itself on `reserve`
+> /`reserved`. Separately, two files shipped **literal NUL bytes** as separators — correct code, all
+> tests green, but raw control bytes make a file binary to `grep`/`diff`/review tooling, which then
+> silently show nothing. `__tests__/source-hygiene.test.ts` now fails on any raw control character.
+>
 > **What changed in rev 4 (2026-07-28).** A verification pass, not new delivery: every claimed
 > check was re-run rather than re-quoted (all green — numbers above). Six corrections against the
 > code. **E_1: 23 → 31 native tools** — the count predated Phase 1's 7 LSP tools + `run_tests` and
@@ -234,7 +290,7 @@ detected stack), **F2** (`react` undetected in Next.js projects), and the **per-
 | G11 | At-rest encryption for agent artifacts / memory | ⬜ | ❌ | OPIDE claims AES-256-GCM. Our `.blackIDE/` is plaintext on disk (defensible — it's the user's repo — but not an option we offer). → **E15** |
 | G12 | Team analytics / admin policy dashboard | ⬜ | ❌ | Cursor ships admin analytics; NeuralInverse ships audit export for regulated work. Our telemetry is local-only by design (G4) — so this must be **opt-in, self-hosted**, never a phone-home. → **E32** |
 | G13 | Issue-tracker / chat integrations (GitHub Issues, Linear, Jira, Slack) | ⬜ | ❌ | Cursor Slack + Linear. Needs the headless core (E14) to be worth building. → **E33** |
-| G10 | `extension.ts` maintainability | 🟢 | ✅ | **2537 → 623 LOC (−75%)** across twelve modules — the **≤700 gate is met** as of 2026-07-29. Two cuts needed a design decision rather than a move, and both are the reason this took three passes. `core/chat-session.ts` holds the chat lane's mutable state as one object shared *by reference*, because `_runAgentTask` reassigns it mid-run while the webview handler reads it afterwards — passing values would have handed the extracted code a stale snapshot. `agent/managed-runs.ts` moved the Manager lane as a **class**, not the deps-object function the other extractions used, because its live `Map` and persisted history must be folded together on every transition or a reload shows ghost "running" rows; moving those methods without the state they guard would have split that invariant across two files. → **E0 (closed)** |
+| G10 | `extension.ts` maintainability | 🟢 | ✅ | **2537 → 652 LOC (−74%)** across thirteen modules — the **≤700 gate is met** as of 2026-07-29 (623 after the Phase 0 cut; 652 once Phase 3's M19 wiring landed, which is why that phase's provider assembly went into its own module). Two cuts needed a design decision rather than a move, and both are the reason this took three passes. `core/chat-session.ts` holds the chat lane's mutable state as one object shared *by reference*, because `_runAgentTask` reassigns it mid-run while the webview handler reads it afterwards — passing values would have handed the extracted code a stale snapshot. `agent/managed-runs.ts` moved the Manager lane as a **class**, not the deps-object function the other extractions used, because its live `Map` and persisted history must be folded together on every transition or a reload shows ghost "running" rows; moving those methods without the state they guard would have split that invariant across two files. → **E0 (closed)** |
 
 ### 1.8 Scoreboard
 
@@ -665,7 +721,7 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | ID | Missing capability | Pri | Enh | Phase | Notes |
 |---|---|:--:|:--:|:--:|---|
 | M1 | Doc claims corrected (AST chunking, provider failover) | P0 | E0 | 0 ✅ |
-| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ | 2537 → **623 LOC** across 12 modules; **≤700 gate met** 2026-07-29 (see G10) |
+| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ | 2537 → **652 LOC** across 13 modules; **≤700 gate met** 2026-07-29 (see G10) |
 | M3 | Golden-task eval set + scoring | P0 | E0 | 0 🟡 | harness, baseline and CI gate shipped and green; **recall@3/5/10/20 recorded 2026-07-29** over a real 82-file corpus + 36 golden queries (Phase 3 opener). Still short: **19 tasks / 8 fixtures against a planned 8–10 × 6 stacks**, and task-success / tokens-per-task remain deferred to the model tier |
 | M4 | Vitest migration off the bespoke harness | P0 | E0 | 0 ✅ |
 | M5 | Skill validation diagnostics UI + skills-fired telemetry | P1 | E0 | 0 ✅ |
@@ -736,14 +792,25 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M70 | Domain verticals (firmware, modernization pipeline template) | P3 | E17 | 12 |
 | M71 | Voice input | P3 | E31 | 12 |
 
-**Counts:** 71 gaps — P0: 11 · P1: 30 · P2: 23 · P3: 7. All 71 are scheduled.
+**Counts:** 71 gaps — **P0: 13 · P1: 30 · P2: 22 · P3: 6**. All 71 are scheduled.
 
-**Delivered so far (Phases 0–2): 13 of 71** — 10 complete, **3 partial (M2, M3, M10)**. That clears
-**8 of the 11 P0 items** (M3 counted as cleared: the harness and its CI gate are real and green;
-what is short is task-count breadth and the deferred metrics). The three P0 items outstanding are
-M14/M15 (tree-sitter chunking and the code graph) and M23 (per-role models), all in Phases 3–4.
-Nothing in Phases 0–2 remains except the three partials above plus the two judgement items (M9's
-stronger reading, Phase 1's model-tier gate) listed at the top of this document.
+*(Corrected in rev 5: this line read "P0: 11 · P2: 23 · P3: 7" from rev 1 onward. Counting the
+table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were never included in the
+P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
+and M23.)*
+
+**Delivered so far (Phases 0–3): 20 of 71** — 16 complete, **4 partial (M3, M10, M17, M19)**.
+
+That clears **9 of the 13 P0 items** outright, plus M3 as partial. M14 and M15 closed in Phase 3.
+The four P0 items still open are **M23** (per-role models, Phase 4), **M28** (next-edit prediction,
+Phase 5), and **M54/M56** (secret redaction and the untrusted-content posture, Phase 9). M3 is
+counted as cleared — the harness, its CI gate and now the retrieval baseline are real and green;
+what remains short is task-count breadth and the model-tier metrics.
+
+What is left in the started phases is the nine-row table at the top of this document. Of those, one
+is **blocked by sequencing rather than effort** (M17's cross-encoder needs Phase 4's `rerank` role),
+one needs an **opt-in model tier** that does not exist yet (Phase 1's LSP-over-grep gate), and the
+rest are ordinary open work.
 
 ---
 
