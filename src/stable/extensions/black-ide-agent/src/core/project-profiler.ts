@@ -87,9 +87,23 @@ export function detectProjectProfile(files: string[], manifests: Record<string, 
 
         if (hasFile('tsconfig.json') || dep('typescript')) add(languages, 'typescript', 'tsconfig/typescript → typescript');
 
+        // React-based frameworks are detected *in addition to* react, not instead of it
+        // (eval finding F2). These were previously an if/else-if chain, so a Next.js repo
+        // reported `nextjs` but not `react` — and any skill keyed on `react` alone was
+        // never matched, even though Next is React. The bundled `react` pack is
+        // renderer-agnostic (hooks, composition, state) with no DOM assumptions, so it is
+        // equally correct for React Native.
         if (dep('next')) fw('nextjs', 'package.json:next', 'typescript');
-        else if (dep('react-native') || dep('expo')) fw('react-native', 'package.json:react-native', 'typescript');
-        else if (dep('react')) fw('react', 'package.json:react', 'typescript');
+        if (dep('react-native') || dep('expo')) {
+            fw('react-native', 'package.json:react-native', 'typescript');
+            if (dep('expo')) add(frameworks, 'expo', 'package.json:expo');
+        }
+        if (dep('react') || dep('next') || dep('react-native') || dep('expo')) {
+            const via = dep('react') ? 'package.json:react'
+                : dep('next') ? 'package.json:next → react (Next.js is React-based)'
+                    : 'package.json:react-native → react (React Native is React-based)';
+            fw('react', via, 'typescript');
+        }
         if (dep('@angular/core')) fw('angular', 'package.json:@angular/core', 'typescript');
         if (dep('vue')) fw('vue', 'package.json:vue', 'typescript');
         if (dep('svelte')) fw('svelte-kit', 'package.json:svelte', 'typescript');

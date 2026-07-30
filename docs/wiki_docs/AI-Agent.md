@@ -63,6 +63,40 @@ so quick questions stay fast.
 
 ---
 
+## 🧭 Code Intelligence Tools
+
+Black IDE is a VS Code fork, so a language server is already running for every language you
+have an extension for. The agent uses it directly instead of inferring structure from text —
+grep cannot tell a definition from a mention in a comment.
+
+| Tool | What the agent uses it for |
+|---|---|
+| `go_to_definition` | Where a symbol is actually defined |
+| `find_references` | Every real usage, grouped by file — checked before changing or deleting anything |
+| `workspace_symbols` | Finding a symbol by name without knowing its file |
+| `hover` | Type signature and doc comment for a symbol |
+| `get_diagnostics` | Current compiler/linter problems, per file or workspace-wide |
+| `code_actions` | Which quick fixes the language server offers at a location |
+| `rename_symbol` | Scope- and import-aware rename across the whole project |
+| `run_tests` | Runs your test suite and reports **failures only** |
+
+Symbols are addressed by **name**, not line and column, and a repeated name can be
+disambiguated with an optional `line`.
+
+**When no language server is available** for a file type, these fall back to a text search
+and say so explicitly, rather than failing — a cold server never turns into a failed task.
+
+**`rename_symbol` is a write.** It goes through the same approval gate as any edit, and every
+file it touches is checkpointed first, so a project-wide rename is undoable like anything else.
+
+**`run_tests`** picks the command from the detected stack (`pytest`, `jest`, `vitest`,
+`dotnet test`, `cargo test`, `go test`, `rspec`, Gradle) and returns a compact tally plus the
+failing cases. Passing-test output is discarded: it is the bulk of the noise and the agent can
+act on none of it. A non-zero exit with no parsed failures is reported as a probable build or
+config error rather than as failing assertions, and a timeout is never reported as a pass.
+
+---
+
 ## 🔁 How a Request Is Handled
 
 Black IDE picks one of three paths:
@@ -116,13 +150,79 @@ artifacts to `.blackIDE/`.
 
 | Path | Purpose |
 |---|---|
-| `.blackide/AGENTS.md` | Standing project rules injected into the system prompt |
+| `.blackide/rules/*.md` | Project rules, optionally scoped to file globs |
+| `.blackide/team-rules/*.md` | Shared rules the user cannot switch off |
+| `.blackide/prompts/*.md` | Your own slash commands and multi-step workflows |
+| `.blackide/AGENTS.md` | Standing project rules (still supported; see below) |
 | `.blackide/modes/*.md` | Custom agent modes (YAML frontmatter + prompt body) |
 | `.blackide/skills/` | Skill packs with trigger patterns |
 | `.blackide/mcp.json` | MCP server definitions (`.vscode/mcp.json` also works) |
 
-Custom modes also load from `.agents/modes/` in nested project directories, and are
-hot-reloaded when edited — configuration errors surface as inline diagnostics.
+Custom modes also load from `.agents/modes/` in nested project directories. Modes, rules
+and prompts are all hot-reloaded when edited, and authoring mistakes surface as inline
+diagnostics rather than silently doing nothing.
+
+### Rules
+
+A rule is a markdown file. With no frontmatter it is simply always applied — which is why
+an existing `.blackide/AGENTS.md` keeps working untouched, loaded as an always-on project
+rule.
+
+Frontmatter narrows when a rule applies, so a Python convention is no longer shouted at the
+model while it edits CSS:
+
+```markdown
+---
+name: ts-strict
+description: TypeScript conventions for this repo
+globs: ["src/**/*.ts", "src/**/*.tsx"]
+activation: glob      # always | glob | agent-requested | manual
+priority: 10
+---
+- No `any`. Prefer `unknown` and narrow.
+- Every exported function needs an explicit return type.
+```
+
+| Activation | When it applies |
+|---|---|
+| `always` | Every turn. The default, and what `AGENTS.md` does. |
+| `glob` | Only when a file matching `globs` is open or attached. Inferred if you declare `globs` without an activation. |
+| `agent-requested` | The agent is shown the name and description, and the body is injected only if it asks for it. Good for long checklists. |
+| `manual` | Only when you switch it on for the session. |
+
+**Scopes.** `rules/` is project scope and `team-rules/` is team scope; `~/.blackide/rules/`
+applies to every project. Team rules are injected first — so they survive if the prompt
+budget truncates — and **cannot be disabled**, which is the whole point of putting a rule
+there. Point `BLACKIDE_TEAM_RULES` at a shared directory to distribute them outside the repo.
+
+### Your own slash commands
+
+Drop a file in `.blackide/prompts/` and it becomes a command:
+
+```markdown
+---
+name: api-review
+description: Review a change against our API checklist
+mode: Sr Architect
+---
+Review $ARGS against our API conventions: versioning, error shapes, pagination, idempotency.
+```
+
+`/api-review src/routes/users.ts` runs it. `$ARGS` takes everything after the command and
+`$1`…`$9` take individual words; if the template has no placeholder, your arguments are
+appended rather than dropped. Add `steps: [first, second]` to chain prompts into a workflow —
+each step runs as a full task in order, and a cycle is reported instead of hanging.
+
+Built-in commands cannot be redefined: a file named `plan` or `commit` is refused with a
+diagnostic rather than silently changing what `/plan` does.
+
+### The session panel
+
+The control above the chat input shows how many rules applied to your last message, and
+opens to list them with the reason each one fired — `always on`, `matched src/**/*.ts`,
+`enabled by you`. That list is the same data the prompt was assembled from, not a separate
+guess, so it cannot tell you a rule applied when it did not. Non-team rules can be toggled
+for the session from the same panel, and your prompts are listed there to insert.
 
 **Artifacts the agent writes** (`.blackIDE/`):
 
@@ -144,10 +244,16 @@ memory shared across the team.
 
 ## 🎭 Agent Modes
 
-Eight modes are selectable in chat — **Ask**, **Plan**, **Agent**, **Frontend**,
-**Backend**, **DevOps**, **Manager**, and **Sr Architect** — each with its own prompt, tool
-allowlist, and iteration budget. Seven more are pipeline phase roles driven by the
-orchestrator. See the [KT guide](Architecture-and-KT-Guide#42-specialized-multi-agent-roles-built-in-modes)
+Nine modes are selectable in chat — **Ask**, **Plan**, **Agent**, **Frontend**,
+**Backend**, **DevOps**, **Manager**, **Sr Architect**, and **Learn** — each with its own
+prompt, tool allowlist, and iteration budget. Seven more are pipeline phase roles driven by the
+orchestrator.
+
+Each mode's tool allowlist is **enforced where tools run**, not just used to decide what the
+model is offered. **Learn** is the clearest case: it explains the codebase and teaches, and it
+has no write, command or delegation tools at all — so it cannot change your project, whatever
+it is asked to do. Ask it for a change and it will tell you exactly what it would do and
+where, then point you at Agent mode. See the [KT guide](Architecture-and-KT-Guide#42-specialized-multi-agent-roles-built-in-modes)
 for the full table.
 
 ### Defining a Custom Mode

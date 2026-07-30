@@ -37,7 +37,11 @@ export type AgentEvent =
     | { type: 'PipelinePhaseCompleted'; phase: string }
     | { type: 'PipelinePhaseError'; phase: string; error: string }
     | { type: 'PipelineCompleted'; overviewPath: string }
-    | { type: 'MindmapUpdated'; path: string };
+    | { type: 'MindmapUpdated'; path: string }
+    // Which skill packs were injected for a turn. `bundled` names the first-party packs
+    // (a closed, shipped set); user-authored packs are counted only, because their names
+    // can encode project detail — see the privacy note in telemetry-sink.ts.
+    | { type: 'SkillsFired'; mode: string; total: number; bundled: string[]; userCount: number };
 
 /** An event as it travels the bus: the payload plus its correlation envelope. */
 export type Envelope<E extends AgentEvent = AgentEvent> = E & EventMeta;

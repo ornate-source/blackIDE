@@ -75,7 +75,7 @@ C4Component
     
     Component(ckpt, "CheckpointManager", "File Tracker", "Computes diffs, stores reverse hunks, applies rollbacks")
     Component(hist, "HistoryStore", "Memento Persistence", "Caches multi-turn conversations across window reloads")
-    Component(idx, "CodebaseIndex", "Semantic Search", "AST-aware chunker and local vector embedding DB")
+    Component(idx, "CodebaseIndex", "Semantic Search", "Line-window chunker + flat Float32 vector store, BM25/embedding RRF fusion")
     
     Component(planning, "Planning Engine", "planning-engine.ts", "Two-phase planning; classifyRequest routes substantial work to the pipeline")
     Component(worktree, "Worktree Manager", "worktree-manager.ts", "Isolated git worktrees; delta-based reconciliation via applyDelta")

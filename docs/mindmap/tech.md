@@ -68,9 +68,11 @@ Unlike git, which snapshots directories, the CheckpointManager is a surgical rev
 ## 🧠 3. Advanced Subsystem Connectivity
 
 ### 3.1 CodebaseIndex (Semantic Search)
-The indexing engine integrates with the agent via the `grep_search` and internal retrieve tools.
-- It leverages a local SQLite DB paired with a fast embedding model (typically small models like `all-MiniLM-L6-v2` run via ONNX Runtime or offloaded to the LLM provider API).
-- Files are chunked using AST-aware splitters (chunking by function/class bounds rather than raw character counts) to preserve semantic integrity.
+The indexing engine is exposed to the agent as the `codebase_search` tool (`grep_search` is a separate, purely lexical tool).
+- Storage is **not** a SQL database: chunk metadata lives in `codebase-index.json` and embedding vectors in a companion `vectors.bin` — a flat `Float32` binary store with a dimension check per model (`EmbeddingsClient.getExpectedDimensions`).
+- Embeddings are **provider-side and opt-in**, not a bundled local model: OpenAI `text-embedding-3-small` (1536-d) or Ollama `nomic-embed-text` (768-d). There is no ONNX runtime and no bundled `all-MiniLM-L6-v2`. With no embeddings provider configured, retrieval degrades to BM25-only ranking.
+- Chunking is a **fixed 50-line sliding window with 10 lines of overlap** (`CHUNK_LINES` / `CHUNK_OVERLAP`), *not* an AST/symbol splitter — chunk boundaries can fall mid-function. Symbol-aware chunking is planned (`docs/notes/enhancement.md`, E2).
+- Ranking fuses BM25 and cosine similarity via Reciprocal Rank Fusion (RRF).
 
 ### 3.2 MCP Client (Model Context Protocol)
 The agent can delegate capabilities to external servers.

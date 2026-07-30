@@ -57,7 +57,7 @@ mindmap
       Persistence & State
         HistoryStore (vscode.Memento, Multi-turn tracking)
         SessionManager (Active task cancellation via AbortController)
-        CodebaseIndex (Semantic search, SQLite/Vector embeddings)
+        CodebaseIndex (BM25+embedding RRF search, JSON metadata + flat Float32 vectors.bin)
         CheckpointManager (Reverse hunks, atomic rollbacks)
         worktree-manager.ts (Parallel worktree isolation, applyDelta)
         git-mutex.ts (Process-global git serialization + timeout)

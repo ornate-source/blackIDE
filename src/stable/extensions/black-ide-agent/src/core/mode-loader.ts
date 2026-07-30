@@ -2,6 +2,7 @@ import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CODE_INTEL_READ_TOOLS } from './tools';
 
 /** Schema version for mode definitions */
 const MODE_SCHEMA_VERSION = 1;
@@ -113,7 +114,7 @@ export class ModeLoader {
         const builtins: CustomMode[] = [
             // ── Original 3 modes ──
             { name: 'Ask', description: 'Ask questions (no edits)', systemPrompt: '', tools: [], icon: 'comment-discussion', source: 'builtin' },
-            { name: 'Plan', description: 'Plan & explore (no edits)', systemPrompt: '', tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task'], icon: 'map', source: 'builtin' },
+            { name: 'Plan', description: 'Plan & explore (no edits)', systemPrompt: '', tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...CODE_INTEL_READ_TOOLS], icon: 'map', source: 'builtin' },
             { name: 'Agent', description: 'Full agent with all tools', systemPrompt: '', icon: 'robot', source: 'builtin' },
 
             // ── Specialized Agent Roles ──
@@ -163,7 +164,7 @@ When writing backend code:
                 icon: 'terminal',
                 source: 'builtin',
                 maxIterations: 30,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior DevOps Engineer. Your expertise:
 - Docker/Docker Compose — multi-stage builds, layer optimization
 - CI/CD pipelines (GitHub Actions, GitLab CI, Jenkins)
@@ -180,12 +181,40 @@ When writing infrastructure code:
 5. Document required environment variables in README or .env.example`,
             },
             {
+                // Teaching mode (Phase 2, M13). Read-heavy by construction: no write or
+                // exec tools in the allowlist at all, so "cannot edit without asking" is
+                // enforced by the sandbox gate rather than by asking the model nicely.
+                name: 'Learn',
+                description: 'Explains the codebase and teaches, without editing',
+                icon: 'mortar-board',
+                source: 'builtin',
+                maxIterations: 20,
+                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search',
+                        'create_artifact', 'complete_task', ...CODE_INTEL_READ_TOOLS],
+                systemPrompt: `You are a patient senior engineer teaching this codebase to another developer.
+
+Your job is understanding, not delivery. For any question:
+1. Answer at the depth asked for. If the user has not said, assume intermediate and offer to go deeper or simpler.
+2. Ground every explanation in this repository — cite real files and symbols (use go_to_definition,
+   find_references and hover to check before you assert). Never illustrate with a generic example
+   when the actual code is available.
+3. Explain *why* the code is the way it is, not just what it does: the constraint, the trade-off, the
+   alternative that was rejected. That is the part that does not transfer from documentation.
+4. Say plainly when something is genuinely poor design rather than defending it, and when you are
+   unsure whether a pattern was deliberate.
+5. Close with one concrete thing the user could read or try next.
+
+You cannot edit files, run commands, or install anything — those tools are not available to you in
+this mode, by design. If the user asks for a change, explain precisely what you would change and
+where, then tell them to switch to Agent mode to have it done. Do not pretend to have made it.`,
+            },
+            {
                 name: 'Manager',
                 description: 'Task coordination, planning, delegation to sub-agents',
                 icon: 'organization',
                 source: 'builtin',
                 maxIterations: 15,
-                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'spawn_subagent', 'complete_task'],
+                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'spawn_subagent', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Technical Project Manager / Engineering Manager. Your role:
 - Analyze complex tasks and break them into focused, delegatable sub-tasks
 - Use spawn_subagent to delegate implementation work to specialist agents
@@ -206,7 +235,7 @@ You do NOT write code yourself. You:
                 icon: 'symbol-structure',
                 source: 'builtin',
                 maxIterations: 20,
-                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task'],
+                tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search', 'web_search', 'create_artifact', 'update_plan', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Senior Software Architect. Your role:
 - Evaluate system architecture and identify design improvements
 - Apply SOLID principles, DRY, separation of concerns
@@ -230,7 +259,7 @@ You do NOT implement changes yourself. You:
                 internal: true,
                 maxIterations: 20,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search',
-                        'web_search', 'create_artifact', 'complete_task'],
+                        'web_search', 'create_artifact', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Senior Systems Architect performing High-Level Design analysis.
 
 Your deliverable is a structured HLD covering:
@@ -252,7 +281,7 @@ Do NOT write any source code. Read-only analysis only. Use the update_mindmap to
                 internal: true,
                 maxIterations: 25,
                 tools: ['read_file', 'list_directory', 'grep_search', 'codebase_search',
-                        'create_artifact', 'complete_task'],
+                        'create_artifact', 'complete_task', ...CODE_INTEL_READ_TOOLS],
                 systemPrompt: `You are a Senior Full-Stack Engineer performing Low-Level Design.
 
 Convert the HLD into an exhaustive implementation task list. Every task MUST be tagged:
@@ -278,7 +307,7 @@ Do NOT write any source code.`,
                 internal: true,
                 maxIterations: 15,
                 tools: ['read_file', 'list_directory', 'write_file', 'create_artifact',
-                        'complete_task'],
+                        'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol'],
                 systemPrompt: `You are a Planning Agent. Aggregate the HLD and LLD analysis into a
 single features_plan.md file at .blackIDE/features_plan.md.
 
@@ -305,7 +334,7 @@ Write the file using write_file, then call complete_task.`,
                 source: 'builtin',
                 internal: true,
                 maxIterations: 40,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior UI/UX Designer executing the [design] phase.
 Focus exclusively on tasks tagged [design] in the approved plan.
 After completing your tasks, describe what you built using the update_mindmap tool.
@@ -318,7 +347,7 @@ Use modern design practices: CSS custom properties, responsive layouts, accessib
                 source: 'builtin',
                 internal: true,
                 maxIterations: 40,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior Backend Engineer executing the [backend] phase.
 Focus exclusively on tasks tagged [backend] in the approved plan.
 After completing your tasks, describe all API routes, models, and middleware using the update_mindmap tool.
@@ -331,7 +360,7 @@ Always validate input, use parameterized queries, implement proper error handlin
                 source: 'builtin',
                 internal: true,
                 maxIterations: 40,
-                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task'],
+                tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior Frontend Engineer executing the [frontend] phase.
 Focus exclusively on tasks tagged [frontend] in the approved plan.
 After completing your tasks, describe all components, hooks, and integrations using the update_mindmap tool.
@@ -345,10 +374,15 @@ Use semantic HTML, ARIA attributes, and responsive design.`,
                 internal: true,
                 maxIterations: 30,
                 tools: ['read_file', 'write_file', 'edit_file', 'run_command', 'grep_search', 'list_directory', 'update_mindmap', 'complete_task',
-                        'browser_open', 'browser_screenshot', 'browser_click', 'browser_type', 'browser_read', 'browser_close'],
+                        'browser_open', 'browser_screenshot', 'browser_click', 'browser_type', 'browser_read', 'browser_close', ...CODE_INTEL_READ_TOOLS, 'rename_symbol', 'run_tests'],
                 systemPrompt: `You are a Senior QA/Test Engineer executing the [testing] phase.
 Focus exclusively on tasks tagged [testing] in the approved plan.
-Write comprehensive tests. Run the test suite with run_command and report results.
+Write comprehensive tests, then run the suite with run_tests — it selects this project's
+test command from the detected stack and reports failures only, so prefer it over
+run_command for tests. Report the results. If run_tests says no framework was detected,
+fall back to run_command with the project's own test command.
+Before changing existing code, use find_references to see what depends on it, and
+get_diagnostics to confirm your changes compile.
 
 If the plan includes a [frontend] phase, also self-verify visually:
 1. Start the app/dev server with run_command. If the command doesn't exit on its own

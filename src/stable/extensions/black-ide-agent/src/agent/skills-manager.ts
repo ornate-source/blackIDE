@@ -21,6 +21,72 @@ export interface Skill {
     origin?: 'bundled' | 'global' | 'workspace';
 }
 
+/** Roles the resolver understands. A pack scoped to anything else can never match a real agent. */
+export const KNOWN_SKILL_ROLES = ['backend', 'frontend', 'design', 'testing', 'devops', 'architect'] as const;
+
+/** One authoring problem found in a skill pack, surfaced to the user as a diagnostic. */
+export interface SkillProblem {
+    /** Absolute path to the offending file (the SKILL.md, or the directory when it is missing). */
+    file: string;
+    message: string;
+    severity: 'error' | 'warning';
+}
+
+/**
+ * Validate a parsed pack, mirroring `validateModeFrontmatter` in mode-loader.
+ * Pure and exported so it can be tested without touching disk or `vscode`.
+ *
+ * The two subtle checks are the valuable ones, because both fail *silently* today:
+ * a pack with no stacks, roles or triggers scores 0 in `resolveSkills` and can
+ * never be selected; and one with only a positive `priority` scores above 0 for
+ * every turn, so it is injected into unrelated work regardless of relevance.
+ */
+export function validateSkill(skill: {
+    description?: string;
+    instructions?: string;
+    roles?: string[];
+    stacks?: string[];
+    triggerPatterns?: string[];
+    priority?: number;
+}): Array<{ message: string; severity: 'error' | 'warning' }> {
+    const problems: Array<{ message: string; severity: 'error' | 'warning' }> = [];
+
+    if (!skill.description?.trim()) {
+        problems.push({ message: 'Missing "description" — the resolver shows it to the model as the skill summary.', severity: 'warning' });
+    }
+    if (!skill.instructions?.trim()) {
+        problems.push({ message: 'SKILL.md has no body below the frontmatter, so this pack injects no guidance.', severity: 'warning' });
+    }
+
+    const roles = skill.roles || [];
+    const stacks = skill.stacks || [];
+    const triggers = skill.triggerPatterns || [];
+    const priority = skill.priority || 0;
+
+    for (const role of roles) {
+        if (!(KNOWN_SKILL_ROLES as readonly string[]).includes(role)) {
+            problems.push({
+                message: `Unknown role "${role}". Valid roles: ${KNOWN_SKILL_ROLES.join(', ')}.`,
+                severity: 'warning',
+            });
+        }
+    }
+
+    const hasSignal = stacks.length > 0 || roles.length > 0 || triggers.length > 0;
+    if (!hasSignal) {
+        // `priority` is only a tie-breaker in resolveSkills, never a signal on its own
+        // (see the F1 fix in skill-resolver.ts), so a pack with no stacks, roles or
+        // triggers is unreachable no matter what priority it declares.
+        problems.push({
+            message: 'No "stacks", "roles" or "triggers" — this pack can never be selected. Add at least one to make it resolvable.'
+                + (priority > 0 ? ' A "priority" alone does not make it resolvable; it only orders packs that already matched.' : ''),
+            severity: 'warning',
+        });
+    }
+
+    return problems;
+}
+
 /** Parse a frontmatter array/CSV field: `roles: [backend, testing]` or `roles: backend, testing`. */
 function parseListField(fm: string, key: string): string[] {
     const m = fm.match(new RegExp(`${key}:\\s*(.+)`));
@@ -34,6 +100,7 @@ function parseListField(fm: string, key: string): string[] {
 
 export class SkillsManager {
     private skills: Skill[] = [];
+    private problems: SkillProblem[] = [];
 
     /**
      * Auto-discover skills. Precedence (later overrides earlier by skill name):
@@ -53,6 +120,10 @@ export class SkillsManager {
         const byName = new Map<string, Skill>();
         for (const s of this.skills) byName.set(s.name, s);
 
+        // Rebuilt from scratch each discovery so fixing a SKILL.md clears its diagnostic
+        // instead of leaving a stale one behind.
+        const problems: SkillProblem[] = [];
+
         for (const { dir, origin } of sources) {
             if (!fs.existsSync(dir)) continue;
             let entries: fs.Dirent[];
@@ -60,21 +131,61 @@ export class SkillsManager {
             catch { continue; }
 
             for (const entry of entries) {
-                const skill = SkillsManager.loadSkillDir(path.join(dir, entry.name), entry.name, origin);
-                if (skill) byName.set(skill.name, skill);
+                const parsed = SkillsManager.parseSkillDir(path.join(dir, entry.name), entry.name, origin);
+                // Bundled packs are ours and reviewed; a diagnostic on them would be noise
+                // in the user's Problems panel that they cannot act on. Report only the
+                // packs the user actually authors.
+                if (origin !== 'bundled') problems.push(...parsed.problems);
+                if (parsed.skill) byName.set(parsed.skill.name, parsed.skill);
             }
         }
         this.skills = Array.from(byName.values());
+        this.problems = problems;
+    }
+
+    /** Authoring problems found by the last `discover()`, for surfacing as diagnostics. */
+    getProblems(): SkillProblem[] {
+        return [...this.problems];
     }
 
     /** Parse one `<dir>/SKILL.md` into a Skill, or undefined if missing/malformed. */
     static loadSkillDir(dir: string, fallbackName: string, origin: Skill['origin']): Skill | undefined {
+        return SkillsManager.parseSkillDir(dir, fallbackName, origin).skill;
+    }
+
+    /**
+     * Same parse as `loadSkillDir`, but also reports *why* a pack failed to load.
+     * Previously every failure — a missing SKILL.md, absent frontmatter, an unreadable
+     * file — collapsed into a silent `undefined`, so a user with a typo got no feedback
+     * at all and simply saw their skill never fire.
+     */
+    static parseSkillDir(
+        dir: string,
+        fallbackName: string,
+        origin: Skill['origin'],
+    ): { skill?: Skill; problems: SkillProblem[] } {
         const skillFile = path.join(dir, 'SKILL.md');
-        if (!fs.existsSync(skillFile)) return undefined;
+        if (!fs.existsSync(skillFile)) {
+            return {
+                problems: [{
+                    file: dir,
+                    message: `No SKILL.md in this skill directory — the pack "${fallbackName}" will be ignored.`,
+                    severity: 'warning',
+                }],
+            };
+        }
         try {
             const content = fs.readFileSync(skillFile, 'utf8');
             const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-            if (!frontmatterMatch) return undefined;
+            if (!frontmatterMatch) {
+                return {
+                    problems: [{
+                        file: skillFile,
+                        message: 'Missing YAML frontmatter. A SKILL.md must open with a "---" delimited block declaring at least a name.',
+                        severity: 'error',
+                    }],
+                };
+            }
             const fm = frontmatterMatch[1];
 
             const name = fm.match(/name:\s*(.+)/)?.[1]?.trim() || fallbackName;
@@ -82,7 +193,7 @@ export class SkillsManager {
             const priority = Number(fm.match(/priority:\s*(-?\d+)/)?.[1]) || 0;
             const instructions = content.replace(/^---\n[\s\S]*?\n---\n?/, '').trim();
 
-            return {
+            const skill: Skill = {
                 name,
                 description: desc,
                 instructions,
@@ -93,8 +204,20 @@ export class SkillsManager {
                 directory: dir,
                 origin,
             };
-        } catch {
-            return undefined;
+
+            // The pack still loads when validation complains — these are authoring hints,
+            // not load failures. Refusing to load would be a harsher change in behaviour
+            // than the diagnostics are worth.
+            const problems = validateSkill(skill).map(p => ({ file: skillFile, ...p }));
+            return { skill, problems };
+        } catch (e: any) {
+            return {
+                problems: [{
+                    file: skillFile,
+                    message: `Could not read SKILL.md: ${e?.message || e}`,
+                    severity: 'error',
+                }],
+            };
         }
     }
 

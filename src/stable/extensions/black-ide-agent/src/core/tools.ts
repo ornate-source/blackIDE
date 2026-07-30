@@ -7,6 +7,27 @@ import { AgentMode, ToolDefinition } from './types';
 
 const s = (description: string) => ({ type: 'string' as const, description });
 
+/**
+ * Read-only code-intelligence tools: "what is this symbol, and what touches it?"
+ *
+ * Exported as one group because every built-in mode declares an explicit `tools`
+ * allowlist, and a tool absent from that list is filtered out before the model ever
+ * sees it — being `risk: 'safe'` is not enough. Referencing this constant from
+ * `mode-loader.ts` means a new one reaches every mode in a single edit instead of
+ * thirteen. That trap cost Phase 1 a debugging session and is the reason the group
+ * exists at all.
+ *
+ * Named for the *question* rather than the mechanism, because it is no longer all
+ * language-server calls: `impact_analysis` (Phase 3, M16) is answered from the
+ * offline code graph. A caller should not have to know which.
+ */
+export const CODE_INTEL_READ_TOOLS = [
+    // Phase 1 — language server.
+    'get_diagnostics', 'go_to_definition', 'find_references', 'workspace_symbols', 'hover', 'code_actions',
+    // Phase 3 — offline code graph, git history, and the companion to output compaction.
+    'impact_analysis', 'search_history', 'blame', 'why_was_this_changed', 'expand_output',
+] as const;
+
 /** @public — required by the test harness (test/harness.js). */
 export const BASE_TOOLS: ToolDefinition[] = [
     {
@@ -282,6 +303,183 @@ export const BASE_TOOLS: ToolDefinition[] = [
                 }
             },
             required: ['key', 'summary', 'content'],
+        },
+    },
+    // ─── Language-server tools (Phase 1) ─────────────────────────────────────
+    // Black IDE is a VS Code fork, so a language server is already running for the
+    // user's languages. These expose it. Prefer them over grep for any question
+    // about symbols: grep cannot tell a definition from a mention in a comment.
+    // All read-only ones are 'safe', so Ask and Plan modes get them automatically.
+    {
+        name: 'get_diagnostics',
+        description: 'Read current compiler/linter problems from the language server, for one file or the whole workspace. Use this to check whether an earlier edit is still broken, or to survey the repo before starting.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Optional workspace-relative file. Omit for all problems in the workspace.'),
+                severity: { type: 'string', description: 'Which problems to report', enum: ['error', 'warning', 'all'] },
+            },
+            required: [],
+        },
+    },
+    {
+        name: 'go_to_definition',
+        description: 'Find where a symbol is actually defined, using the language server. Much more reliable than grep for "where does this come from?".',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that mentions the symbol'),
+                symbol: s('The identifier to resolve, e.g. "PipelineOrchestrator"'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol'],
+        },
+    },
+    {
+        name: 'find_references',
+        description: 'Find every real usage of a symbol, grouped by file, using the language server. Use before changing or deleting anything to see what depends on it.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that declares or mentions the symbol'),
+                symbol: s('The identifier to find usages of'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol'],
+        },
+    },
+    // ─── Git history (Phase 3, M22) ─────────────────────────────────────────
+    // The repository knows *why* the code looks the way it does. Until now the agent
+    // could read the working tree and nothing else.
+    {
+        name: 'search_history',
+        description: 'Search git history for commits that mention a term or that added/removed it in a diff. Use to find when something was introduced, or whether an approach was tried before.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: s('Term or phrase to look for, e.g. "connection pool" or "retryBudget"'),
+                max_commits: { type: 'number', description: 'How many commits to scan (default 25)' },
+            },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'blame',
+        description: 'Show which commit last changed each line in a range, collapsed so a block written in one commit is one row. Use before changing unfamiliar code to see when and why it arrived.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file'),
+                start_line: { type: 'number', description: '1-based first line' },
+                end_line: { type: 'number', description: '1-based last line (max 200 lines per call)' },
+            },
+            required: ['path', 'start_line', 'end_line'],
+        },
+    },
+    {
+        name: 'why_was_this_changed',
+        description: 'Show the commits that introduced or reworked a symbol, with their full messages. This is where the reasoning lives — "reverted because it deadlocked" — and it is the highest-signal context available about existing code.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: { symbol: s('The identifier to trace, e.g. "convertMinor"') },
+            required: ['symbol'],
+        },
+    },
+    {
+        name: 'expand_output',
+        description: 'Retrieve the full, ungrouped text of an earlier tool result that was compacted to save context. Only needed when the grouped form genuinely is not enough — it is the same information, laid out differently.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: { id: s('The id shown in the compacted result, e.g. "out_3"') },
+            required: ['id'],
+        },
+    },
+    {
+        name: 'impact_analysis',
+        description: 'Find every file affected by changing a symbol, split into files that directly use it and files reached indirectly. Use BEFORE editing anything shared — a function, type, constant or config key — to see the blast radius. Works without a language server and covers the whole indexed repo, but matches by name, so confirm with find_references when two symbols could share a name.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                symbol: s('The identifier whose blast radius you want, e.g. "convertMinor"'),
+                depth: { type: 'number', description: 'How many hops to follow (1 = direct users only, default 2, max 3)' },
+            },
+            required: ['symbol'],
+        },
+    },
+    {
+        name: 'workspace_symbols',
+        description: 'Search the whole project for a symbol by name (classes, functions, methods) without knowing which file it lives in.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: { query: s('Symbol name or fragment to search for') },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'hover',
+        description: 'Get the type signature and documentation for a symbol, as shown on editor hover.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that mentions the symbol'),
+                symbol: s('The identifier to inspect'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol'],
+        },
+    },
+    {
+        name: 'code_actions',
+        description: 'List the quick fixes and refactorings the language server offers at a location. Advisory: apply the change with edit_file.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file'),
+                symbol: s('Optional identifier to locate the position'),
+                line: { type: 'number', description: 'Optional 1-based line, used when no symbol is given' },
+            },
+            required: ['path'],
+        },
+    },
+    {
+        // A write: renames every reference across the project in one step, so it is
+        // approval-gated and checkpointed per file like any other edit.
+        name: 'rename_symbol',
+        description: 'Rename a symbol and every reference to it across the project, using the language server (import- and scope-aware). Safer than find-and-replace. Requires approval.',
+        risk: 'edit',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative file that declares the symbol'),
+                symbol: s('Current identifier name'),
+                new_name: s('New identifier name'),
+                line: { type: 'number', description: 'Optional 1-based line to disambiguate a repeated name' },
+            },
+            required: ['path', 'symbol', 'new_name'],
+        },
+    },
+    {
+        // Exec-class: it runs the project's test command.
+        name: 'run_tests',
+        description: 'Run the project test suite using the framework detected for this repo, returning a compact report of failures only (not the full output). Prefer this over run_command for tests.',
+        risk: 'exec',
+        parameters: {
+            type: 'object',
+            properties: {
+                scope: s('Optional path or test filter to narrow the run, e.g. "tests/test_api.py"'),
+            },
+            required: [],
         },
     },
     {

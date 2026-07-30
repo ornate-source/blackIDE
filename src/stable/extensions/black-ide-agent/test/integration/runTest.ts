@@ -26,6 +26,10 @@ async function main(): Promise<void> {
         // instead of a real scan. (globalState is already fresh: the user-data dir below is
         // a new tmpdir each run.)
         fs.rmSync(path.join(workspacePath, '.blackIDE'), { recursive: true, force: true });
+        // The LSP suite writes fixture files into the workspace and removes them in its
+        // own teardown; clear them here too so a crashed run cannot leave files behind
+        // that the first-run scan would then describe.
+        fs.rmSync(path.join(workspacePath, 'lsp-fixture'), { recursive: true, force: true });
 
         // VS Code opens a unix domain socket under the user-data dir. The default lives
         // inside this deeply-nested extension path, which blows past the ~103-char sockaddr

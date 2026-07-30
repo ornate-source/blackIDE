@@ -111,6 +111,11 @@
     "watch": "tsc -b -w",
     "build-webview": "cd webview && npm run build",
     "test": "tsc -b && npm run build-store-test && node test/harness.js",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:all": "npm run test && npm run test:unit && npm run eval",
+    "eval": "tsc -b && node eval/run-eval.js",
+    "eval:record": "tsc -b && node eval/run-eval.js --json",
     "build-store-test": "tsc webview/src/agent-store.ts --outDir test/dist-store --module commonjs --target es2020 --skipLibCheck",
     "lint:css": "stylelint 'webview/src/**/*.css'",
     "lint:dead-code": "knip",
@@ -131,6 +136,7 @@
     "stylelint": "^16.0.0",
     "stylelint-config-standard": "^36.0.0",
     "stylelint-no-unsupported-browser-features": "^8.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.10"
   }
 }
