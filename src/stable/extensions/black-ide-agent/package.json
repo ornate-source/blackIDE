@@ -54,6 +54,16 @@
         "command": "black-ide.installSkillPacks",
         "title": "✦ Black IDE: Install Skill Packs",
         "icon": "$(book)"
+      },
+      {
+        "command": "black-ide.addDocs",
+        "title": "✦ Black IDE: Add Docs",
+        "icon": "$(book)"
+      },
+      {
+        "command": "black-ide.manageDocs",
+        "title": "✦ Black IDE: Manage Docs",
+        "icon": "$(library)"
       }
     ],
     "keybindings": [

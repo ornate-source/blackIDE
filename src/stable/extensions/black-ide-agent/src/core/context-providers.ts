@@ -288,6 +288,110 @@ export class TerminalProvider implements ContextProvider {
     }
 }
 
+// ─── @symbol ────────────────────────────────────────────────────────────────
+
+/**
+ * A function, class or method by name, resolved from the M15 code graph.
+ *
+ * This is the provider M19 shipped without, and it is small *because* M15 landed
+ * first: the graph already knows every symbol's file and line span, so this is a
+ * lookup and a ranged read rather than a parse.
+ *
+ * What it contributes over `@file` is the reason to have it: the definition's own
+ * lines instead of a whole file the budget would truncate, plus **who references it**.
+ * "Change this function" and "change this function and its callers" are different
+ * tasks, and only the second one is answerable without a follow-up turn.
+ */
+export class SymbolProvider implements ContextProvider {
+    readonly id = 'symbol';
+    readonly title = 'Symbols';
+    readonly description = 'A function, class or method, with its callers';
+    readonly budget = 16_000;
+
+    constructor(private readonly graph: () => SymbolGraph | undefined) {}
+
+    async suggest(query: string): Promise<ContextItem[]> {
+        const graph = this.graph();
+        if (!graph || graph.fileCount === 0) return [];
+        return graph.searchSymbols(query, 20).map(s => ({
+            // The id carries the file and line so `resolve` never has to re-search and
+            // cannot land on a different same-named symbol than the one that was picked.
+            id: `${s.name}|${s.file}|${s.startLine}`,
+            label: s.name,
+            detail: `${s.kind}${s.parent ? ` in ${s.parent}` : ''} — ${s.file}:${s.startLine}`,
+        }));
+    }
+
+    async resolve(itemId: string): Promise<string> {
+        const graph = this.graph();
+        const [name, file, startLine] = itemId.split('|');
+
+        // "The index is not built" and "that symbol does not exist" look identical to a
+        // model and have completely different fixes — the same distinction M16's
+        // impact_analysis output draws.
+        if (!graph || graph.fileCount === 0) {
+            return `--- symbol ${name || itemId} ---\n[the code index is not built yet, so no symbol could be resolved. It builds on the first agent turn in a workspace.]`;
+        }
+        if (!name || !file) return `--- symbol ${itemId} ---\n[unrecognised symbol reference]`;
+
+        const definitions = graph.definitionsOf(name);
+        const chosen = definitions.find(d => d.file === file && String(d.startLine) === startLine)
+            ?? definitions.find(d => d.file === file)
+            ?? definitions[0];
+        if (!chosen) return `--- symbol ${name} ---\n[no definition of "${name}" is in the index]`;
+
+        const root = workspaceRoot();
+        let body = '[definition could not be read from disk]';
+        if (root) {
+            try {
+                const content = await fs.promises.readFile(path.join(root, chosen.file), 'utf8');
+                const lines = content.split(/\r?\n/);
+                // Line numbers from the graph are 1-based and inclusive.
+                body = lines.slice(Math.max(0, chosen.startLine - 1), chosen.endLine).join('\n');
+            } catch { /* keep the placeholder — say it, do not fake it */ }
+        }
+
+        const parts = [
+            `--- symbol ${name} (${chosen.kind}) — ${chosen.file}:${chosen.startLine}-${chosen.endLine} ---`,
+            body,
+        ];
+
+        const referencing = graph.referencesOf(name).filter(f => f !== chosen.file);
+        if (referencing.length) {
+            // Bounded, and the bound is stated. A symbol referenced in 200 files would
+            // otherwise spend the whole budget on a file list.
+            const shown = referencing.slice(0, 30);
+            parts.push(
+                `\n--- referenced in ${referencing.length} other file(s)${referencing.length > shown.length ? `, first ${shown.length} shown` : ''} ---`,
+                shown.join('\n'),
+                // The graph is name-keyed, not binding-keyed (M15's design position), so
+                // say what the list is before a model treats it as resolved truth.
+                '\n[Name-matched from the code graph, not binding-resolved. Use find_references for an authoritative list.]',
+            );
+        }
+
+        if (definitions.length > 1) {
+            parts.push(`\n[Warning: "${name}" is defined in ${definitions.length} places; this is the one at ${chosen.file}:${chosen.startLine}.]`);
+        }
+
+        return parts.join('\n');
+    }
+}
+
+/**
+ * The slice of `CodeGraph` this provider needs.
+ *
+ * Structural rather than a direct import so `context-providers.ts` does not depend on
+ * the index: the provider is about presentation, and a test can hand it three symbols
+ * without building a corpus.
+ */
+export interface SymbolGraph {
+    readonly fileCount: number;
+    searchSymbols(query: string, limit?: number): { name: string; file: string; startLine: number; endLine: number; kind: string; parent?: string }[];
+    definitionsOf(name: string): { name: string; file: string; startLine: number; endLine: number; kind: string; parent?: string }[];
+    referencesOf(name: string): string[];
+}
+
 // ─── @rules / @skills / @past-chats ─────────────────────────────────────────
 
 export class StaticListProvider implements ContextProvider {
@@ -315,6 +419,109 @@ export class StaticListProvider implements ContextProvider {
     async resolve(itemId: string): Promise<string> {
         const found = (await this.load()).find(i => i.id === itemId);
         return found ? `--- ${this.id}: ${found.label} ---\n${found.body}` : '';
+    }
+}
+
+// ─── @docs (Phase 3, M20) ───────────────────────────────────────────────────
+
+/**
+ * A crawled documentation set, searched locally.
+ *
+ * The mention carries a query rather than an id: `@docs:django/how do querysets cache`.
+ * A doc set is 60 pages, so selecting the *set* and injecting all of it would spend the
+ * whole budget on one framework's front matter — the useful unit is the passage that
+ * answers the question, which means the query has to reach the provider.
+ */
+export class DocsProvider implements ContextProvider {
+    readonly id = 'docs';
+    readonly title = 'Docs';
+    readonly description = 'An indexed documentation set — `@docs:<set>/<question>`';
+    readonly budget = 14_000;
+
+    constructor(
+        private readonly listSets: () => Promise<{ name: string; rootUrl: string; pages: number }[]>,
+        private readonly search: (set: string, query: string) => Promise<{ url: string; title: string; excerpt: string }[]>,
+    ) {}
+
+    async suggest(query: string): Promise<ContextItem[]> {
+        const sets = await this.listSets();
+        const [setPart] = splitDocsQuery(query);
+        const needle = setPart.toLowerCase();
+        if (!sets.length) {
+            // A menu entry that explains the empty state, because "no matches" and "you
+            // have not indexed any docs yet" call for completely different actions.
+            return [{ id: '', label: 'No doc sets indexed', detail: 'Run "Black IDE: Add Docs" to crawl one' }];
+        }
+        return sets
+            .filter(s => !needle || s.name.toLowerCase().includes(needle))
+            .slice(0, 20)
+            .map(s => ({ id: `${s.name}/`, label: s.name, detail: `${s.pages} pages — ${s.rootUrl}` }));
+    }
+
+    async resolve(itemId: string): Promise<string> {
+        const [set, query] = splitDocsQuery(itemId);
+        if (!set) return '--- docs ---\n[no doc set named. Use @docs:<set>/<question>.]';
+
+        const sets = await this.listSets();
+        if (!sets.some(s => s.name.toLowerCase() === set.toLowerCase())) {
+            const names = sets.map(s => s.name).join(', ') || 'none indexed';
+            return `--- docs: ${set} ---\n[no such doc set. Available: ${names}.]`;
+        }
+        if (!query.trim()) {
+            // Deliberately not "here is the whole set": it would blow the budget and bury
+            // whatever the user actually wanted.
+            return `--- docs: ${set} ---\n[add a question after the set name, e.g. @docs:${set}/how do I paginate.]`;
+        }
+
+        const hits = await this.search(set, query);
+        if (!hits.length) return `--- docs: ${set} — "${query}" ---\nNo passage matched. The set may not cover this topic.`;
+
+        return [`--- docs: ${set} — "${query}" ---`]
+            .concat(hits.map(h => `[${h.title}] ${h.url}\n${h.excerpt}`))
+            .join('\n\n');
+    }
+}
+
+/** `django/how do querysets cache` → `['django', 'how do querysets cache']`. */
+export function splitDocsQuery(raw: string): [string, string] {
+    const cut = raw.indexOf('/');
+    if (cut === -1) return [raw.trim(), ''];
+    return [raw.slice(0, cut).trim(), raw.slice(cut + 1)];
+}
+
+// ─── @web (Phase 3, M21) ────────────────────────────────────────────────────
+
+/**
+ * A live web search, resolved at turn time.
+ *
+ * `suggest` cannot offer results — it runs per keystroke and a search per keystroke is
+ * both slow and rude to the provider — so it offers the *query itself* as the item. The
+ * search happens once, in `resolve`, when the message is actually sent.
+ */
+export class WebProvider implements ContextProvider {
+    readonly id = 'web';
+    readonly title = 'Web';
+    readonly description = 'A live web search — `@web:<query>`';
+    readonly budget = 10_000;
+
+    constructor(private readonly search: (query: string) => Promise<string>) {}
+
+    async suggest(query: string): Promise<ContextItem[]> {
+        const trimmed = query.trim();
+        if (!trimmed) return [{ id: '', label: 'Type a search query', detail: 'e.g. @web:django 5 async orm' }];
+        return [{ id: trimmed, label: `Search the web for "${trimmed}"`, detail: 'Runs when you send the message' }];
+    }
+
+    async resolve(itemId: string): Promise<string> {
+        const query = itemId.trim();
+        if (!query) return '--- web ---\n[no query given]';
+        try {
+            return `--- web search: "${query}" ---\n${await this.search(query)}`;
+        } catch (e: any) {
+            // Naming the failure rather than returning nothing: an empty block reads as
+            // "the web had nothing to say about this", which is a different claim.
+            return `--- web search: "${query}" ---\n[search failed: ${e?.message || e}]`;
+        }
     }
 }
 

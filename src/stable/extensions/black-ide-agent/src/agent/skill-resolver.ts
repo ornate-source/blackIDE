@@ -6,7 +6,7 @@
 // no roles/stacks still resolve on their trigger keywords.
 
 import { Skill } from './skills-manager';
-import { ProjectProfile, Role } from '../core/project-profiler';
+import { FRAMEWORK_IDENTITY_TOKENS, ProjectProfile, Role } from '../core/project-profiler';
 
 // Weights: the detected stack is the strongest signal, then role affinity, then prompt keywords.
 //
@@ -19,6 +19,62 @@ const W_FRAMEWORK = 10;
 const W_LANGUAGE = 5;
 const W_ROLE = 4;
 const W_PROMPT = 3;
+/*
+ * The penalty for a pack scoped to a *different* role, set to exactly W_LANGUAGE.
+ *
+ * That equality is the whole point (2026-08-01): a pack whose only evidence is the
+ * repo's *language*, and which is scoped to another role, has nothing to say about this
+ * turn — it scored 1 and filled a slot, so a NestJS backend task ended up with the Jest
+ * pack as its only skill. Netting it to zero drops those, while a pack matched on the
+ * detected *framework* still survives a role mismatch (10 − 5), which is intended:
+ * Django idioms genuinely help a Testing agent writing Django tests.
+ */
+const W_ROLE_MISMATCH = W_LANGUAGE;
+
+/**
+ * Does one trigger fire on this prompt? (eval finding F3b, 2026-08-01.)
+ *
+ * Triggers used to be plain substring tests, which is right for the code fragments
+ * packs list (`app.use`, `def test_`, `@component`, `describe(`) and badly wrong for
+ * bare words: `res` matched "Restyle", so the Express pack was a candidate on nearly
+ * any prompt. Both kinds live in the same list, so the rule keys off the trigger's own
+ * shape rather than asking authors to mark them.
+ *
+ * A bare word matches on word boundaries, tolerating only a plural suffix — `hook`
+ * should fire on "hooks", and `react` should *not* fire on "reactive".
+ */
+export function triggerMatches(trigger: string, lowerPrompt: string): boolean {
+    const t = (trigger || '').toLowerCase().trim();
+    if (!t) return false;
+    // Anything with punctuation is a code fragment: substring is the intended semantic.
+    if (/[^a-z0-9]/.test(t)) return lowerPrompt.includes(t);
+    return new RegExp(`\\b${t}(?:s|es)?\\b`).test(lowerPrompt);
+}
+
+/**
+ * Did the prompt actually *name* this framework? (eval finding F3, second half.)
+ *
+ * The F3 rule below lets a prompt mention override an absent detection, because "how
+ * would I do this in Flask?" inside a Django repo is a real request. But a plain
+ * `promptHit` is far too weak to carry that: `aspnet-core` lists the trigger
+ * `controller`, so a NestJS *or* Rails prompt saying "users controller" claimed an
+ * ASP.NET identity; `react` lists `component`, so an Angular component task pulled in
+ * React; `rails` lists `migration`, which Django and EF Core also call a migration.
+ *
+ * An identity claim needs an identifying mention. That is the pack's own name, or a
+ * trigger that is a code fragment or multi-word phrase (`asp.net`, `app router`,
+ * `@component`) — a shape a generic English noun never has. Generic triggers keep their
+ * normal scoring role for packs whose framework *is* detected, where "controller" on a
+ * real .NET repo is a perfectly good relevance signal.
+ */
+function identifiesItself(skill: Skill, lowerPrompt: string): boolean {
+    if (triggerMatches(skill.name, lowerPrompt)) return true;
+    return skill.triggerPatterns.some(p => {
+        const t = (p || '').toLowerCase().trim();
+        if (!t || !triggerMatches(t, lowerPrompt)) return false;
+        return t === skill.name.toLowerCase() || /[^a-z0-9]/.test(t);
+    });
+}
 
 export interface ResolveOpts {
     skills: Skill[];
@@ -46,12 +102,21 @@ export function resolveSkills(opts: ResolveOpts): Skill[] {
     const frameworks = new Set((profile?.frameworks || []).map(lower));
     const languages = new Set((profile?.languages || []).map(lower));
     const lowerPrompt = prompt.toLowerCase();
+    /*
+     * What counts as "this repo uses X" for the F3 rule below. `frameworks` is the
+     * precise answer, but the pure tests (and any caller with only a coarse profile)
+     * pass `{ stacks }` alone, where the framework and language tokens are already
+     * mixed together. Falling back to `stacks` keeps those callers working; falling
+     * back to *nothing* would silently disable the rule for them, which is worse than
+     * being slightly coarse.
+     */
+    const detected = frameworks.size ? frameworks : stacks;
 
     const scored = skills.map(skill => {
         const frameworkHit = skill.stacks.some(s => frameworks.has(s));
         const languageHit = skill.stacks.some(s => languages.has(s));
         const stackHit = skill.stacks.some(s => stacks.has(s));
-        const promptHit = skill.triggerPatterns.some(p => p && lowerPrompt.includes(p.toLowerCase()));
+        const promptHit = skill.triggerPatterns.some(p => triggerMatches(p, lowerPrompt));
         /** No `stacks` declared → the pack is stack-agnostic (REST design, a11y, TDD…). */
         const crossCutting = skill.stacks.length === 0;
 
@@ -67,6 +132,38 @@ export function resolveSkills(opts: ResolveOpts): Skill[] {
          * have, and it is the correct one for them.
          */
         if (!crossCutting && !stackHit && !promptHit) return { skill, score: 0 };
+
+        /*
+         * Eval finding F3 (2026-08-01) — wrong-framework injection.
+         *
+         * Found by growing the golden-task set from 19 tasks to 74 with five new
+         * fixtures. A NestJS repo asked for a users controller resolved to
+         * **express, aspnet-core, nextjs, react, angular** — five packs, all wrong. A
+         * Flask repo got django and fastapi. A React Native screen got Next.js App
+         * Router idioms ranked first.
+         *
+         * The mechanism: several packs list the *language* alongside the framework
+         * (`express` declares `[express, nodejs, javascript, typescript]`), so on any
+         * TypeScript repo they matched at language strength, and role affinity then
+         * carried them over the selection threshold. F1 closed "role alone is not
+         * evidence"; this closes "the language alone is not evidence *when the pack
+         * names a framework the repo does not use*".
+         *
+         * A pack named after a mutually-exclusive framework token must have that
+         * framework detected. Prompt mention still qualifies it — asking "how would I do
+         * this in Flask?" inside a Django repo is a real request, not a mistake — which
+         * is the same exemption F1 uses and the reason this is a candidacy rule rather
+         * than a score penalty.
+         *
+         * Test runners, additive libraries and infrastructure are deliberately not
+         * identities; see FRAMEWORK_IDENTITY_TOKENS for why that distinction is the one
+         * that matters.
+         */
+        if (FRAMEWORK_IDENTITY_TOKENS.includes(lower(skill.name))
+            && !detected.has(lower(skill.name))
+            && !identifiesItself(skill, lowerPrompt)) {
+            return { skill, score: 0 };
+        }
 
         const roleHit = !!role && skill.roles.includes(role);
 
@@ -85,12 +182,25 @@ export function resolveSkills(opts: ResolveOpts): Skill[] {
 
         if (role && skill.roles.length) {
             if (roleHit) score += W_ROLE;                        // cross-cutting skills for this role
-            else score -= W_ROLE;                               // scoped to a different role → demote
+            else score -= W_ROLE_MISMATCH;                       // scoped to a different role → demote
         }
 
         if (promptHit) score += W_PROMPT;
 
-        score += (skill.priority || 0) * 0.1;
+        /*
+         * `priority` is deliberately *not* added to the score (2026-08-01).
+         *
+         * It used to contribute `priority * 0.1`, which is small enough to look like a
+         * tie-break and is not one: it survives the `score > 0` filter on its own. A
+         * pack matched only on the repo's language and scoped to another role nets to
+         * zero evidence, and a priority of 8 then floated it back to 0.8 — which is how
+         * a NestJS *backend* task came back with the Jest pack as its only skill. This
+         * is the same defect F1 fixed for a positive priority with no signal at all;
+         * it survived because the arithmetic changed rather than the rule.
+         *
+         * Priority still orders equal-evidence packs — as the second sort key below,
+         * where a tie-break belongs.
+         */
         return { skill, score };
     });
 

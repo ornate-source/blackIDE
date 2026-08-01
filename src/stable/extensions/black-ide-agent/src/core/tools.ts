@@ -81,15 +81,20 @@ export const BASE_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'edit_file',
-        description: 'Edit an existing file using one or more SEARCH/REPLACE blocks. The ORIGINAL text must match the file exactly and be unique.',
+        description: 'Edit an existing file. Provide either search_replace_blocks (exact) or, for a small localised change, intent — a one-sentence description that a fast model turns into blocks for you. If intent cannot be applied exactly, this tool fails and asks you for blocks.',
         risk: 'edit',
         parameters: {
             type: 'object',
             properties: {
                 path: s('Workspace-relative path to the file'),
                 search_replace_blocks: s('One or more blocks: <<<<<<< ORIGINAL\\n...\\n=======\\n...\\n>>>>>>> UPDATED'),
+                // Fast-apply (Phase 4, M25). Adding a parameter rather than a second tool
+                // is deliberate: a new tool name would have to be added to thirteen mode
+                // allowlists, and the Phase 1 trap is that a tool missing from one is
+                // silently never offered. `intent` rides the allowlist `edit_file` already has.
+                intent: s('Alternative to search_replace_blocks: describe the change in one sentence (e.g. "add a jitter argument to withRetry and default it to 0.1"). A fast model materialises the exact blocks and they are verified before anything is written.'),
             },
-            required: ['path', 'search_replace_blocks'],
+            required: ['path'],
         },
     },
     {

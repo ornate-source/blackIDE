@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { LLMConfigEntry } from '../core/types';
+import { loadModelRouter } from './model-router-loader';
 import { SecretManager } from '../core/secret-manager';
 import { LLMClient } from '../core/llm-client';
 
@@ -38,11 +39,11 @@ export class BlackIdeInlineCompletionProvider implements vscode.InlineCompletion
         const prefix = text.substring(Math.max(0, offset - maxContext), offset);
         const suffix = text.substring(offset, Math.min(text.length, offset + maxContext));
 
-        const configJson = await this.secretManager.getKey('llm-config');
-        if (!configJson) return [];
-        const configs: LLMConfigEntry[] = JSON.parse(configJson);
-        const activeModelId = settings.autocompleteModelId || settings.selectedModelId;
-        const modelConfig = configs.find((c: any) => c.id === activeModelId) || configs.find((c: any) => c.enabled !== false) || configs[0];
+        // The `autocomplete` role (Phase 4, M23). This call site is where per-role models
+        // started — it already preferred `autocompleteModelId` over `selectedModelId`, and
+        // the router keeps honouring that setting so existing configs keep working.
+        const { router } = await loadModelRouter(this.secretManager);
+        const modelConfig = router.resolve('autocomplete')?.config;
         if (!modelConfig) return [];
 
         const modelName = (modelConfig.model || '').toLowerCase();

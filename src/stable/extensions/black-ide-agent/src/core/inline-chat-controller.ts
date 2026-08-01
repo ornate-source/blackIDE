@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SecretManager } from './secret-manager';
 import { LLMClient } from './llm-client';
+import { loadModelRouter } from './model-router-loader';
 import { diffLines, Hunk } from './diff';
 
 // Editor Inline Chat Controller — Feature 23 / MF-23
@@ -59,17 +60,11 @@ export class InlineChatController {
                         throw new Error('No LLM configurations found. Please open Black IDE settings.');
                     }
                     
-                    const configs = JSON.parse(configJson);
-                    const settingsRaw = await secretManager.getKey('general-settings');
-                    let settings = { selectedModelId: '' };
-                    if (settingsRaw) {
-                        settings = JSON.parse(settingsRaw);
-                    }
-                    
-                    const modelConfig = configs.find((c: any) => c.id === settings.selectedModelId) || 
-                                        configs.find((c: any) => c.enabled !== false) || 
-                                        configs[0];
-                                        
+                    // The `edit` role (Phase 4, M23) — an inline edit is a scoped rewrite
+                    // of a selection, which is what that role is for.
+                    const { router } = await loadModelRouter(secretManager);
+                    const modelConfig = router.resolve('edit')?.config;
+
                     if (!modelConfig) {
                         throw new Error('No active or enabled model configured');
                     }

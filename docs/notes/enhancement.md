@@ -2,95 +2,114 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 5 (2026-07-29)** — Phases 0–2 delivered, Phase 3 substantially
-delivered; **20 of 71 gaps addressed (16 complete, 4 partial)**. Supersedes the "next initiative"
-half of [`plan.md`](./plan.md) (which is delivered through its Phase 5).
+**Status:** **In progress · rev 6 (2026-08-01)** — **phases 0–4 delivered**; **27 of 71 gaps
+addressed, all complete (no partials)**. The only work left in a started phase is the **model tier**
+(§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
+[`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
 | Phase | Status | Covers | Evidence |
 |---|:--:|---|---|
-| 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**652** (≤700 gate **met**) · eval harness + baseline · vitest wired · skill diagnostics. Retrieval recall recorded in Phase 3's opener. |
-| 1 — Language-server tools & tests | 🟡 | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; 5 of 6 gates asserted, incl. rename across 6 files in a real extension host. **Outstanding:** the LSP-over-grep gate needs the model tier. |
-| 2 — Rules, prompts & modes | 🟡 | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel. M9's stronger reading closed as won't-do. **Outstanding:** tool toggles in the panel (M10). |
-| 3 — Retrieval substrate | 🟡 | M14–M22 | **M14–M18, M22 done; M19 partial; headline gate met.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction 37.7% at realistic path depth · git history tools shipped. **Remaining:** M19's `@symbol`/`@docs`/`@web` providers and **M20/M21** (docs indexing, keyed search providers). |
-| 4–12 | — | M23–M71 | Not started. |
+| 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**671** (≤700 gate met **and now enforced by a test**) · eval harness at **74 tasks / 13 fixtures** with a wrong-idiom metric · vitest wired · skill diagnostics. |
+| 1 — Language-server tools & tests | 🟡 | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; 5 of 6 gates asserted, incl. rename across 6 files in a real extension host. **Outstanding:** the LSP-over-grep gate needs the model tier (§4.6). |
+| 2 — Rules, prompts & modes | ✅ | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel with **rule *and* tool toggles** — the tool half enforced at the executor, not advertised. M9's stronger reading closed as won't-do. |
+| 3 — Retrieval substrate | ✅ | M14–M22 | **All nine milestones.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction 37.5% at realistic path depth · git history tools · **index build 5 000 files in 1 247 ms** against a ≤2 s gate · 11 `@`-mention providers incl. `@symbol`, `@docs`, `@web`. |
+| 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **16 providers** (Bedrock/Vertex deferred with a reason) · zero-config local first run. |
+| 5–12 | — | M28–M71 | Not started. |
 
-**Re-verified 2026-07-29 by running everything, after Phase 3:** harness **426/426** · vitest
-**393/393 / 23 suites** · **19** real-host integration tests · eval gate green (stack detection 100%
-8/8 · skill exact-match 100% · fail-safe 1/1 · **recall@5 91.2% · @10 97.2% · @20 100%** ·
-compaction 37.7% · *no regression vs `eval/baseline.json`*) · `tsc -b` clean · webview builds ·
-`extension.ts` **652 LOC**.
+**Re-verified 2026-08-01 by running everything:** harness **426/426** · vitest **582/582 / 32
+suites** · **19** real-host integration tests · eval gate green (stack detection 100% 13/13 · skill
+exact-match 100% · fail-safe 1/1 · **wrong-idiom 0% of 33 guarded tasks** · **recall@5 91.2% · @10
+97.2% · @20 100%** · compaction 37.5% · *no regression vs `eval/baseline.json`*) · `tsc -b` clean ·
+webview builds · `extension.ts` **671 LOC**.
 
-### Pending work across every started phase (0–3)
+## ⇢ Pending tasks — phases 0–4 (re-audited against the code 2026-08-01)
 
-This is the complete list of what is outstanding in phases that have been started, ordered by what
-actually blocks progress. Phases 4–12 are untouched and are scheduled in §4.
+Every row below was checked against the tree today, not against the previous revision's claims.
+Phases 0–3 are the started phases; **Phase 4 is included because it is next on the critical path and
+because M17's remaining half is blocked on it** — the roadmap's own sequencing makes Phase 4 the
+unblocking phase, so its rows belong on the same list rather than in a separate backlog.
 
-| # | Item | Phase | Tracked at | Blocked by / blocking | Status |
-|:--:|---|:--:|:--:|---|---|
-| 1 | `extension.ts` **960 LOC** against a **≤700** gate | 0 | M2 / G10 | taxed every later phase editing this file | ✅ **closed 2026-07-29 — 652 LOC** |
-| 2 | **Tool toggles** in the session panel (rule toggles shipped) | 2 | M10 | nothing — self-contained | open, ~1 day |
-| 3 | Rules+skills assembly is two budgeted sections, not one merged pipeline | 2 | M9 (weaker reading) | — | ✅ **closed 2026-07-29 as won't-do** |
-| 4 | Eval set is **19 tasks / 8 fixtures**; §4.2's "record" baselines unrecorded | 0 | M3 | recall half was blocking Phase 3 | 🟡 **recall recorded 2026-07-29**; task-count breadth still short |
-| 5 | "Symbol questions resolve via LSP not grep" unasserted | 1 | M6/M7 gate | needs the opt-in **model tier** | open — tier work, not phase work |
-| 6 | **`@docs` indexing + keyed search providers** not started | 3 | M20 / M21 | nothing — but network-facing, no deterministic gate | open, the largest Phase 3 remainder |
-| 7 | `@symbol` provider missing from the `@`-mention set | 3 | M19 | unblocked — M15 already exposes the graph | open, ~0.5 day |
-| 8 | Rerank cross-encoder absent; only the lexical fallback ships | 3 | M17 | **blocked on Phase 4 (M23)** `rerank` role | sequenced, not skipped |
-| 9 | Phase 3 build-time budget restated, not re-measured on a large repo | 3 | M14 gate | needs a 5 000-file repo to assert against | open — gate agreed, unproven |
+**Verified state at audit time (before this pass):** `tsc -b` clean · harness **426/426** · vitest
+**393/393 / 23 suites** · eval green, no regression vs `eval/baseline.json` · `extension.ts` **652
+LOC**. The "Verified how" column below is what the code showed *then*, kept as written so the audit
+stays checkable; the Status column is where it ended up.
 
-Detail on each:
+| # | Pending task | Phase | Tracked at | Verified how | Blocked by | Status |
+|:--:|---|:--:|:--:|---|---|---|
+| **1** | **Tool toggles** in the session panel | 2 | M10 | `toggleRule` exists at `App.tsx:3395` → `webview-message-handler.ts:223`; **no `toggleTool` on either side** | nothing | ✅ **done 2026-08-01** — M10 → ✅ |
+| **2** | **`@symbol`** provider in the `@`-mention set | 3 | M19 | `context-provider-setup.ts:49-88` registers 8 providers; no symbol entry | nothing — M15 exposes `index.graph` | ✅ **done 2026-08-01** |
+| **3** | Index-build budget **≤2 s per 5 000 files** never asserted | 3 | M14 gate | restated in the M14 note; no test measures it | needs a corpus big enough to mean something | ✅ **done 2026-08-01 — 1 247 ms / 5 000 files** |
+| **4** | **`ModelRouter`** — roles `chat/plan/edit/apply/autocomplete/embed/rerank` | 4 | M23 | no `model-router.ts`; role resolution is ad-hoc (`inline-completion.ts:44` reads `autocompleteModelId`, everything else reads `selectedModelId`) | nothing | ✅ **done 2026-08-01** |
+| **5** | **Cross-provider failover / health-aware routing** | 4 | M24 | `llm-client.ts:58` `fallbackTurn` is the *local-protocol* path, not failover | #4 | ✅ **done 2026-08-01** — chat **and** pipeline |
+| **6** | **Rerank cross-encoder** (only the lexical fallback ships) | 3 | M17 | `core/reranker.ts:17` says so in a comment | **#4's `rerank` role** | ✅ **done 2026-08-01** — M17 → ✅ |
+| **7** | **Provider breadth** 6 → ~18 | 4 | M26 | `types.ts:4` — `LLMConfigEntry.type` is a 5-member union | nothing | ✅ **done 2026-08-01 — 16**, Bedrock/Vertex deferred with a reason |
+| **8** | **Zero-config first run** (usable with no API key) | 4 | M27 | every config path throws "No LLM configurations found" with no key | nothing | ✅ **done 2026-08-01** |
+| **9** | **Fast-apply path** (cheap model materialises SEARCH/REPLACE) | 4 | M25 | no apply-role path anywhere | #4 | ✅ **done 2026-08-01** — fails closed |
+| **10** | **`@docs` crawl + index** | 3 | M20 | no docs provider, crawler or namespaced shard | nothing (network-facing) | ✅ **done 2026-08-01** |
+| **11** | **Keyed search providers** (Brave / Tavily / Google CSE) | 3 | M21 | `tools/web-search.ts` is 108 LOC of DDG scrape | nothing | ✅ **done 2026-08-01** |
+| **12** | Eval breadth: **19 tasks / 8 fixtures** vs a planned 8–10 × 6 stacks | 0 | M3 | `eval/tasks.js` is 53 LOC / 19 entries | nothing | ✅ **done 2026-08-01 — 74 tasks / 13 fixtures, and it found F3/F3b** |
+| **13** | "Symbol questions resolve via **LSP not grep**" unasserted | 1 | M6/M7 gate | `eval/` has no model-calling tier | **needs the opt-in model tier** | 🔴 blocked — not phase work |
+| **14** | §4.2's four ⚠ rows (task success, tokens/task, symbol accuracy, wrong-idiom) | 0 | M3 / §4.2 | `eval/baseline.json` holds only deterministic metrics | **same model tier as #13** | 🔴 blocked — not phase work |
 
-1. **`extension.ts` size (M2/G10) — closed.** 960 → **623 LOC**, clearing the ≤700 gate with room
-   (**652** after Phase 3's M19 wiring — still inside the gate, and the reason M19's provider
-   assembly went into `core/context-provider-setup.ts` rather than inline).
-   The cut was `_runPipeline` + `_runPipelineCore` + `_runPipelineInManager` + the managed-run
-   bookkeeping, into `agent/pipeline-entry.ts` (+106) and a new `agent/managed-runs.ts` (241), plus
-   `core/conversation-title.ts` (54). **One deviation from the plan, deliberately:** the Manager
-   lane moved as a *class* (`ManagedRunRegistry`), not as the deps-object function the three prior
-   extractions used. What is being moved there is state with an invariant — the live `Map` and the
-   persisted history must be folded together on *every* transition or a reload shows ghost
-   "running" rows — and moving the methods without the state they guard would have split that
-   invariant across two files, which is worse than not moving it. A new `_pipelineCoreDeps` getter
-   names exactly the members the shared core reads, mutating none. Verified across all four tiers:
-   harness 426/426 · vitest (206/206 at the time of the cut) · **19 real-host integration tests** ·
-   `tsc -b` clean.
-2. **Tool toggles (M10).** `webview/src/App.tsx:3343` posts `toggleRule`; `core/webview-message-handler.ts:220`
-   handles it. There is no `toggleTool` counterpart on either side. Worth more now than when
-   planned, because Phase 2 made per-mode tool allowlists genuinely enforced (B4) — a session
-   toggle would ride that same gate in `agent/tool-executor.ts:112` rather than being advisory.
-3. **Unified assembly (M9) — closed as won't-do.** Rules and skills are separate,
-   independently-budgeted sections in `core/prompt-builder.ts`. That satisfies the stated intent
-   (neither can starve the other) and is the better design: one merged section would have to
-   arbitrate two unrelated ranking schemes into a single budget, and it would make
-   `__tests__/rules-panel-fidelity.test.ts`'s both-directions assertion harder to state, not
-   easier. The Phase 2 wording is amended to "one budgeted assembly *path*", which is what was
-   meant and what shipped. Carrying it as debt implied a change we had decided not to make.
-4. **Measurement debt (M3) — half closed.** Retrieval recall now has a real baseline; see the
-   Phase 3 opening note below for the numbers, the corpus, and the gate correction it forced.
-   Still short: `eval/tasks.js` holds 19 tasks across 8 fixtures where the plan asked for 8–10 per
-   stack, and end-to-end task success / tokens-per-task remain deferred to the opt-in model tier.
-   Neither blocks Phase 3 now that recall is measurable.
-5. **Phase 1's last gate.** Five of six Phase 1 gates are asserted, including `rename_symbol`
-   across 6 files in a real extension host. Whether the agent *chooses* LSP over grep needs a model
-   to observe, so it belongs to the same opt-in tier as the rest of item 4.
-6. **M20/M21 — `@docs` and keyed search.** Not started. The only Phase 3 milestones with no code.
-   Both are network-facing (a crawler, and Brave/Tavily/Google CSE keys) and neither has a
-   deterministic gate the eval harness can hold, which is why they were sequenced last rather than
-   first.
-7. **`@symbol` (M19).** The provider registry, budgets, resolution and webview are all shipped;
-   `@symbol` is one more `ContextProvider` reading `CodebaseIndex.graph`, which M15 already exposes.
-   It is small *because* M15 landed first.
-8. **Rerank cross-encoder (M17).** The `Reranker` interface and the tuned `LexicalReranker` ship and
-   are what run by default. A model-backed implementation assigns `index.reranker` and changes
-   nothing else — but it needs the `rerank` role from **Phase 4's ModelRouter (M23)**, so it is
-   sequenced, not skipped.
-9. **Build-time budget (M14).** The original "+50% of baseline" resolved to ≤39 ms on an 82-file
-   fixture, which measures nothing; it is restated as **≤2 s per 5 000 files**. That restatement is
-   not yet *asserted* against a large repo, so the gate is agreed but unproven.
+**#13 and #14 are the same blocker twice**, and neither is phase work: both need an **opt-in tier of
+the eval harness that spends real model calls**. That is a harness capability with a cost model (keys
+in CI, a budget per run, non-determinism to control), and it is the single prerequisite for four of
+§4.2's metric rows plus Phase 1's last gate. Making it a Phase 4 task would hang the deterministic
+gates of five phases off a non-deterministic runner. It is specified as **§4.6 — the model tier**
+below so it is owned rather than perpetually deferred, and it is the one thing on this list that is
+**not** attempted in this pass.
 
-Three defects were found by the Phase 0–2 work itself and fixed: **F1** (skills injected into repos
-with no detected stack), **F2** (`react` undetected in Next.js projects), and the **per-mode
-allowlist gap** (B4). Each is recorded where it was graded, not only where it was fixed. Phase 3
-found six more — see the rev 5 note below.
+**12 of the 14 closed on 2026-08-01**, in dependency order: #1–#3 and #12 (self-contained), then
+Phase 4 (#4 → #5, #7, #8, #9), then #6 once #4 existed to unblock it, then #10 → #11. Every delivery
+note is filed under its phase in §4.
+
+**What that means for the roadmap: phases 0–4 are delivered, and Phase 3's and Phase 4's milestones
+are all ✅.** Closing Phase 4 also closed the last two Phase 3 partials — M17's cross-encoder (it
+needed the `rerank` role) and M19 (`@symbol` here, `@docs`/`@web` with M20/M21). The only work
+outstanding in phases 0–4 is the model tier, which is not phase work.
+
+**Verified after the pass, by running everything:** `tsc -b` clean · harness **426/426** · vitest
+**582/582 / 32 suites** (was 393/23) · eval gate green with a re-recorded baseline (74 tasks /
+13 fixtures · stack detection 100% · exact-match 100% · **wrong-idiom 0% of 33 guarded tasks** ·
+recall@5 91.2 · @10 97.2 · @20 100) · webview builds · `extension.ts` **671 LOC**, inside the
+≤700 gate and now *enforced* by a test rather than by hand.
+
+### Previously-tracked items, now closed (kept for the record)
+
+| # | Item | Phase | Closed |
+|:--:|---|:--:|---|
+| A | `extension.ts` **960 LOC** against a **≤700** gate | 0 | ✅ 2026-07-29 — **652 LOC** |
+| B | Rules+skills assembly as one *merged* pipeline | 2 | ✅ 2026-07-29 — **won't-do**, two budgeted sections is the better design |
+| C | Retrieval recall had no recorded baseline | 0/3 | ✅ 2026-07-29 — recall@3/5/10/20 recorded over an 82-file corpus |
+
+Detail on each closed item is its **delivery note, filed under that item's phase in §4** — this list
+used to duplicate them and drifted every revision, so it now says only what the table cannot.
+
+**The two `extension.ts` cuts, because both are cited elsewhere.** 2537 → 623 in Phase 0, then 652
+once M19's provider assembly landed, then 704 on 2026-08-01 when the `@docs`/`@web` wiring went in
+inline — **past the gate**, caught by hand, moved into `core/context-provider-setup.ts`, and now at
+**671** with `__tests__/source-hygiene.test.ts` failing the build over 700. Two of the original cuts
+needed a design decision rather than a move, and both are recorded at **G10**: `core/chat-session.ts`
+holds the chat lane's state as one object shared *by reference* (because `_runAgentTask` reassigns it
+mid-run while the webview handler reads it afterwards), and `agent/managed-runs.ts` moved the Manager
+lane as a **class** rather than a deps-object function (because its live `Map` and persisted history
+must be folded together on every transition, or a reload shows ghost "running" rows).
+
+**Why M9's stronger reading is a won't-do rather than debt.** Rules and skills are separate,
+independently-budgeted sections in `core/prompt-builder.ts`. That satisfies the stated intent —
+neither can starve the other — and is the better design: one merged section would have to arbitrate
+two unrelated ranking schemes into a single budget, and it would make
+`__tests__/rules-panel-fidelity.test.ts`'s both-directions assertion harder to state, not easier. The
+Phase 2 wording is amended to "one budgeted assembly *path*", which is what was meant and what
+shipped.
+
+**Defects found by this work and fixed, in order of when they were found.** **F1** (skills injected
+into repos with no detected stack) and **F2** (`react` undetected in Next.js projects) came from the
+eval harness's first run; the **per-mode allowlist gap** (B4) came from adding Learn mode; six more
+came from Phase 3's own corpus measurements (see the rev 5 note); and **F3**, **F3b** and the
+priority-as-signal residue of F1 came from growing the eval set to 74 tasks (rev 6 note). Every one
+of them passed the tests that existed at the time and failed only against a measurement — which is
+the argument for the eval tier, restated with each finding.
 
 **Scope:** `src/stable/extensions/black-ide-agent/` + editor-level surfaces in `src/stable/src/vs/`
 
@@ -101,6 +120,44 @@ found six more — see the rev 5 note below.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 6 (2026-08-01).** Delivery: **12 of the 14 open items in phases 0–4 closed**,
+> which completes phases 2, 3 and 4 and takes the tally to **27 of 71, with no partials**. Phase 2's
+> tool toggles (M10), Phase 3's `@symbol` + `@docs` + keyed search (M19–M21) and cross-encoder rerank
+> (M17), Phase 0's eval breadth (M3: 19 → 74 tasks), the never-measured index-build budget
+> (**1 247 ms / 5 000 files** against ≤2 s), and all of **Phase 4** (M23–M27).
+>
+> **Three defects found by the work, all by measurement rather than reading.** Growing the eval set
+> from 19 tasks to 74 immediately exposed **F3**: a NestJS repo asked for a users controller resolved
+> to *express + aspnet-core + nextjs + react + angular*, Flask got Django and FastAPI, and a React
+> Native screen got Next.js idioms ranked first — packs list the language beside the framework, so on
+> any TypeScript repo they matched at language strength. **F3b**: `"req, res"` in the express pack's
+> frontmatter was split on the comma into the bare trigger `res`, which as a substring fires on
+> "**Res**tyle" and "add**res**s", making a backend pack a candidate on almost any English prompt in
+> any language's repo. And a residue of **F1**: `score += priority * 0.1` looked like a tie-break but
+> survives the `score > 0` filter unaided, so a language-only match scoped to another role floated
+> back on priority alone. All three are fixed with regression cover, and the wrong-idiom metric §4.2
+> asked for is now real and gated — 33 guarded tasks, 0 leaks.
+>
+> **One gate the roadmap set and the code caught.** Wiring the `@docs`/`@web` providers inline took
+> `extension.ts` from 652 to **704 lines**, past a ≤700 gate that three revisions discuss and nothing
+> enforced. It is now enforced by a test, and the wiring lives in a module (671 lines).
+>
+> **A finding about this document.** `enhancement.md` itself contained a **literal NUL byte** — inside
+> the paragraph describing the Phase 3 defect where a literal NUL byte shipped in source. Writing "the
+> escape `'\0'`" as an actual escape produced an actual NUL, so the roadmap was *binary to `grep`*,
+> and it was found exactly as the original was: a search that plainly should have matched silently
+> returned nothing. Fixed, and `__tests__/source-hygiene.test.ts` now covers `docs/notes/*.md` as well
+> as source — these files are the project's shared record and are read with the very tools the byte
+> defeats.
+>
+> **One scope deviation, recorded rather than absorbed:** M26 ships **16** providers, not ~18.
+> Bedrock and Vertex need SigV4 signing and a Google OAuth exchange — auth implementations, not base
+> URLs — and a half-working entry would accept the user's key and fail every call.
+>
+> **What is left in phases 0–4 is one thing, named:** the **model tier** (§4.6). Phase 1's
+> LSP-over-grep gate and four of §4.2's rows all need real model calls, and folding them into the
+> deterministic gate would make the one check that currently blocks bad merges fail intermittently.
+>
 > **What changed in rev 5 (2026-07-29).** Delivery, plus one arithmetic correction: **§3's
 > priority tally has been wrong since rev 1** — it read "P0: 11 · P2: 23 · P3: 7" where counting the
 > table's own Pri column gives **13 · 30 · 22 · 6**. M28, M54 and M56 are P0 and were never in the
@@ -208,7 +265,7 @@ found six more — see the rev 5 note below.
 | C1 | Skills framework (stack + role + prompt resolution) | 🟡 | ✅ | `agent/skill-resolver.ts`, `agent/skills-manager.ts`. **Resolution precision fixed in Phase 0 (finding F1):** role affinity alone no longer qualifies a stack-scoped pack, framework matches outrank bare language matches, and `priority` is a tie-breaker rather than evidence. Fail-safe now 1/1 and gated. Still 🟡 only because the **library is 16 packs of a ~60-pack catalog**. → **E9** |
 | C2 | Project profiler (manifest-based stack detection) | 🟢 | ✅ | `core/project-profiler.ts`. **100% (8/8) on the eval fixture set** after Phase 0 fixed finding F2 (React-based frameworks now imply `react` instead of excluding it). Ahead of everyone — no competitor keys prompts off detected stack. |
 | C3 | Bundled skill packs | 🔴 | 🟡 | 16 shipped: `django`, `fastapi`, `flask`, `express`, `aspnet-core`, `axum`, `gin`, `rails`, `react`, `nextjs`, `angular`, `react-native`, `tailwind`, `jest`, `pytest`, `a11y-wcag-aria`. Missing all of Wave 2. → **E9** |
-| C4 | Rules engine (glob-scoped, activation modes, per-session toggles) | 🟢 | ✅ | **Shipped (Phase 2, M9/M10).** `core/rules.ts` + `core/rules-loader.ts`: `.blackide/rules/*.md`, four activation modes (`always`/`glob`/`agent-requested`/`manual`), three scopes, priority, own glob engine, hot-reload, Problems-panel diagnostics, `AGENTS.md` back-compat. Session panel toggles rules and reports what fired. **At Cursor's and Continue's bar**, with `agent-requested` (budget-deferred bodies) as a small edge. Remaining: tool toggles in the panel. |
+| C4 | Rules engine (glob-scoped, activation modes, per-session toggles) | 🟢 | ✅ | **Shipped (Phase 2, M9/M10).** `core/rules.ts` + `core/rules-loader.ts`: `.blackide/rules/*.md`, four activation modes (`always`/`glob`/`agent-requested`/`manual`), three scopes, priority, own glob engine, hot-reload, Problems-panel diagnostics, `AGENTS.md` back-compat. Session panel toggles rules and reports what fired. **At Cursor's and Continue's bar**, with `agent-requested` (budget-deferred bodies) as a small edge. **Tool toggles landed 2026-08-01 (M10)** — enforced at the executor, not advertised — so the panel is complete. |
 | C5 | Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | ✅ | `core/knowledge-base.ts` (308 LOC), `memory/knowledge-store.ts`. Human-readable markdown is a real strength (ADR 007). |
 | C6 | **Automatic memory extraction / dedup / decay / contradiction detection** | 🔴 | ❌ | `remember` tool is model-invoked only — nothing extracts facts automatically, nothing ages them out, nothing detects contradictions. Cursor Memories; OPIDE Engram (3-tier, decay, contradiction detection, idle consolidation). → **E7** |
 | C7 | Mindmap sync (`project_mindmap.md`) | 🟡 | ✅ | Sectioned upsert of detected stack shipped (plan.md Phase 5). Read-back is still thin. |
@@ -221,15 +278,15 @@ found six more — see the rev 5 note below.
 | D1 | Hybrid semantic index (embeddings + BM25 via RRF) | 🟢 | ✅ | `core/codebase-index.ts`. Fusion ranking is genuinely good. |
 | D2 | **Chunking strategy** | 🔴 | 🟡 | `chunkFile()` at `codebase-index.ts:420` is a **fixed line-window with overlap** — no symbol awareness at all. Our docs claim "AST-aware chunking"; that is not what the code does. OPIDE: tree-sitter, 13+ languages. → **E2** |
 | D3 | Code graph: call graph, type hierarchy, impact analysis | ⬜ | ❌ | OPIDE ships this; Cursor uses it for multi-file edits. Highest-leverage retrieval gap. → **E2** |
-| D4 | Reranker stage | ⬜ | ❌ | Continue ships a `rerank` model role. No `rerank` anywhere in our tree. → **E2/E10** |
+| D4 | Reranker stage | 🟢 | ✅ | **Shipped (Phase 3 M17, completed Phase 4).** `core/reranker.ts` — tuned `LexicalReranker` (the default, and what runs with no rerank model) plus `ModelReranker` on the `rerank` role, scoring the whole candidate set in one call. Recall@10 95.8 → **97.2**. At Continue's bar. |
 | D5 | Context manager / token budgeting / compaction | 🟢 | ✅ | `core/context-manager.ts`, `core/prompt-builder.ts`. |
 | D6 | **Structured tool-output compression** | 🔴 | 🟡 | `core/text-cap.ts` truncates raw text. A-Coder claims 30–70% token reduction via TOON encoding of tool output. → **E11** |
-| D7 | External docs indexing (`@docs`-class provider) | ⬜ | ❌ | Continue `@docs`. We only have live web search. → **E13** |
-| D9 | **Context providers / `@`-mentions** | 🔴 | 🟡 | *Corrected:* `@`-mention **exists but is file-only** — `App.tsx:1182` resolves every `@` query through a single `searchFiles` message (`:1233`, `:3244`). No `@folder`, `@symbol`, `@problems`, `@terminal`, `@git`, `@web`, `@docs`, `@past-chats`, and no pluggable provider API. Cursor and Continue both ship the full set. → **E19** |
+| D7 | External docs indexing (`@docs`-class provider) | 🟢 | ✅ | **Shipped (Phase 3, M20).** `core/docs-index.ts` — bounded same-origin crawl scoped to the root *path* (so a version-pinned URL cannot drift into another version), passage-level search, stack-based suggestions, `black-ide.addDocs`. At Continue's `@docs` bar. |
+| D9 | **Context providers / `@`-mentions** | 🟢 | ✅ | **Shipped (Phase 3, M19–M21).** `core/context-providers.ts` — a `ContextProvider` API with budgets and visible truncation, and **11 providers**: `@file`, `@folder`, `@symbol`, `@problems`, `@terminal`, `@git`, `@rules`, `@skills`, `@past-chats`, `@docs`, `@web`. Mentions are resolved server-side into the prompt rather than left as text. **At Cursor's and Continue's bar.** |
 | D10 | Ranged file reads (token-efficient pagination) | 🟢 | ✅ | *Corrected:* `read_file` already takes `start_line`/`end_line` (`core/tools.ts:27-34`) — at A-Coder's "intelligent file pagination" bar. |
 | D11 | **Git-history semantic search** | ⬜ | ❌ | A-Coder ships Morph-accelerated search across git history. `grep -rn "git log\|blame"` over `src/` returns nothing. → **E20** |
 | D12 | **Notebook (`.ipynb`) awareness** | ⬜ | ❌ | No `notebook`/`ipynb` reference anywhere in `src/`. Agent cannot read or edit a cell. → **E21** |
-| D8 | Web search | 🟡 | ✅ | `tools/web-search.ts` — DuckDuckGo scrape only, no keyed providers. → **E13** |
+| D8 | Web search | 🟢 | ✅ | **Keyed providers shipped (Phase 3, M21):** Brave / Tavily / Google CSE with DDG as the no-key default. Every failure degrades to DDG *and names the degradation*, so a configured-but-unused key is visible. |
 
 ### 1.5 Tools & execution
 
@@ -258,15 +315,15 @@ found six more — see the rev 5 note below.
 | F3 | Inline chat (`Cmd+I`) | 🟡 | ✅ | `core/inline-chat-controller.ts` — selection-scoped. |
 | F4 | Commit-message generation | 🟡 | ✅ | Diff-size handling is naive. |
 | F5 | Multi-provider LLM (OpenAI/Anthropic/Google/OpenRouter/Ollama/LM Studio) | 🟢 | ✅ | `core/llm-client.ts` (478 LOC). NeuralInverse claims 20 providers; 6 well-tested beats 20 shallow. |
-| F6 | **Per-role model config (chat/edit/apply/autocomplete/embed/rerank)** | 🔴 | 🟡 | Per-*mode* model override only. Continue model roles; NeuralInverse per-feature selection; Antigravity per-agent model. → **E10** |
-| F7 | **Cross-provider failover / health-aware routing** | ⬜ | ❌ | `LLMClient.fallbackTurn` (`llm-client.ts:58`) is the *local-protocol* path, **not** provider failover — easy claim to get wrong. OPIDE ships fallback routing. → **E10** |
-| F8 | Fast-apply path (small model applies a large diff) | ⬜ | ❌ | Cursor speculative edits; A-Coder Morph. → **E10** |
+| F6 | **Per-role model config (chat/edit/apply/autocomplete/embed/rerank)** | 🟢 | ✅ | **Shipped (Phase 4, M23).** `core/model-router.ts` — seven roles, resolved in one place, with an explicit override outranking a standing role mapping and the legacy `autocompleteModelId` still honoured. `apply`/`rerank` stay off until named, because falling back to the strong model there costs more than not having the feature. At Continue's model-roles bar. |
+| F7 | **Cross-provider failover / health-aware routing** | 🟢 | ✅ | **Shipped (Phase 4, M24).** Per-provider circuit breaker (consecutive failures, cooldown, half-open retry); failover at the *turn* so a run keeps its context; a different provider tried before another of the same one; **never after output has streamed**, since that would append a second answer to half of one. Covers chat *and* unattended pipeline runs. `fallbackTurn` remains the local-protocol path and is no longer the only thing here. |
+| F8 | Fast-apply path (small model applies a large diff) | 🟢 | ✅ | **Shipped (Phase 4, M25).** `edit_file`'s `intent` → apply-role model → verified with the *real* applier. Malformed, missing-anchor, ambiguous, no-change and oversized results all escalate to the strong model, so a silently wrong edit is not reachable. |
 | F9 | Output modes (`apply` / `pr`) | 🟢 | ✅ | `core/git-pr.ts`. Ahead of most. |
 | F10 | Headless CLI / SDK surface | ⬜ | ❌ | Antigravity ships desktop + CLI + SDK + IDE. Blocks CI use and background agents. → **E14** |
 | F11 | Skill/rule distribution (registry or hub) | ⬜ | ❌ | Continue Hub blocks. `plan.md` marked this out of scope; competitors have made it table stakes. → **E9** |
 | F12 | **Terminal `Cmd+K`** (natural language → shell command) | ⬜ | ❌ | Cursor ships it. We have inline chat for editors only (`inline-chat-controller.ts`). → **E25** |
-| F13 | **Provider breadth** | 🟡 | 🟡 | Anthropic/OpenAI/Google/OpenRouter/Ollama/LM Studio. NeuralInverse claims 20; missing DeepSeek, Groq, Mistral, xAI, Azure OpenAI, Bedrock, Vertex, Together, Fireworks, Cerebras, LiteLLM, vLLM — most are OpenAI-compatible, so this is config not code. → **E26** |
-| F14 | Zero-config free model tier (works before a key is added) | ⬜ | ❌ | NeuralInverse ships free cloud models; first-run with no key currently does nothing useful. → **E26** |
+| F13 | **Provider breadth** | 🟢 | ✅ | **6 → 16 (Phase 4, M26).** Added DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI — one dispatch, one preset table, so the streaming and tool-call parsing cannot drift per provider. **Bedrock and Vertex remain absent by decision:** SigV4 signing and a Google OAuth exchange are auth implementations, not base URLs. |
+| F14 | Zero-config first run (works before a key is added) | 🟢 | ✅ | **Shipped (Phase 4, M27), local-first by design.** Probes Ollama / LM Studio / llama.cpp on a 1.2 s timeout and *offers* what it finds; never auto-enables, ignores a runtime with no models pulled, and types the result `local` so tool calls go through the protocol that works on every local model. We still do not operate a hosted free tier (§4.5). |
 | F15 | **Multi-model race** (same prompt, N models, compare & pick) | ⬜ | ❌ | Cursor 2.0. `ManagerPanel` already tracks `modelId` per run, so the substrate is closer than it looks. → **E27** |
 | F16 | **Agent inbox / notifications when input is needed** | 🔴 | 🟡 | `status: awaiting_approval` exists in `ManagerPanel.tsx` but there is no notification surface — an unattended run can idle unnoticed. Antigravity has an inbox. → **E28** |
 | F17 | Reusable prompt / notepad library | 🟢 | ✅ | **Shipped (Phase 2, M12).** `core/prompt-library.ts` + loader: `.blackide/prompts/*.md` become slash commands with `$ARGS`/`$1`…`$9` and cycle-safe `steps:` workflows; built-in names refused at load so a user file cannot silently redefine `/plan`. At Cursor Notepads' and Continue prompt blocks' bar, plus workflow chaining neither has. |
@@ -303,12 +360,12 @@ found six more — see the rev 5 note below.
 | **Code intelligence (LSP tools)** | 🟢 | Cursor, OPIDE | **We lead.** Phase 1 exposed the fork's own language servers; the extension-only competitors cannot reach them this directly. |
 | **Rules & project config** | 🟢 | Cursor, Continue | **At bar** as of Phase 2 — glob/activation/scope rules, team rules, prompt library, session panel. |
 | **Test integration** | 🟢 | A-Coder | **At/above bar.** Failures-only reporting from the detected stack. |
-| Retrieval & code graph | 🟡 | OPIDE, Cursor | **We are behind.** Chunking is naive; no code graph. → Phase 3 |
+| Retrieval & code graph | 🟢 | OPIDE, Cursor | **At bar as of Phase 3.** Symbol chunking, a code graph with impact analysis, rerank, 11 context providers, `@docs`. recall@5 84.7→91.2 · @10 93.1→97.2 · @20 100. |
 | Memory | 🔴 | Cursor, OPIDE | **We are behind.** Durable markdown store, but nothing extracts, ages, dedups or contradicts. → Phase 8 |
 | Daily-driver autocomplete | 🟡 | Cursor | **We are far behind.** No next-edit. |
 | Parallel task agents & steering | 🔴 | Antigravity, Cursor | **We are behind.** |
 | Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
-| Model routing | 🔴 | Continue, OPIDE | **We are behind.** |
+| Model routing | 🟢 | Continue, OPIDE | **At bar as of Phase 4.** Seven roles, health-aware cross-provider failover, fast-apply, 16 providers, zero-config local first run. |
 | Review automation | ⬜ | Cursor BugBot | **Absent.** |
 | Distribution / surfaces | ⬜ | Continue Hub, Antigravity CLI/SDK | **Absent.** |
 
@@ -722,31 +779,31 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 |---|---|:--:|:--:|:--:|---|
 | M1 | Doc claims corrected (AST chunking, provider failover) | P0 | E0 | 0 ✅ |
 | M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ | 2537 → **652 LOC** across 13 modules; **≤700 gate met** 2026-07-29 (see G10) |
-| M3 | Golden-task eval set + scoring | P0 | E0 | 0 🟡 | harness, baseline and CI gate shipped and green; **recall@3/5/10/20 recorded 2026-07-29** over a real 82-file corpus + 36 golden queries (Phase 3 opener). Still short: **19 tasks / 8 fixtures against a planned 8–10 × 6 stacks**, and task-success / tokens-per-task remain deferred to the model tier |
+| M3 | Golden-task eval set + scoring | P0 | E0 | 0 ✅ | **74 tasks / 13 fixtures 2026-08-01** — the planned 8–10 × 6 stacks, plus a task for every bundled pack and every resolver role, plus a **wrong-idiom metric** (33 guarded tasks, 0 leaks). Recall recorded 2026-07-29. Task-success / tokens-per-task belong to the model tier (§4.6), which is tracked there rather than as eval-set debt |
 | M4 | Vitest migration off the bespoke harness | P0 | E0 | 0 ✅ |
 | M5 | Skill validation diagnostics UI + skills-fired telemetry | P1 | E0 | 0 ✅ |
 | M6 | On-demand `get_diagnostics` tool | P0 | E22 | 1 ✅ |
 | M7 | LSP navigation tools (definition, references, symbols, hover, rename, code actions) | P0 | E22 | 1 ✅ |
 | M8 | Structured `run_tests` with per-framework result parsing | P0 | E24 | 1 ✅ |
 | M9 | Rules v2 — `.blackide/rules/*.md`, globs, activation modes, priority | P1 | E6 | 2 ✅ | two independently-budgeted `prompt-builder.ts` sections. The "one merged pipeline" reading was **closed as won't-do** 2026-07-29 — it is the worse design, not unfinished work; wording amended to "one budgeted assembly *path*" |
-| M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 🟡 | panel + rule toggles shipped (`App.tsx:3343` → `webview-message-handler.ts:220`); **tool toggles not implemented — no `toggleTool` on either side** |
+| M10 | Session control panel ("what fired", toggle rules/tools) | P1 | E6 | 2 ✅ | rule **and** tool toggles 2026-08-01; `core/tool-toggles.ts` + a third executor gate, so a switched-off tool is refused where tools run rather than merely unadvertised, and a subagent inherits the toggles |
 | M11 | Team / org shared rules | P2 | E6 | 2 ✅ |
 | M12 | User-defined prompts + workflows library | P2 | E29 | 2 ✅ |
 | M13 | Learn / teaching mode | P2 | E16 | 2 ✅ |
 | M14 | Tree-sitter symbol chunking | P0 | E2 | 3 ✅ | shipped as a **dependency-free lexical backend** behind a `ChunkerBackend` seam (owner's call, 2026-07-29) — 7 languages, +5.6 recall@5 |
 | M15 | Code graph (calls, imports, type hierarchy) | P0 | E2 | 3 ✅ | `core/code-graph.ts`; one-hop expansion took recall@10 93.1 → 95.8 |
 | M16 | `impact_analysis` + graph-backed `find_references` | P1 | E2 | 3 ✅ | 0 false positives / 0 misses across 6 refactors, against a ≤2 FP gate |
-| M17 | Reranker stage | P1 | E2 | 3 🟡 | interface + tuned deterministic `LexicalReranker` shipped; the cross-encoder needs the `rerank` model role from **Phase 4 (M23)** |
+| M17 | Reranker stage | P1 | E2 | 3 ✅ | `LexicalReranker` (the default) + `ModelReranker` on the `rerank` role 2026-08-01; one call for the whole candidate set, the first-stage prior still weighted, and any failure degrades to lexical |
 | M18 | Structured tool-output compression | P1 | E11 | 3 ✅ | 37.7% at realistic path depth, 81% on repeated diagnostics, 19.5% on the shallow fixture — all three published |
-| M19 | Context provider API + full `@`-mention set | P1 | E19 | 3 🟡 | API + 8 providers + resolution into the prompt; **`@symbol`, `@docs`, `@web` outstanding** (the latter two belong to M20/M21) |
-| M20 | External docs indexing (`@docs`) | P1 | E13 | 3 | not started |
-| M21 | Keyed web-search providers | P2 | E13 | 3 | not started |
+| M19 | Context provider API + full `@`-mention set | P1 | E19 | 3 ✅ | API + **11 providers** — `@symbol` reads the M15 graph and returns the definition plus its callers; `@docs`/`@web` landed with M20/M21 |
+| M20 | External docs indexing (`@docs`) | P1 | E13 | 3 ✅ | `core/docs-index.ts` — bounded same-origin crawler (root-path scoped, so a version-pinned URL cannot wander into another version), passage-level search, `black-ide.addDocs`/`manageDocs`, stack-based suggestions |
+| M21 | Keyed web-search providers | P2 | E13 | 3 ✅ | Brave / Tavily / Google CSE with DDG as the no-key default; every failure degrades to DDG **and says so**, since a silently-unused key is invisible |
 | M22 | Git-history semantic search + blame/why-changed | P2 | E20 | 3 ✅ | `search_history`, `blame`, `why_was_this_changed`; shells out to git rather than indexing — see the delivery note |
-| M23 | Per-role models (chat/plan/edit/apply/autocomplete/embed/rerank) | P0 | E10 | 4 |
-| M24 | Cross-provider failover / health-aware routing | P1 | E10 | 4 |
-| M25 | Fast-apply path | P1 | E10 | 4 |
-| M26 | Provider breadth (6 → ~18) | P2 | E26 | 4 |
-| M27 | Zero-config first run (local model, no key) | P2 | E26 | 4 |
+| M23 | Per-role models (chat/plan/edit/apply/autocomplete/embed/rerank) | P0 | E10 | 4 ✅ | `core/model-router.ts`; five ad-hoc `selectedModelId` reads replaced by role resolution, with the legacy `autocompleteModelId` still honoured |
+| M24 | Cross-provider failover / health-aware routing | P1 | E10 | 4 ✅ | per-provider circuit breaker; failover at the *turn* so a run keeps its context, a different provider tried before another of the same one, and **never after output has streamed** |
+| M25 | Fast-apply path | P1 | E10 | 4 ✅ | `edit_file`'s `intent` → apply-role model → verified with the real applier; malformed, missing-anchor, ambiguous, no-change and oversized results all escalate to the strong model |
+| M26 | Provider breadth (6 → ~18) | P2 | E26 | 4 ✅ | **6 → 16.** DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI. Bedrock/Vertex deliberately not shipped — request signing, not config |
+| M27 | Zero-config first run (local model, no key) | P2 | E26 | 4 ✅ | probes Ollama / LM Studio / llama.cpp on a short timeout and **offers** what it finds; never auto-enables |
 | M28 | Next-edit prediction (multi-file, edit-history, jump-to) | P0 | E1 | 5 |
 | M29 | Terminal `Cmd+K` | P2 | E25 | 5 |
 | M30 | Automatic rolling summarization (beyond manual `/compact`) | P2 | E11 | 5 |
@@ -799,18 +856,16 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–3): 20 of 71** — 16 complete, **4 partial (M3, M10, M17, M19)**.
+**Delivered so far (Phases 0–4): 27 of 71 — all complete, no partials** (2026-08-01). The four
+milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, and M20–M27 landed with them.
 
-That clears **9 of the 13 P0 items** outright, plus M3 as partial. M14 and M15 closed in Phase 3.
-The four P0 items still open are **M23** (per-role models, Phase 4), **M28** (next-edit prediction,
-Phase 5), and **M54/M56** (secret redaction and the untrusted-content posture, Phase 9). M3 is
-counted as cleared — the harness, its CI gate and now the retrieval baseline are real and green;
-what remains short is task-count breadth and the model-tier metrics.
+That clears **10 of the 13 P0 items.** The three still open are **M28** (next-edit prediction,
+Phase 5) and **M54/M56** (secret redaction and the untrusted-content posture, Phase 9). M23 — the P0
+that rev 5 named first — closed with Phase 4, which is also what unblocked M17.
 
-What is left in the started phases is the nine-row table at the top of this document. Of those, one
-is **blocked by sequencing rather than effort** (M17's cross-encoder needs Phase 4's `rerank` role),
-one needs an **opt-in model tier** that does not exist yet (Phase 1's LSP-over-grep gate), and the
-rest are ordinary open work.
+What is left in the started phases is **two rows of the table at the top, and they are the same
+blocker twice**: the opt-in model tier (§4.6) that Phase 1's LSP-over-grep gate and four of §4.2's
+metric rows both need. Nothing in phases 0–4 is waiting on effort or sequencing any more.
 
 ---
 
@@ -1007,6 +1062,106 @@ the assembled prompt; `AGENTS.md`-only projects behave identically to today.
 > the `*/` inside `**/` closes the comment. It cost a confusing cascade of syntax errors
 > pointing at unrelated lines. Glob examples in comments now use line comments.
 
+> ### ✅ M10 completed 2026-08-01 — tool toggles, and the phase closes
+> `core/tool-toggles.ts` (pure: `applyToggle`, `applyToolToggles`, `advertisedTools`,
+> `toolPanelEntries`, `isDeniedByUser`) · `ChatSession.disabledTools` · a third gate in
+> `agent/tool-executor.ts` · `toggleTool` / `requestTools` / `toolTogglesChanged` /
+> `toolsAvailable` across `webview-message-handler.ts` and `App.tsx` · a Tools section in
+> the session panel. **Phase 2 is now ✅.** vitest **412/412 / 24 suites** at the time of
+> the cut · harness 426/426 · `tsc -b` clean · webview builds · eval green.
+>
+> **The toggle is enforced, not advertised — which is the whole point.** The obvious
+> implementation removes the tool from the advertised list and stops there. Phase 2 already
+> paid for that mistake once: per-mode allowlists were advertising-only, so a mode whose
+> prompt forbade writing would still have *executed* a `write_file` the model emitted anyway
+> (the B4 finding). Switching off `run_command` is a safety decision, so it rides the same
+> executor gate. Both halves are kept and neither is redundant: unadvertising stops the model
+> wasting a turn on a call that will be refused, and the gate is what makes the switch true
+> when the model calls a tool it saw two turns ago — which models do.
+>
+> **Three decisions worth recording.**
+> - **`complete_task` cannot be switched off.** It is how the loop terminates; disabling it
+>   does not make the agent safer, it makes it unable to stop — it would run to the iteration
+>   cap and report a failure, which reads as a broken agent rather than as the consequence of
+>   a switch the user flipped. A toggle that can wedge the thing it controls is a defect.
+> - **A subagent inherits the session's toggles.** Otherwise `spawn_subagent` is a one-line
+>   bypass for every switch the user set — the same hole the mode-propagation comment in
+>   `chat-task.ts` warns about, and `deniedTools` rides through `baseDeps` for exactly this.
+> - **The refusal names the user, not the mode.** To a model "not available in this mode"
+>   invites trying a different route; "the user switched this off" is a fact about the world
+>   that it should report instead of routing around.
+>
+> **The panel is built from the turn's own advertised list, not from `BASE_TOOLS`.** Offering a
+> switch for a tool the acting mode never had would do nothing when flipped off and appear to
+> grant a forbidden capability when flipped on. `advertisedTools()` is now the single
+> construction of "what this mode offers", shared by the panel and `chat-task.ts` and asserted
+> to be shared — the same drift `rules-panel-fidelity.test.ts` prevents on the rules side.
+> A separate `deniedTools` field carries the toggles rather than folding them into
+> `allowedTools`, whose empty case already means "this mode declares no restriction": merging
+> them would have made an empty toggle list indistinguishable from an empty allowlist and
+> silently turned every mode into an allowlisted one.
+
+> ### ✅ M3 completed 2026-08-01 — eval breadth, and it paid for itself immediately
+> `eval/tasks.js` **19 → 74 tasks**, `eval/fixtures.js` **8 → 13 fixtures** (NestJS, Flask,
+> Rails, Angular, React Native), plus `forbidSkills` and a **wrong-idiom metric** in
+> `eval/run-eval.js` and `__tests__/eval-task-coverage.test.ts` (8 structural guards).
+> Phase 0's "8–10 tasks × 6 stacks" is met and asserted. Baseline re-recorded: 74 tasks over
+> 13 fixtures · stack detection **100% (13/13)** · exact-match **100%** of 57 coverable ·
+> wrong-idiom **0%** of 33 guarded tasks · 16 known library gaps.
+>
+> **A raw task count is the weaker completion test, so it is not the one asserted.** Two
+> properties are: **every bundled pack is named by at least one task** — `flask`, `rails`,
+> `angular` and `react-native` shipped with *no* eval coverage and could have been broken by
+> a resolver change silently — and **every role the resolver understands appears**, including
+> `architect` and `devops`, which is how the library's real shape becomes visible: we bundle
+> nothing for either.
+>
+> **Three defects, all invisible at 19 tasks.** This is the argument for the row, and none of
+> them was found by reading code.
+> - **F3 — wrong-framework injection.** A NestJS repo asked for a users controller resolved
+>   to **express + aspnet-core + nextjs + react + angular**: five packs, all wrong, three not
+>   even the right language. Flask got django and fastapi; a React Native screen got Next.js
+>   App Router idioms *ranked first*. Mechanism: packs list the language beside the framework
+>   (`express` declares `[express, nodejs, javascript, typescript]`), so on any TypeScript repo
+>   they matched at language strength and role affinity carried them over the threshold. F1
+>   closed "role alone is not evidence"; this closes "the language alone is not evidence when
+>   the pack names a framework the repo does not use". A pack named after a
+>   *mutually-exclusive* framework token now needs that framework detected —
+>   `FRAMEWORK_IDENTITY_TOKENS` in `core/project-profiler.ts`, with test runners, additive
+>   libraries and infrastructure deliberately excluded because they co-exist rather than
+>   compete.
+> - **F3 second half — a generic word is not an identity claim.** The prompt-mention
+>   exemption ("how would I do this in Flask?" inside a Django repo is a real request) was too
+>   weak as a plain trigger hit: `aspnet-core` lists `controller`, so *Nest and Rails* prompts
+>   claimed an ASP.NET identity; `react` lists `component`, so an Angular component task
+>   pulled in React; `rails` lists `migration`, which Django and EF Core also call a
+>   migration. An identity claim now requires the pack's own name or a punctuated/multi-word
+>   trigger (`asp.net`, `app router`) — a shape a generic English noun never has.
+> - **F3b — quoted commas were split, and short triggers matched inside words.**
+>   `triggers: [express, "app.use", middleware, "req, res", router]` parsed to *six* triggers
+>   including the bare token **`res`**, which as a substring fires on "**Res**tyle",
+>   "**res**ource", "add**res**s". The Express pack was therefore a candidate on almost any
+>   English prompt in any language's repo. Both halves are fixed — a quote-aware splitter, and
+>   word-boundary matching for bare-word triggers while code fragments (`app.use`,
+>   `describe(`, `def test_`) keep substring semantics. Utterly silent: a corrupted trigger
+>   list is still a valid trigger list.
+>
+> **And one piece of F1 that survived its own fix.** `score += priority * 0.1` looked like a
+> tie-break and was not one — it survives the `score > 0` filter unaided, so a pack matched
+> only on the repo's language and scoped to another role came back with 0.8 points. That is
+> how a NestJS *backend* task ended up with the Jest pack as its only skill. Priority now
+> orders equal-evidence packs as the second sort key, where a tie-break belongs, and the
+> role-mismatch penalty is set to exactly `W_LANGUAGE` so language-only-plus-wrong-role nets
+> to zero while a *framework* match still survives a role mismatch — Django idioms genuinely
+> help a Testing agent writing Django tests.
+>
+> **The wrong-idiom metric is now real, and deterministic.** §4.2 listed it as "record". 33 of
+> the 74 tasks name packs that must not fire, every entry a leak that was real on 2026-08-01,
+> and it is guarded as a **ceiling** rather than a floor, because
+> guarding a failure count with the same comparator as a quality score would make a new leak
+> read as an improvement. The model-behaviour half of the metric — does the agent then *write*
+> raw SQL where the ORM is idiomatic — still needs the model tier (§4.6).
+
 ### Phase 3 — Retrieval substrate *(the largest technical phase; everything downstream leans on it)*
 *Covers M14–M22.*
 
@@ -1029,7 +1184,7 @@ misses listed in `eval-baseline.md` closed; `impact_analysis` accuracy on refact
 false positives; ≥30% token reduction from compression with **no** eval-success regression; full
 index build **≤2 s per 5 000 files** *(restated 2026-07-29 — the original "+50% of baseline" was
 authored before a chunker existed and resolved to ≤39 ms on an 82-file fixture, which measures
-nothing)*. The packaged-build smoke test for native grammars **no longer applies**: M14 ships a
+nothing; **asserted 2026-08-01 at 1 247 ms**, `__tests__/index-build-budget.test.ts`)*. The packaged-build smoke test for native grammars **no longer applies**: M14 ships a
 dependency-free backend by decision, so there are no native grammars to smoke-test.
 
 > ### ✅ Opening task done 2026-07-29 — the metric exists, and it corrected the gate
@@ -1303,7 +1458,7 @@ dependency-free backend by decision, so there are no native grammars to smoke-te
 >
 > **A defect found while finishing the wiring, worth recording for its failure mode.** The grouping
 > key is `severity + separator + message`, and the separator that shipped was a **literal NUL byte**
-> rather than the escape `' '`. The code was correct — NUL cannot occur in a diagnostic message,
+> rather than the escape `'\\0'`. The code was correct — NUL cannot occur in a diagnostic message,
 > so it is a sound sentinel, and every test passed — but a raw control byte makes the file *binary*
 > to `grep`, `diff`, `awk` and most review tooling, which then silently return nothing for it. It was
 > caught only because `grep` stopped printing matches for a file that visibly had them. Both sites
@@ -1385,6 +1540,135 @@ dependency-free backend by decision, so there are no native grammars to smoke-te
 > path or query containing shell metacharacters cannot become a command. All subcommands are
 > read-only. Unavailability names its cause — "not a git repository" and "git not installed" and a
 > shallow clone all produce no history, and only one of them is worth retrying.
+
+> ### ✅ M19 completed 2026-08-01 — `@symbol`, and the build budget finally measured
+> **`@symbol`** ships: `CodeGraph.searchSymbols()` + `SymbolProvider` in
+> `core/context-providers.ts`, registered in `context-provider-setup.ts`, reading the M15
+> graph through a getter off `CodebaseIndex`. Nine providers now. `@docs` and `@web` are
+> M20/M21 and tracked there, so **M19 is ✅ on its own scope**.
+> `__tests__/symbol-provider.test.ts` — 13 tests, the substantive ones against a real index
+> over the 82-file corpus rather than a toy graph.
+>
+> **It is small because M15 landed first**, which was the sequencing bet: the graph already
+> knows every symbol's file and line span, so this is a lookup and a ranged read, not a parse.
+>
+> **What it contributes over `@file` is the reason to have it.** The definition's *own* lines
+> instead of a whole file the budget would truncate, **plus who references it** — "change this
+> function" and "change this function and its callers" are different tasks and only the second
+> is answerable without a follow-up turn. The reference list is bounded at 30 with the bound
+> stated, and it says it is name-matched rather than binding-resolved, pointing at
+> `find_references` as authoritative: M15 is name-keyed by design and over-approximates, and a
+> model handed an over-approximation without being told treats it as resolved truth.
+>
+> **Cold-graph wording is a correctness detail, not politeness.** The index builds on the first
+> agent turn, so a mention resolved during activation has no graph. "The code index is not
+> built yet" and "no definition of X is in the index" have completely different fixes and look
+> identical to a model — the same distinction M16's output draws. The item id carries
+> `name|file|startLine`, so resolution cannot silently land on a *different* same-named symbol
+> than the one the user picked from the dropdown.
+>
+> ### ✅ Index-build budget asserted 2026-08-01 — 1 247 ms / 5 000 files against a ≤2 s gate
+> `__tests__/index-build-budget.test.ts` generates 5 000 files across the seven languages the
+> chunker handles, in nested packages, and measures a cold full build: **5 000 files → 24 287
+> chunks in 1 247 ms**, with a warm rebuild reusing all 5 000 in **444 ms**. The gate M14
+> restated but could not prove is now proven, and the graph is asserted to be built over the
+> same files so the figure covers M14 *and* M15 rather than half the cost.
+>
+> **Two things the test states rather than implies.** The corpus is generated, not vendored:
+> the gate is throughput per file, and a 5 000-file real repo would add tens of megabytes to
+> measure the same number — but the files are shaped like real ones (imports, nested symbols,
+> doc comments, bodies of a dozen-plus lines), because a corpus of one-line files would flatter
+> the budget by skipping the work being measured. And **embeddings are excluded**: `build()`
+> fetches them sequentially per chunk, so with a provider configured the wall clock measures a
+> network round trip 20 000 times over. That exclusion is written at the top of the file, so a
+> future reader comparing this against a real embedded build does not read it as a regression.
+> ### ✅ M17 completed 2026-08-01 — the cross-encoder, once the role existed
+> `ModelReranker` + `LLMRerankScorer` (`core/rerank-setup.ts`). Assigned to `index.reranker` per
+> turn, and **only when the user has pointed the `rerank` role at a model** — the router's role
+> fallback is deliberately bypassed here, because falling back to the chat model would spend a
+> request against the user's strongest model on every `codebase_search`, having never been asked to.
+>
+> **It scores the whole candidate set in one call, not one call per candidate.** A true cross-encoder
+> pass is N requests; at `RERANK_DEPTH` = 20 that is 20 round trips inside a search the agent is
+> blocked on. Numbered snippets in one prompt get the same ordering signal at a twentieth of the
+> latency, and that trade is what makes the feature usable rather than theoretical.
+>
+> **M17's own finding is what constrains it.** A reranker given free rein made retrieval *worse* —
+> the first draft let a rank-40 chunk with every query word overtake a rank-1 chunk with most of
+> them and cost 8 points of recall@5. So the model's judgement enters as a weighted signal beside
+> the first-stage prior rather than replacing it: it can move a candidate several places and cannot
+> lift the 20th over the 1st alone.
+>
+> **Every failure is a downgrade, never an error.** This is the component most likely to fail in
+> normal use — it needs a key, a network, and parseable output. A throw, a timeout, an unparseable
+> response, or a score array of the wrong length all fall back to the lexical ranking with a warning.
+> A wrong-length array is treated as a *broken scorer* rather than a partial result, because
+> zero-filling would rank real candidates below whatever the model did answer for.
+
+> ### ✅ M20 delivered 2026-08-01 — `@docs`, crawled and searched locally
+> `core/docs-index.ts` (crawler, text extraction, `DocsStore`, passage search, stack suggestions) ·
+> `DocsProvider` · `black-ide.addDocs` / `black-ide.manageDocs` · 35 tests in
+> `__tests__/docs-index.test.ts`.
+>
+> **Deviation from E13, with a reason.** The plan says to index docs into E2's store. That store is
+> built by walking the *workspace*, keys chunks by workspace-relative path, and invalidates on file
+> mtime; docs have no workspace path, no meaningful mtime, and a different invalidation story (a site
+> is re-crawled on demand). Bending one index around both lifecycles risks the failure that matters
+> most here — a stale doc page presented as project source. What *is* shared is the part that affects
+> ranking quality: `core/text-tokens.ts`, so a query tokenises identically against code and docs.
+>
+> **The crawl is bounded, same-origin, and scoped to the root *path* — and that last one is the
+> feature, not politeness.** Pointing `@docs` at `docs.djangoproject.com/en/5.0/` must not follow the
+> version switcher into `/en/4.2/`, because answering a version question from the wrong version is
+> precisely the failure this milestone exists to prevent. BFS rather than DFS for the same reason a
+> page cap needs to be spent well: with 60 pages of budget, breadth-first spends them on the overview
+> and the top-level guides, where depth-first would spend all 60 inside the first subsection it
+> entered.
+>
+> **Search returns passages, not pages.** A docs page is thousands of words and handing the model all
+> of them spends the budget on the 95% that is irrelevant. Pages are split into ~700-character
+> windows, scored on distinct-term coverage first (M17's finding, applied again), and the best hits
+> are taken **one per page before any page's second** — the same rule M14 had to learn for chunk
+> selection, for the same reason.
+>
+> **A defect the tests caught, and its shape is worth recording.** The link extractor excluded `#`
+> from the href pattern, intending to drop fragments. It does not drop the fragment — it drops the
+> *whole link*, so every page that a docs site only ever links to with an anchor
+> (`ref/models.html#field-options`, which is most of them) was invisible to the crawl. A crawl that
+> silently finds fewer pages looks like a site with fewer pages.
+>
+> **Crawling is user-initiated, always.** The profiler *suggests* doc sets for the detected stack;
+> the user confirms. A network fetch triggered by opening a project would be a surprise, and a
+> surprise involving egress is exactly the kind G4 commits us not to spring. Doc sets are stored in
+> extension storage rather than the user's repo — a crawl is a cache of somebody else's content, and
+> committing 60 pages of Django docs into a project is both surprising and a licensing question we
+> have no business creating.
+
+> ### ✅ M21 delivered 2026-08-01 — keyed search providers
+> `tools/search-providers.ts` (Brave, Tavily, Google CSE + selection) · `WebSearchTool.searchWith`
+> with DDG as the default and the fallback · `WebProvider` for `@web` · settings UI for the keys ·
+> 16 tests.
+>
+> **DuckDuckGo stays the default and the fallback**, and every keyed path degrades to it: no key, an
+> expired key, a rate limit, a timeout, a network failure. Search is a *supporting* capability —
+> losing it mid-task should cost result quality, never the task.
+>
+> **The degradation is named in the output, and that is the part that matters.** "My Brave key is
+> configured and every result is coming from DuckDuckGo" is otherwise invisible, so
+> `formatResults` always states which backend answered and a fallback says why it happened.
+>
+> **`auto` ranks by output quality, not by settings order.** Tavily first because it returns
+> extracted page content — the difference between "here are some links" and "here is the answer" —
+> then Brave, then Google CSE. A key that is present but *unusable* (a Google key with no engine id)
+> is skipped rather than tried, because that request fails with something indistinguishable from a
+> bad key. And an explicitly-chosen provider with no key falls to DDG rather than quietly using a
+> different key the user happens to have configured, which would contradict the setting they just
+> changed.
+>
+> **`@web` does not search per keystroke.** `suggest` runs on every character typed; a search there
+> would be slow and rude to the provider. The query itself is offered as the item and the search
+> happens once, at resolve time, when the message is actually sent.
+
 ### Phase 4 — Model layer
 *Covers M23–M27.*
 
@@ -1402,6 +1686,104 @@ dependency-free backend by decision, so there are no native grammars to smoke-te
 **Gate:** killing the primary provider mid-run completes on the secondary with a visible notice;
 fast-apply cuts apply tokens ≥50% with **zero** silently wrong edits; a keyless machine with Ollama
 completes an agent task end to end.
+
+> ### ✅ Delivered 2026-08-01 — all five milestones
+> `core/model-router.ts` (roles, chain, `ProviderHealth`, `runWithFailover`) ·
+> `core/model-router-loader.ts` · `core/providers.ts` (16 presets, auth + endpoint shapes) ·
+> `core/local-models.ts` · `core/fast-apply.ts` + `fast-apply-setup.ts` · failover in
+> `agent/agent-loop.ts` and `agent/pipeline-orchestrator.ts` · role and search settings in the panel.
+> vitest **582/582 / 32 suites** · harness 426/426 · eval green · webview builds · `tsc -b` clean.
+>
+> **M23 — the router.** A "model" used to mean `settings.selectedModelId`, read directly at five call
+> sites. The one exception — `inline-completion.ts` preferring `autocompleteModelId` — was the shape
+> of this whole feature, discovered one call site at a time. Roles are now named and resolved in one
+> place, and the five call sites ask for a role. Precedence is deliberate: an explicit override (the
+> chat dropdown, a Manager run's model) beats a standing role mapping, because it is a decision about
+> *this* turn; getting that backwards would make the model dropdown appear not to work. The legacy
+> `autocompleteModelId` is still honoured — a config that quietly stops being applied is worse than
+> one that errors.
+>
+> **`apply` and `rerank` deliberately do *not* fall back to the chat model.** Every other role falls
+> back, which is right for `plan` or `edit`. For these two it would be actively worse than not having
+> the feature: fast-apply on the strong model costs the strong model *plus* an extra round trip, and a
+> rerank fallback would spend a request against the user's most expensive model on every
+> `codebase_search` without being asked. Both features stay off until a model is named for the role.
+>
+> **M24 — failover, wired at the *turn*.** A run is minutes long and holds accumulated context, so
+> retrying the whole run because turn four got a 529 throws away everything the first three did. Three
+> decisions carry the correctness:
+> - **Never fail over after output has streamed.** If the primary streamed 400 tokens and then died,
+>   retrying elsewhere appends a second answer to the first half of one — the user sees two
+>   overlapping replies and the transcript is unusable. A mid-stream failure surfaces as an error, with
+>   the partial text still on screen.
+> - **A different provider comes before another model from the same one.** When Anthropic returns 529,
+>   a second Anthropic model is behind the same outage; an OpenAI model is not. That ordering is what
+>   makes the second attempt likely to succeed rather than merely being a second attempt.
+> - **The run *stays* on whatever answered.** Putting the user's original choice back at the head of
+>   the chain would re-attempt a provider we just watched fail, once per turn, for the rest of the run.
+>
+> Two smaller ones worth recording: an **abort is never retried** (it is the user's decision, and it
+> must not count against the provider's breaker), and the breaker counts *consecutive* failures with
+> any success resetting it — a provider failing one request in ten is having a bad day, not an outage,
+> and a cumulative count would eventually disable every provider a long session touched. When every
+> breaker is open the chain is tried anyway, because refusing to call turns a transient outage into a
+> hard stop only time can clear.
+>
+> **Failover also covers the pipeline, and matters more there.** An unattended seven-phase run used to
+> die outright when the provider failed in phase five, discarding four phases of completed work.
+>
+> **A window-size bug found while wiring it:** failing over from a 200k-context model to an 8k local
+> one kept the original token budget, so the *next* turn would overflow the window and look like a
+> model failure rather than a routing consequence. The loop now rebuilds its `ContextManager` for the
+> substituted model when it owns one.
+>
+> **M25 — fast-apply, and the only property that matters is failing closed.** A path that is 99%
+> correct is worse than none: the 1% is a silently wrong edit in a file the user did not read. So
+> `edit_file` gained an `intent` parameter, the apply-role model materialises the blocks, and they are
+> verified **with the real applier** — a second implementation of the matching rules would be a second
+> set of rules. Malformed blocks, a missing anchor, an ambiguous anchor, an edit that changes nothing,
+> and an edit that rewrites most of the file are all refused.
+>
+> The last of those is the one exact-match verification cannot catch on its own: a cheap model asked
+> for a small change sometimes returns the *whole file* as one block, which applies cleanly and
+> verifies cleanly — its copy genuinely matches — and quietly reformats everything. A churn bound
+> catches it.
+>
+> **The escalation path is the error return, which is why there is no fallback machinery.** This tool
+> is called by the strong model, so "fast apply could not do it exactly — send me the blocks yourself"
+> lands in exactly the right place, with the reason, at a cost of one turn. And `intent` is a
+> *parameter* rather than a new tool because a new tool name would have to be added to thirteen mode
+> allowlists, and the Phase 1 trap is that a tool missing from one is silently never offered.
+>
+> **M26 — 6 providers to 16, and most of it is data.** That is the finding, not a shortcut: DeepSeek,
+> Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM and vLLM all speak OpenAI's
+> `/chat/completions`, so what was missing was a base URL and a name. Writing nine adapters would have
+> been nine places for the streaming and tool-call parsing to drift. They are distinct `type` values
+> rather than "openai with a custom URL" so the settings UI can offer a working endpoint and the
+> router can treat "a different provider" as a real failover target.
+>
+> Azure is the exception and needed real work: `api-key` instead of `Authorization: Bearer`, and a URL
+> built from resource + deployment + api-version. Sending a bearer token to Azure fails with a 401
+> that reads exactly like a bad key. **Bedrock and Vertex are deliberately not shipped** — SigV4
+> signing and a Google OAuth exchange are auth implementations, not base URLs, and a half-working
+> entry would accept the user's key and fail every call. Recorded as scope, not as done.
+>
+> **M27 — zero-config, local-first.** A fresh install with no key used to throw "No LLM
+> configurations found", which is a dead end for exactly the user §4.5 says we serve (no hosted free
+> tier, ever). It now probes Ollama, LM Studio and llama.cpp on a **1.2 s** timeout and **offers** what
+> it finds. Three details are the whole feature: it is offered, never auto-enabled (silently routing
+> prompts to a local server the user forgot was running is a surprise even though nothing leaves the
+> machine); a runtime that is up with **no models pulled** is ignored, because a config that cannot
+> answer reads as the editor being broken; and a detected model is typed `local` rather than
+> OpenAI-compatible, because local models vary wildly in tool-call reliability and the text-JSON
+> protocol works on all of them.
+>
+> **A gate the roadmap set and the code caught.** Wiring the `@docs`/`@web` provider functions inline
+> took `extension.ts` from 652 to **704 lines**, past the ≤700 gate that three revisions discuss and
+> *nothing enforced*. It was caught by reading a line count by hand — the wrong mechanism, given the
+> file reached 2537 lines the first time by growing a few lines per feature. The wiring moved into
+> `core/context-provider-setup.ts` (671 lines now), and
+> `__tests__/source-hygiene.test.ts` fails the build over 700.
 
 ### Phase 5 — Editor ergonomics
 *Covers M28–M30. Depends on Phases 3 (graph) and 4 (autocomplete role).*
@@ -1585,27 +1967,66 @@ Phase 0  truth-up · extension.ts split · eval baseline      ── prerequisit
 
 ### 4.2 Success metrics (measured on the eval set, not asserted)
 
-**Baseline status as of rev 4 (2026-07-28).** Only the skill/stack metrics are actually recorded in
-`eval/baseline.json`. Rows marked ⚠ below have **no Phase-0 number**, which means their targets are
-currently unfalsifiable — see pending item 4 at the top of this document.
+**Baseline status as of rev 6 (2026-08-01).** Every deterministic metric is recorded in
+`eval/baseline.json` and gated. The four rows still marked ⚠ have **no number and cannot get one from
+a deterministic harness** — all four need real model calls, which is the model tier specified in
+§4.6. They are unfalsifiable *today*, and §4.6 is what changes that; they are no longer filed as
+eval-set debt, because the eval set is not what is missing.
 
 | Metric | Baseline (Phase 0) | Target | Proven in |
 |---|---|---|---|
 | Task success rate, per stack | ⚠ unrecorded — needs the model tier | +20 pts | 3, 5, 10 |
-| Recall@10 for "files that must change" | ⚠ unrecorded — needs fixture-backed `findFiles` (do at the start of Phase 3) | +25% | 3 |
+| Recall@10 for "files that must change" | **recorded: 93.1% → 97.2%**, gated (residual error −59%) | +25% → restated, met | 3 |
 | Tokens per completed task | ⚠ unrecorded — needs the model tier | −40% | 3, 4 |
 | Symbol-question accuracy (LSP vs grep) | ⚠ unrecorded — needs the model tier | +30% | 1 |
 | Test-failure feedback size | recorded: 30 KB → <2 KB asserted in CI | −95% (50 KB → <2 KB) | 1 |
-| Stack detection accuracy | **recorded: 100% (8/8)**, gated | hold | 0, 3 |
+| Index build time | **recorded 2026-08-01: 1 247 ms / 5 000 files** (warm rebuild 444 ms) | ≤2 s per 5 000 | 3 |
+| Silently-wrong fast-apply edits | **0 by construction** — five refusal classes asserted; the model-call half needs §4.6 | **0** (hard gate) | 4 |
+| Stack detection accuracy | **recorded: 100% (13/13)**, gated | hold | 0, 3 |
 | Skill exact-match / any-hit rate | **recorded: 100% / 100%**, gated | hold while breadth grows | 0, 10 |
 | Fail-safe: no stack → no skill injection | **recorded: 1/1**, gated | hold | 0 |
 | Next-edit acceptance rate | 0 (absent) | ≥25% of shown | 5 |
-| Wrong-idiom rate (wrong runner, raw SQL where ORM is idiomatic) | record | −50% | 10 |
+| Wrong-idiom rate — *skill injection* half | **recorded 2026-08-01: 0 leaks / 33 guarded tasks**, gated as a ceiling | hold at 0 | 0, 10 |
+| Wrong-idiom rate — *model behaviour* half (raw SQL where the ORM is idiomatic) | ⚠ unrecorded — needs the model tier (§4.6) | −50% | 10 |
 | Reviewer precision | n/a | ≤1 FP per 10 findings | 9 |
 | Runs with verification evidence | 0% | 100% pipeline / ≥80% chat builds | 7 |
 | Cross-session memory reuse | ~0 | ≥70% of eligible facts | 8 |
-| Silently-wrong fast-apply edits | n/a | **0** (hard gate) | 4 |
 | Injection-fixture escalations | untested | **0** (hard gate) | 9 |
+
+### 4.6 The model tier — the one thing phases 0–4 still need
+
+*Added 2026-08-01, when it became the only outstanding item in five delivered phases.*
+
+Four of §4.2's rows and Phase 1's last gate all need the same thing: **an opt-in tier of the eval
+harness that spends real model calls.** It is written up here, as a capability with a shape and a
+cost, because four revisions of filing it under "M3, still short" have not produced it — and because
+it is not phase work. Making it a phase task would hang five phases' deterministic gates off a
+non-deterministic runner.
+
+**What it unblocks (and nothing else does):**
+
+| Blocked item | Why a deterministic harness cannot answer it |
+|---|---|
+| "Symbol questions resolve via **LSP not grep**" (Phase 1's 6th gate) | It is a claim about what the model *chooses* when both tools are offered. |
+| Task success rate per stack (+20 pts) | Requires running tasks to completion and scoring the result. |
+| Tokens per completed task (−40%) | There are no tokens without a model. |
+| Symbol-question accuracy (LSP vs grep, +30%) | Same as the gate above, measured rather than asserted. |
+| Wrong-idiom rate, *model-behaviour* half | The injection half is now measured deterministically (0/33); whether the agent then writes raw SQL where the ORM is idiomatic is a model behaviour. |
+
+**What it needs, concretely.** A `--models` flag on `eval/run-eval.js` that is **off by default and
+never runs in CI on a fork**; a key source that is explicitly not the user's own configured key (a
+CI secret, or an env var the developer sets deliberately); a per-run **budget cap** in tokens with a
+hard stop, because an eval loop that can spend without bound will; N-run repetition with reported
+variance rather than a single sample, since one run of a non-deterministic system is an anecdote; and
+a results file *separate from* `eval/baseline.json`, so a noisy metric can never fail the
+deterministic gate that guards every other phase.
+
+**The judgement call this section exists to record.** The temptation is to fold model metrics into
+the existing gate so the roadmap can show numbers for every row. That would make the one gate that
+currently blocks bad merges — deterministic, fast, free, green — into one that fails intermittently
+for reasons nobody can reproduce. A gate that fails randomly gets switched off, and then nothing is
+guarded. Separate tiers, separate baselines, and the honest ⚠ marks stay in §4.2 until the tier
+exists.
 
 ### 4.3 Coverage check
 

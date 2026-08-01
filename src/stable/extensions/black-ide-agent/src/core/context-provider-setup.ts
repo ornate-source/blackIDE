@@ -6,11 +6,19 @@ import {
     FolderProvider,
     GitProvider,
     ProblemsProvider,
+    DocsProvider,
     StaticListProvider,
+    SymbolGraph,
+    SymbolProvider,
+    WebProvider,
     TerminalHistory,
     TerminalProvider,
 } from './context-providers';
 import { Rule } from './rules';
+import { SecretManager } from './secret-manager';
+import { DocsStore, searchDocs } from './docs-index';
+import { WebSearchTool } from '../tools/web-search';
+import { SearchSettings, pickSearchSettings } from '../tools/search-providers';
 import { HistoryStore } from '../memory/history-store';
 import { Skill } from '../agent/skills-manager';
 
@@ -26,6 +34,18 @@ export interface ProviderSources {
     historyStore: HistoryStore;
     terminalHistory: TerminalHistory;
     workspaceRoot(): string | undefined;
+    /**
+     * The code graph for `@symbol` (M19), read lazily: the index builds on the first
+     * agent turn, and the registry is assembled during activation. A getter means a
+     * cold graph produces an empty menu that fills in later, rather than a provider
+     * permanently bound to an empty graph.
+     */
+    codeGraph(): SymbolGraph | undefined;
+    /** Indexed `@docs` sets (Phase 3, M20). */
+    docSets(): Promise<{ name: string; rootUrl: string; pages: number }[]>;
+    searchDocs(set: string, query: string): Promise<{ url: string; title: string; excerpt: string }[]>;
+    /** Live `@web` search through the configured provider (Phase 3, M21). */
+    searchWeb(query: string): Promise<string>;
 }
 
 /** Runs git, resolving with stdout. Rejects with a readable message on failure. */
@@ -51,6 +71,9 @@ export function buildContextProviders(sources: ProviderSources): ContextProvider
     registry.register(new ProblemsProvider());
     registry.register(new GitProvider(makeGitRunner(sources.workspaceRoot)));
     registry.register(new TerminalProvider(sources.terminalHistory));
+    registry.register(new SymbolProvider(sources.codeGraph));
+    registry.register(new DocsProvider(sources.docSets, sources.searchDocs));
+    registry.register(new WebProvider(sources.searchWeb));
 
     registry.register(new StaticListProvider(
         'rules', 'Rules', 'A project or team rule',
@@ -105,4 +128,41 @@ function renderThread(store: HistoryStore, threadId: string): string {
 /** Convenience for callers that only have a `vscode` handle. */
 export function currentWorkspaceRoot(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+/**
+ * The `@docs` / `@web` half of `ProviderSources` (Phase 3, M20/M21).
+ *
+ * Assembled here rather than in `extension.ts` for the reason stated at the top of this
+ * file, and this time the gate actually caught it: wiring these three functions inline took
+ * `extension.ts` from 652 to **704 LOC**, past the ≤700 gate G10 records. The gate exists
+ * because six enhancements all edit that file; a phase that quietly spends its budget is
+ * how it got to 2537 lines the first time.
+ */
+export function docsAndWebSources(docsStore: DocsStore, secretManager: SecretManager):
+    Pick<ProviderSources, 'docSets' | 'searchDocs' | 'searchWeb'> {
+    return {
+        docSets: () => docsStore.list(),
+        searchDocs: async (set, query) => {
+            const loaded = await docsStore.load(set);
+            return loaded ? searchDocs(loaded, query) : [];
+        },
+        searchWeb: async (query) => WebSearchTool.searchWith(query, await readSearchSettings(secretManager)),
+    };
+}
+
+/**
+ * Search configuration for `@web` and the `web_search` tool (M21).
+ *
+ * Read on demand rather than cached: a key added in Settings must work on the next turn,
+ * and a stale cached "no key" would look exactly like a rejected key. Keys live in
+ * `SecretStorage` alongside the model config (G2), never in settings.json.
+ */
+export async function readSearchSettings(secretManager: SecretManager): Promise<SearchSettings> {
+    try {
+        const raw = await secretManager.getKey('general-settings');
+        return pickSearchSettings(raw ? JSON.parse(raw) : {});
+    } catch {
+        return {};
+    }
 }

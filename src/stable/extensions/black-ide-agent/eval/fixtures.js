@@ -106,6 +106,88 @@ module.exports = [
         },
         expect: { stacks: ['go', 'gin'], languages: ['go'] },
     },
+    // ── Added 2026-08-01 (M3 breadth) ────────────────────────────────────────
+    // Five more fixtures, chosen so that **every bundled pack is exercised by at
+    // least one golden task**. Before this, `flask`, `rails`, `angular` and
+    // `react-native` shipped with no eval coverage at all: they could have been
+    // broken by a resolver change and nothing would have failed. A pack count is a
+    // weaker completion test than "each pack has a task that must select it".
+    {
+        id: 'node-nest',
+        label: 'JS/TS · Node + NestJS',
+        files: [
+            'package.json', 'tsconfig.json', 'nest-cli.json', 'src/main.ts', 'src/app.module.ts',
+            'src/users/users.controller.ts', 'src/users/users.service.ts', 'test/users.e2e-spec.ts',
+        ],
+        manifests: {
+            'package.json': JSON.stringify({
+                name: 'nest-api',
+                dependencies: { '@nestjs/core': '^10.3.0', '@nestjs/common': '^10.3.0', 'reflect-metadata': '^0.2.0' },
+                devDependencies: { jest: '^29.7.0', typescript: '^5.4.0' },
+            }),
+            'tsconfig.json': '{ "compilerOptions": { "experimentalDecorators": true } }',
+        },
+        expect: { stacks: ['typescript', 'nestjs'], languages: ['typescript'] },
+    },
+    {
+        id: 'flask',
+        label: 'Python · Flask',
+        files: [
+            'requirements.txt', 'app.py', 'blueprints/orders.py', 'models.py', 'tests/test_orders.py',
+        ],
+        manifests: {
+            'requirements.txt': 'Flask==3.0.2\nSQLAlchemy==2.0.27\npytest==8.0.0\n',
+        },
+        expect: { stacks: ['python', 'flask'], languages: ['python'] },
+    },
+    {
+        id: 'rails',
+        label: 'Ruby · Rails',
+        files: [
+            'Gemfile', 'config/routes.rb', 'app/models/order.rb', 'app/controllers/orders_controller.rb',
+            'db/schema.rb', 'spec/models/order_spec.rb',
+        ],
+        manifests: {
+            'Gemfile': "source 'https://rubygems.org'\ngem 'rails', '~> 7.1'\ngem 'pg'\ngem 'rspec-rails', group: :test\n",
+        },
+        expect: { stacks: ['ruby', 'rails'], languages: ['ruby'] },
+    },
+    {
+        id: 'angular',
+        label: 'JS/TS · Angular',
+        files: [
+            'package.json', 'tsconfig.json', 'angular.json', 'src/main.ts',
+            'src/app/app.component.ts', 'src/app/orders/orders.service.ts', 'src/app/orders/orders.component.spec.ts',
+        ],
+        manifests: {
+            'package.json': JSON.stringify({
+                name: 'web',
+                dependencies: { '@angular/core': '^17.3.0', '@angular/common': '^17.3.0', rxjs: '^7.8.0' },
+                devDependencies: { typescript: '^5.4.0' },
+            }),
+            'tsconfig.json': '{ "compilerOptions": { "strict": true } }',
+        },
+        expect: { stacks: ['typescript', 'angular'], languages: ['typescript'] },
+    },
+    {
+        id: 'react-native',
+        label: 'JS/TS · React Native + Expo',
+        files: [
+            'package.json', 'tsconfig.json', 'app.json', 'App.tsx',
+            'src/screens/OrdersScreen.tsx', 'src/components/OrderCard.tsx',
+        ],
+        manifests: {
+            'package.json': JSON.stringify({
+                name: 'mobile',
+                dependencies: { 'react-native': '^0.74.0', react: '^18.3.0', expo: '^51.0.0' },
+                devDependencies: { typescript: '^5.4.0' },
+            }),
+            'tsconfig.json': '{ "compilerOptions": { "jsx": "react-native" } }',
+        },
+        // React Native implies `react` — the F2 fix's contract, held here for a second
+        // React-based framework so it cannot regress for one and not the other.
+        expect: { stacks: ['typescript', 'react-native', 'react'], languages: ['typescript'] },
+    },
     {
         // Guards the fail-safe contract in project-profiler.ts: an empty or unrecognisable
         // repo must yield no stacks so that nothing is injected, rather than a wrong guess.

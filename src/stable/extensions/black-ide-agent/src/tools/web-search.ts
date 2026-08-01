@@ -1,7 +1,39 @@
-// Web Search Tool — Feature 10
-// Uses DuckDuckGo instant answer API (no API key required) for web search.
+import { SearchSettings, formatResults, selectSearchProvider } from './search-providers';
+
+// Web Search Tool — Feature 10, extended with keyed providers in Phase 3 (M21).
+//
+// DuckDuckGo (no key) remains the default and the fallback. A configured Brave / Tavily /
+// Google CSE key takes precedence, and any failure on that path degrades to DDG with the
+// reason stated rather than failing the tool call — search is a supporting capability, so
+// losing it should cost result quality, not the task.
 
 export class WebSearchTool {
+    /**
+     * Search with the configured provider, falling back to DuckDuckGo (M21).
+     *
+     * Settings are passed in rather than read here: this module is used by the executor,
+     * the harness and the tests, and reaching for `SecretStorage` from inside it would make
+     * two of those impossible.
+     */
+    static async searchWith(query: string, settings: SearchSettings = {}, limit = 6): Promise<string> {
+        const provider = selectSearchProvider(settings);
+        if (!provider) return this.search(query);
+
+        try {
+            const results = await provider.search(query, limit);
+            if (results.length) return formatResults(query, provider.label, results);
+            // An empty *successful* response is an answer, not a failure — but DDG
+            // sometimes has something for the same query, so it is still worth asking.
+            const fallback = await this.search(query);
+            return `${formatResults(query, provider.label, [])}\n\n${fallback}`;
+        } catch (err: any) {
+            const reason = String(err?.message || err).slice(0, 120);
+            const fallback = await this.search(query);
+            // Naming the degradation is the point: "my Brave key is configured but every
+            // search is coming from DuckDuckGo" is otherwise invisible.
+            return `[${provider.label} search failed: ${reason} — fell back to DuckDuckGo]\n${fallback}`;
+        }
+    }
 
     /**
      * Search the web using DuckDuckGo instant answer API.

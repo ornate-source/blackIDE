@@ -3,8 +3,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { AgentMode, ToolCall, ToolResult, ImagePart } from '../core/types';
 import { isToolAllowedInMode } from '../core/tools';
+import { isDeniedByUser } from '../core/tool-toggles';
+import { Verification } from '../core/fast-apply';
 import { ToolRunner } from '../tools/tool-runner';
 import { WebSearchTool } from '../tools/web-search';
+import { SearchSettings } from '../tools/search-providers';
 import { BrowserTool } from '../tools/browser-tool';
 import { MCPClient } from '../tools/mcp-client';
 import { ArtifactManager } from './artifact-manager';
@@ -36,6 +39,22 @@ export interface ExecutorDeps {
      * `tools`), matching how the advertised list is built.
      */
     allowedTools?: string[];
+    /**
+     * Tools the user switched off for this session (Phase 2, M10). Separate from
+     * `allowedTools` deliberately: that field's empty case means "this mode declares no
+     * restriction", so folding user toggles into it would make an empty toggle list
+     * indistinguishable from an empty allowlist and silently turn every mode into an
+     * allowlisted one.
+     */
+    deniedTools?: string[];
+    /** Keyed web-search configuration (Phase 3, M21). Absent means DuckDuckGo. */
+    searchSettings?: SearchSettings;
+    /**
+     * Materialises `edit_file`'s `intent` into verified SEARCH/REPLACE blocks using the
+     * `apply` model role (Phase 4, M25). Absent when no apply model is configured, in
+     * which case `intent` is refused and the caller is asked for blocks.
+     */
+    fastApply?: (path: string, content: string, intent: string) => Promise<Verification>;
     rootPath: string;
     browserTool: BrowserTool;
     mcpClient: MCPClient;
@@ -128,6 +147,22 @@ export class AgentToolExecutor {
             return this.err(tc, `Tool "${tc.name}" is not in the allowlist for the acting mode.`);
         }
 
+        /*
+         * Third gate: the user's session tool toggles (Phase 2, M10).
+         *
+         * A disabled tool is also removed from the advertised list, so reaching here
+         * means the model called it from memory of an earlier turn — which is exactly
+         * why the gate exists and why unadvertising alone would have been advisory.
+         *
+         * The refusal names the *user* as the reason, distinctly from the two gates
+         * above. To a model "not available in this mode" invites trying a different
+         * mode's tool, whereas "the user switched this off" is a fact about the world it
+         * should report rather than route around.
+         */
+        if (this.d.deniedTools?.length && isDeniedByUser(tc.name, this.d.deniedTools)) {
+            return this.err(tc, `Tool "${tc.name}" has been switched off by the user for this session. Do not retry it; say what you would have used it for.`);
+        }
+
         try {
             // MCP tools are discovered at runtime, so they cannot be switch cases.
             // Their arguments are passed through verbatim to the server.
@@ -169,7 +204,33 @@ export class AgentToolExecutor {
                 case 'edit_file': {
                     const absPath = this.abs(a.path);
                     const current = await ToolRunner.readFile(a.path);
-                    const updated = ToolRunner.applySearchReplace(current, a.search_replace_blocks);
+
+                    let updated: string;
+                    if (!a.search_replace_blocks && a.intent) {
+                        /*
+                         * Fast-apply (Phase 4, M25): the strong model stated intent, a cheap
+                         * model on the `apply` role materialises the blocks.
+                         *
+                         * The escalation path *is* the error return. This tool is being
+                         * called by the strong model, so "fast apply could not do it
+                         * exactly — send me the blocks yourself" hands the work back to
+                         * exactly the right place, with the reason, and costs one turn. No
+                         * separate fallback machinery, and no way for an unverified edit to
+                         * reach disk: `verifyFastApply` runs the real applier and anything
+                         * short of a clean, bounded, non-empty result is refused.
+                         */
+                        if (!this.d.fastApply) {
+                            return this.err(tc, 'No apply model is configured, so `intent` cannot be used. Call edit_file again with explicit search_replace_blocks.');
+                        }
+                        const outcome = await this.d.fastApply(a.path, current, String(a.intent));
+                        if (!outcome.ok) {
+                            return this.err(tc, `Fast apply refused this edit (${outcome.kind}): ${outcome.reason}\nCall edit_file again with explicit search_replace_blocks.`);
+                        }
+                        updated = outcome.updated;
+                        this.d.log(`[FastApply] ${a.path}: ${outcome.blocks} block(s) materialised and verified.`);
+                    } else {
+                        updated = ToolRunner.applySearchReplace(current, a.search_replace_blocks);
+                    }
                     const approved = await this.d.approve({ kind: 'edit', path: a.path, originalContent: current, updatedContent: updated });
                     if (!approved) return this.ok(tc, `User rejected the edit to ${a.path}.`);
                     this.d.checkpoint.snapshot(absPath);
@@ -208,7 +269,10 @@ export class AgentToolExecutor {
                     return this.ok(tc, parts.join('\n'));
                 }
                 case 'web_search': {
-                    return this.ok(tc, await WebSearchTool.search(a.query));
+                    // Keyed providers with DDG as the no-key default (Phase 3, M21). The
+                    // settings arrive from the caller; absent, this is exactly the old
+                    // behaviour, which is what makes the change safe for the harness.
+                    return this.ok(tc, await WebSearchTool.searchWith(a.query, this.d.searchSettings || {}));
                 }
                 case 'browser_open': {
                     const msg = await this.d.browserTool.launch({ url: a.url, headless: a.headless, viewportWidth: a.viewportWidth, viewportHeight: a.viewportHeight });

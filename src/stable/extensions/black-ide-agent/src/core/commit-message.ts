@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { LLMClient } from './llm-client';
 import { LLMConfigEntry } from './types';
+import { loadModelRouter } from './model-router-loader';
 import { SecretManager } from './secret-manager';
 
 /**
@@ -138,17 +139,11 @@ async function requestLlmCommitMessage(
             return;
         }
 
-        const configs: LLMConfigEntry[] = JSON.parse(configJson);
-        let activeModelId = '';
-        try {
-            const settingsRaw = await secretManager.getKey('general-settings');
-            if (settingsRaw) {
-                const settings = JSON.parse(settingsRaw);
-                activeModelId = settings.selectedModelId || '';
-            }
-        } catch {}
-
-        const modelConfig = configs.find(c => c.id === activeModelId) || configs.find(c => c.enabled !== false) || configs[0];
+        // The `edit` role (Phase 4, M23): a commit message is a short generation over a
+        // diff, not a reasoning task, so it is one of the roles worth pointing at a
+        // cheaper model. Falls back to the selected model when no role is configured.
+        const { router } = await loadModelRouter(secretManager);
+        const modelConfig = router.resolve('edit')?.config;
         if (!modelConfig) {
             vscode.window.showErrorMessage('No active or enabled model configured');
             resolve();

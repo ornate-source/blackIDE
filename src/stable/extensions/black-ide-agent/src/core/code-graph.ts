@@ -213,6 +213,45 @@ export class CodeGraph {
         return out;
     }
 
+    /**
+     * Symbols whose name matches `query`, best match first (Phase 3, M19 — `@symbol`).
+     *
+     * Ranked rather than filtered: a dropdown that runs per keystroke must put the
+     * exact match at the top, or typing a symbol's full name still leaves the user
+     * scanning for it among every name that contains it. An empty query offers the
+     * broadest symbols (containers before members) rather than an arbitrary slice, so
+     * the menu is useful before the user has typed anything.
+     */
+    searchSymbols(query: string, limit = 20): GraphSymbol[] {
+        const needle = query.trim().toLowerCase();
+        const scored: { symbol: GraphSymbol; score: number }[] = [];
+
+        for (const node of this.nodes.values()) {
+            for (const symbol of node.symbols) {
+                const lowered = symbol.name.toLowerCase();
+                let score: number;
+                if (!needle) score = symbol.parent ? 3 : 2;
+                else if (lowered === needle) score = 0;
+                else if (lowered.startsWith(needle)) score = 1;
+                else if (lowered.includes(needle)) score = 2;
+                else continue;
+                scored.push({ symbol, score });
+            }
+        }
+
+        // Deterministic all the way down: same query, same corpus, same order — a
+        // dropdown that reshuffles equal-ranked entries between keystrokes moves the
+        // item the user was aiming at.
+        scored.sort((a, b) =>
+            a.score - b.score
+            || a.symbol.name.length - b.symbol.name.length
+            || a.symbol.name.localeCompare(b.symbol.name)
+            || a.symbol.file.localeCompare(b.symbol.file)
+            || a.symbol.startLine - b.symbol.startLine);
+
+        return scored.slice(0, limit).map(s => s.symbol);
+    }
+
     /** Every file that references `name` without defining it. */
     referencesOf(name: string): string[] {
         const out: string[] = [];

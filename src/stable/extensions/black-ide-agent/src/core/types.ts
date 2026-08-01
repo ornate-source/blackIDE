@@ -1,11 +1,37 @@
+/**
+ * Providers that speak OpenAI's `/chat/completions` shape (Phase 4, M26).
+ *
+ * They are listed separately from the three native shapes because that is the entire
+ * difference between them: each is a base URL and a key, dispatched through the same
+ * `openAITurn`. Keeping them as distinct `type` values rather than making users pick
+ * "openai + custom URL" is what lets the settings UI offer a working default endpoint
+ * and lets `model-router.ts` treat "a different provider" as a real failover target —
+ * everything typed `openai` would otherwise look like the same provider to the router.
+ */
+export type OpenAICompatibleProvider =
+    | 'openai' | 'openrouter' | 'deepseek' | 'groq' | 'mistral' | 'xai'
+    | 'together' | 'fireworks' | 'cerebras' | 'litellm' | 'vllm' | 'azure-openai';
+
 export interface LLMConfigEntry {
     id: string;
     name: string;
-    type: 'google' | 'claude' | 'openai' | 'openrouter' | 'local';
+    /**
+     * `google` / `claude` have native request shapes; `local` uses the text-JSON
+     * protocol for models without reliable tool calling; everything else is
+     * OpenAI-compatible.
+     */
+    type: 'google' | 'claude' | 'local' | OpenAICompatibleProvider;
     url?: string;
     apiKey?: string;
     model?: string;
     enabled?: boolean;
+    /**
+     * Azure OpenAI only: the deployment name, which takes the place of `model` in its
+     * URL path. Azure is the one OpenAI-compatible provider whose *shape* differs — key
+     * header and URL layout — so it needs one field rather than a separate adapter.
+     */
+    azureDeployment?: string;
+    azureApiVersion?: string;
 }
 
 export interface CommandResult {

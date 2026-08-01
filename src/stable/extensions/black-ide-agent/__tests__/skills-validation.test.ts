@@ -157,3 +157,79 @@ describe('skillsFiredEvent', () => {
         expect(e.bundled).toEqual(['django', 'react']);
     });
 });
+
+/**
+ * Frontmatter list parsing (eval finding F3b, 2026-08-01).
+ *
+ * The loader split list fields on every comma, so the entries that *needed* quoting were
+ * exactly the ones it corrupted: the bundled `express` pack's
+ * `triggers: [express, "app.use", middleware, "req, res", router]` became six triggers
+ * including the bare token `res`. Combined with substring trigger matching, that pack
+ * became a candidate on any prompt containing "Restyle", "resource" or "address".
+ *
+ * Silent by construction: a corrupted trigger list is still a valid trigger list, so
+ * nothing failed and the pack simply resolved too often.
+ */
+describe('quoted commas in frontmatter lists', () => {
+    const load = (frontmatter: string) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-fm-'));
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\n${frontmatter}\n---\n# Body\n`, 'utf8');
+        const skill = SkillsManager.loadSkillDir(dir, path.basename(dir), 'bundled');
+        fs.rmSync(dir, { recursive: true, force: true });
+        return skill;
+    };
+
+    it('keeps a quoted comma inside one entry', () => {
+        const skill = load([
+            'name: express',
+            'description: d',
+            'roles: [backend]',
+            'stacks: [express]',
+            'triggers: [express, "app.use", middleware, "req, res", router]',
+        ].join('\n'));
+        expect(skill?.triggerPatterns).toEqual(['express', 'app.use', 'middleware', 'req, res', 'router']);
+        // The specific token that caused the leak must not exist as a trigger of its own.
+        expect(skill?.triggerPatterns).not.toContain('res');
+    });
+
+    it('still parses ordinary unquoted lists and bare CSV', () => {
+        const bracketed = load('name: a\ndescription: d\nroles: [backend, testing]\nstacks: [django, python]');
+        expect(bracketed?.roles).toEqual(['backend', 'testing']);
+        expect(bracketed?.stacks).toEqual(['django', 'python']);
+
+        const csv = load('name: b\ndescription: d\nroles: backend, testing\nstacks: django');
+        expect(csv?.roles).toEqual(['backend', 'testing']);
+        expect(csv?.stacks).toEqual(['django']);
+    });
+
+    it('handles single quotes and stray whitespace', () => {
+        const skill = load("name: c\ndescription: d\nroles: [ backend ]\ntriggers: ['def test_', ' conftest ']");
+        expect(skill?.roles).toEqual(['backend']);
+        expect(skill?.triggerPatterns).toEqual(['def test_', 'conftest']);
+    });
+
+    it('every very short trigger in a bundled pack is a deliberate one', () => {
+        /*
+         * The class-level guard, not just the one instance. A 1–3 character bare-word
+         * trigger is usually a parsing accident (`res` and `req` from `"req, res"`), but
+         * not always: `gin` and `jsx` are the real names of the things they match. So the
+         * short ones are allowlisted rather than banned — a new one has to be a decision
+         * someone writes here, which is precisely what did not happen for `res`.
+         */
+        // `gin` and `jsx` are the real names of what they match; `drf` is the standard
+        // abbreviation for Django REST Framework.
+        const DELIBERATE_SHORT_TRIGGERS = new Set(['gin', 'jsx', 'drf']);
+        const dir = path.join(__dirname, '..', 'resources', 'skills');
+        const offenders: string[] = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            const skill = SkillsManager.loadSkillDir(path.join(dir, entry.name), entry.name, 'bundled');
+            for (const t of skill?.triggerPatterns || []) {
+                if (/^[a-z0-9]{1,3}$/.test(t) && !DELIBERATE_SHORT_TRIGGERS.has(t)) {
+                    offenders.push(`${entry.name}: "${t}"`);
+                }
+            }
+        }
+        expect(offenders, `unvetted short triggers: ${offenders.join(', ')}`).toEqual([]);
+    });
+});

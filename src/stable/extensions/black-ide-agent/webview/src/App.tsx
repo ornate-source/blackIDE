@@ -93,6 +93,10 @@ interface BlackIDESettings {
   enableReasoningDisplay: boolean;
   customSystemPrompt: string;
   selectedModelId?: string;
+  // Per-role model overrides (Phase 4, M23). Role -> LLMConfigEntry id. An absent entry
+  // means "use the active model", except for `apply` and `rerank`, where absent means the
+  // feature is off — see the settings UI for why.
+  roleModels?: Record<string, string>;
   // Multi-agent pipeline
   pipelineAutoOpenAllFiles: boolean;
   // Cumulative (input+output) token ceiling for one pipeline run. 0 = unlimited.
@@ -106,6 +110,12 @@ interface BlackIDESettings {
   // Mode name (e.g. "Backend Executor") -> LLMConfigEntry id. Unset/unresolvable
   // entries fall back to the pipeline's main selected model.
   pipelinePhaseModels: Record<string, string>;
+  // Web search (Phase 3, M21). `auto` picks the first configured key; DuckDuckGo needs none.
+  searchProvider?: 'auto' | 'brave' | 'tavily' | 'google-cse' | 'duckduckgo';
+  braveApiKey?: string;
+  tavilyApiKey?: string;
+  googleCseApiKey?: string;
+  googleCseEngineId?: string;
   // Autocomplete
   enableAutocomplete: boolean;
   autocompleteModelId?: string;
@@ -114,6 +124,22 @@ interface BlackIDESettings {
   // Providers list
   providers?: Record<string, ProviderSetting>;
 }
+
+/**
+ * The roles the ModelRouter resolves, with what each one is for (Phase 4, M23).
+ *
+ * `embed` is listed for completeness but is resolved by the embeddings config rather than
+ * the router, so it is not offered here — showing a control that does nothing is worse
+ * than showing nothing.
+ */
+const MODEL_ROLE_HINTS: { role: string; hint: string }[] = [
+  { role: 'chat', hint: 'Conversation and tool use — the default for everything else' },
+  { role: 'plan', hint: 'Planning turns before execution' },
+  { role: 'edit', hint: 'Inline edits and commit messages — a cheaper model is usually enough' },
+  { role: 'apply', hint: 'Fast apply: turns an intent into exact SEARCH/REPLACE blocks. Off unless set — a strong model here costs more than not using it' },
+  { role: 'autocomplete', hint: 'Inline completion — latency matters more than depth' },
+  { role: 'rerank', hint: 'Re-scores code search results. Off unless set; a deterministic lexical reranker runs otherwise' },
+];
 
 const DEFAULT_PROVIDERS: Record<string, ProviderSetting> = {
   google: { enabled: true, apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com' },
@@ -140,11 +166,17 @@ const DEFAULT_SETTINGS: BlackIDESettings = {
   enableReasoningDisplay: true,
   customSystemPrompt: '',
   selectedModelId: '',
+  roleModels: {},
   pipelineAutoOpenAllFiles: false,
   pipelineTokenBudget: 0,
   pipelineOutputMode: 'apply',
   pipelineParallelExecution: false,
   pipelinePhaseModels: {},
+  searchProvider: 'auto',
+  braveApiKey: '',
+  tavilyApiKey: '',
+  googleCseApiKey: '',
+  googleCseEngineId: '',
   enableAutocomplete: true,
   autocompleteModelId: '',
   autocompleteDebounce: 250,
@@ -522,6 +554,10 @@ export default function App() {
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
   const [tokenUsage, setTokenUsage] = useState<{ turnTokens: string; totalTokens: string; totalCost: string; turns: number } | null>(null);
   const [loopLimitWarning, setLoopLimitWarning] = useState<{ currentTurn: number; maxTurns: number; remaining: number } | null>(null);
+  // Phase 4: the zero-config offer (M27) and the failover notice (M24). Both are
+  // dismissible banners rather than modals — neither blocks anything the user is doing.
+  const [localModelOffer, setLocalModelOffer] = useState<any[] | null>(null);
+  const [modelNotice, setModelNotice] = useState<string | null>(null);
   // Agent surfaces — mode, live plan/TODO, artifacts, checkpoint
   const [agentMode, setAgentMode] = useState<string>('agent');
   const [customModes, setCustomModes] = useState<any[]>([]);
@@ -533,6 +569,12 @@ export default function App() {
   const [userPrompts, setUserPrompts] = useState<any[]>([]);
   const [firedRules, setFiredRules] = useState<any[]>([]);
   const [ruleToggles, setRuleToggles] = useState<{ enabled: string[]; disabled: string[] }>({ enabled: [], disabled: [] });
+  // Tools half of the panel (M10). `availableTools` is the host's list for the acting
+  // mode — never a copy of BASE_TOOLS here, or the panel would offer switches for tools
+  // the mode does not have. `disabledTools` is tracked separately so a toggle renders
+  // immediately without waiting for the next turn's list.
+  const [availableTools, setAvailableTools] = useState<any[]>([]);
+  const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [showSessionPanel, setShowSessionPanel] = useState(false);
   const [agentArtifacts, setAgentArtifacts] = useState<{ name: string; type: string; path: string }[]>([]);
 
@@ -597,6 +639,13 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const sessionPanelRef = useRef<HTMLDivElement>(null);
+
+  // A mode change changes which tools exist, so an open panel must re-ask rather than
+  // keep showing the previous mode's list — a switch for a tool the new mode does not
+  // have is a control whose effect the user cannot predict.
+  useEffect(() => {
+    if (showSessionPanel) vscode.postMessage({ type: 'requestTools', value: agentMode });
+  }, [agentMode, showSessionPanel]);
 
   // Auto-resize textarea height as content changes
   useEffect(() => {
@@ -859,6 +908,23 @@ export default function App() {
             });
           }
           break;
+        case 'localModelsAvailable':
+          // Zero-config first run (Phase 4, M27). The host found a local runtime while
+          // resolving a model and there was nothing configured. Offered, never applied:
+          // the entries land in the list and the banner invites one click. Auto-enabling a
+          // local server the user forgot was running is a surprise even though nothing
+          // leaves the machine.
+          if (Array.isArray(message.value) && message.value.length) {
+            setLocalModelOffer(message.value);
+          }
+          break;
+        case 'modelSubstituted':
+          // Cross-provider failover (M24) is never silent — a run that quietly finishes on
+          // a different model produces output the user cannot account for.
+          if (message.value) {
+            setModelNotice(`${message.value.from} failed (${message.value.because}) — continuing on ${message.value.to}.`);
+          }
+          break;
         case 'setMode':
         case 'agentMode':
           if (message.value) {
@@ -881,6 +947,18 @@ export default function App() {
           break;
         case 'ruleTogglesChanged':
           if (message.value) setRuleToggles(message.value);
+          break;
+        case 'toolsAvailable':
+          if (Array.isArray(message.value)) {
+            setAvailableTools(message.value);
+            // The host is authoritative about which tools are off: it is what the
+            // executor gate reads. Adopting its list here keeps the dot in the panel and
+            // the refusal in the loop from ever disagreeing.
+            setDisabledTools(message.value.filter((t: any) => !t.enabled).map((t: any) => t.name));
+          }
+          break;
+        case 'toolTogglesChanged':
+          if (Array.isArray(message.value?.disabled)) setDisabledTools(message.value.disabled);
           break;
         case 'tokenUsage':
           if (message.value) {
@@ -2061,6 +2139,93 @@ export default function App() {
                       </svg>
                     </div>
                   </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+                {/* Per-role models (Phase 4, M23). Every role defaults to the active model
+                    above, so this section is entirely optional — it exists so a user can
+                    point `apply` and `autocomplete` at something cheap and fast, and
+                    `rerank` at a scorer, without changing what answers in chat. `apply`
+                    and `rerank` stay OFF until named here: falling back to the strong model
+                    for them would spend more than not having the feature. */}
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-muted/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/></svg>
+                    <span className="text-[12px] font-medium text-foreground">Models by role</span>
+                    <span className="text-[10px] text-muted/60">optional — blank uses the active model</span>
+                  </div>
+                  {MODEL_ROLE_HINTS.map(({ role, hint }) => (
+                    <div key={`role-${role}`} className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted w-[92px] shrink-0" title={hint}>{role}</span>
+                      <select
+                        value={(settings.roleModels || {})[role] || ''}
+                        onChange={(e) => {
+                          const next = { ...(settings.roleModels || {}) };
+                          if (e.target.value) next[role] = e.target.value;
+                          else delete next[role];
+                          updateSetting('roleModels', next);
+                        }}
+                        className="flex-1 min-w-0 bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.05)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-2 py-1.5 text-[11.5px] focus:outline-none cursor-pointer appearance-none transition-all duration-200"
+                      >
+                        <option value="">
+                          {role === 'apply' || role === 'rerank' ? 'off — feature disabled' : 'use active model'}
+                        </option>
+                        {modelsList.map(model => (
+                          <option key={`${role}-${model.id}`} value={model.id} className="bg-background text-foreground">
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+                {/* Web search (Phase 3, M21). DuckDuckGo needs no key and is the default;
+                    a key here upgrades `web_search` and `@web` to a structured provider.
+                    `auto` uses the first key configured, so the common case is "paste one
+                    key and forget it". */}
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-muted/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                    <span className="text-[12px] font-medium text-foreground">Web search</span>
+                    <span className="text-[10px] text-muted/60">optional — DuckDuckGo needs no key</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted w-[92px] shrink-0">provider</span>
+                    <select
+                      value={settings.searchProvider || 'auto'}
+                      onChange={(e) => updateSetting('searchProvider', e.target.value as BlackIDESettings['searchProvider'])}
+                      className="flex-1 min-w-0 bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.05)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-2 py-1.5 text-[11.5px] focus:outline-none cursor-pointer appearance-none"
+                    >
+                      <option value="auto">auto — first configured key</option>
+                      <option value="duckduckgo">DuckDuckGo (no key)</option>
+                      <option value="tavily">Tavily</option>
+                      <option value="brave">Brave</option>
+                      <option value="google-cse">Google Custom Search</option>
+                    </select>
+                  </div>
+                  {([
+                    ['tavilyApiKey', 'Tavily key'],
+                    ['braveApiKey', 'Brave key'],
+                    ['googleCseApiKey', 'Google key'],
+                    ['googleCseEngineId', 'Google cx'],
+                  ] as [keyof BlackIDESettings, string][]).map(([key, label]) => (
+                    <div key={`search-${String(key)}`} className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted w-[92px] shrink-0">{label}</span>
+                      <input
+                        type={String(key).endsWith('EngineId') ? 'text' : 'password'}
+                        value={String((settings as any)[key] || '')}
+                        onChange={(e) => updateSetting(key as any, e.target.value)}
+                        placeholder={String(key) === 'googleCseEngineId' ? 'search engine id (cx)' : 'paste key — stored in the OS keychain'}
+                        className="flex-1 min-w-0 bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.05)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-2 py-1.5 text-[11.5px] focus:outline-none"
+                      />
+                    </div>
+                  ))}
                 </div>
 
                 {/* Divider */}
@@ -3256,6 +3421,43 @@ export default function App() {
             </div>
           )}
 
+          {/* Zero-config first run (M27): a local runtime is available and nothing is
+              configured. One click writes the config; declining leaves the machine as it was. */}
+          {localModelOffer && (
+            <div className="flex items-center gap-2 px-2 py-1 rounded border border-emerald-500/20 bg-emerald-500/[0.06] text-[9.5px] text-emerald-300/90 mb-1.5 font-medium"
+                 role="status" aria-live="polite">
+              <span className="flex-1 min-w-0">
+                Found {localModelOffer.length} local model{localModelOffer.length === 1 ? '' : 's'} ({localModelOffer[0]?.name}) — no API key needed.
+              </span>
+              <button
+                className="px-1.5 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 border-0 text-emerald-200 cursor-pointer"
+                onClick={() => {
+                  setModelsList(prev => {
+                    const updated = [...prev];
+                    for (const model of localModelOffer) if (!updated.some(m => m.id === model.id)) updated.push(model);
+                    vscode.postMessage({ type: 'saveLlmConfig', value: JSON.stringify(updated, null, 2) });
+                    return updated;
+                  });
+                  const first = localModelOffer[0];
+                  if (first) { setSelectedModelId(first.id); updateSetting('selectedModelId', first.id); }
+                  setLocalModelOffer(null);
+                }}
+              >Use it</button>
+              <button className="px-1 border-0 bg-transparent text-emerald-300/70 hover:text-emerald-200 cursor-pointer"
+                      onClick={() => setLocalModelOffer(null)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+
+          {/* Failover notice (M24) — the substitution is stated, never silent. */}
+          {modelNotice && (
+            <div className="flex items-center gap-2 px-2 py-1 rounded border border-sky-500/20 bg-sky-500/[0.06] text-[9.5px] text-sky-300/90 mb-1.5 font-medium"
+                 role="status" aria-live="polite">
+              <span className="flex-1 min-w-0">{modelNotice}</span>
+              <button className="px-1 border-0 bg-transparent text-sky-300/70 hover:text-sky-200 cursor-pointer"
+                      onClick={() => setModelNotice(null)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+
           {/* Attached files preview */}
           {attachedFiles.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-1.5 px-1">
@@ -3341,15 +3543,26 @@ export default function App() {
                 {/* Session control panel (Phase 2, M10) — rules and prompts for this
                     conversation. The "fired" list is exactly what the host assembled into
                     the last prompt, so it can never claim a rule applied when it did not. */}
-                {(rules.length > 0 || userPrompts.length > 0) && (
+                {(
                   <div className="flex items-center" ref={sessionPanelRef}>
                     <button
-                      onClick={() => setShowSessionPanel(!showSessionPanel)}
+                      onClick={() => {
+                        const opening = !showSessionPanel;
+                        setShowSessionPanel(opening);
+                        // Ask for the tool list for the mode that is selected *now*. The
+                        // per-turn list is authoritative but only arrives once a message
+                        // has been sent, and a user should be able to switch a tool off
+                        // before the first turn rather than after it.
+                        if (opening) vscode.postMessage({ type: 'requestTools', value: agentMode });
+                      }}
                       className="flex items-center gap-1 hover:bg-panel rounded-md px-1.5 py-0.5 transition-colors cursor-pointer border-0 bg-transparent text-muted font-normal hover:text-foreground outline-none text-[10px]"
-                      title="Rules and prompts active in this session"
+                      title="Rules, tools and prompts active in this session"
                     >
-                      <span className={`w-1 h-1 rounded-full shrink-0 ${firedRules.length ? 'bg-sky-500' : 'bg-muted/40'}`} />
-                      <span>{firedRules.length ? `${firedRules.length} rule${firedRules.length === 1 ? '' : 's'}` : 'Rules'}</span>
+                      <span className={`w-1 h-1 rounded-full shrink-0 ${disabledTools.length ? 'bg-amber-500' : firedRules.length ? 'bg-sky-500' : 'bg-muted/40'}`} />
+                      <span>
+                        {firedRules.length ? `${firedRules.length} rule${firedRules.length === 1 ? '' : 's'}` : 'Session'}
+                        {disabledTools.length ? ` · ${disabledTools.length} tool${disabledTools.length === 1 ? '' : 's'} off` : ''}
+                      </span>
                     </button>
 
                     {showSessionPanel && (
@@ -3408,6 +3621,43 @@ export default function App() {
                             </div>
                           );
                         })}
+
+                        {/* Tools (M10). Switching one off both hides it from the model and
+                            makes the executor refuse it — the same gate the per-mode
+                            allowlist rides, so this is a decision, not a hint. */}
+                        {availableTools.length > 0 && (
+                          <>
+                            <div className="border-t border-border/30 my-1" />
+                            <div className="px-3 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted/70">
+                              Tools for this mode
+                              {disabledTools.length ? <span className="text-amber-500/80"> — {disabledTools.length} off</span> : ''}
+                            </div>
+                            {availableTools.map((t: any) => {
+                              const on = !disabledTools.some((n: string) => n.toLowerCase() === t.name.toLowerCase());
+                              const locked = t.disablable === false;
+                              return (
+                                <div
+                                  key={`tool-${t.name}`}
+                                  className={`px-3 py-1 text-[10px] flex items-start gap-1.5 ${locked ? 'opacity-60' : 'hover:bg-background/40 cursor-pointer'}`}
+                                  title={locked ? `${t.name} — required for the agent to finish a task` : t.description}
+                                  onClick={() => {
+                                    if (locked) return;
+                                    vscode.postMessage({ type: 'toggleTool', value: { name: t.name, enabled: !on } });
+                                  }}
+                                >
+                                  <span className={on ? 'text-emerald-500' : 'text-muted/40'}>{on ? '●' : '○'}</span>
+                                  <span className="flex-1 min-w-0">
+                                    <span className="truncate">{t.name}</span>
+                                    <span className="text-muted/70">
+                                      {locked ? ' — always on' : ''}
+                                      {!locked && t.risk && t.risk !== 'safe' ? ` — ${t.risk}` : ''}
+                                    </span>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
 
                         {userPrompts.length > 0 && (
                           <>

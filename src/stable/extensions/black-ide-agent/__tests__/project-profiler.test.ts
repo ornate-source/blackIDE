@@ -1,4 +1,6 @@
-import { detectProjectProfile } from '../src/core/project-profiler';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { FRAMEWORK_IDENTITY_TOKENS, detectProjectProfile } from '../src/core/project-profiler';
 
 /**
  * Regression cover for eval finding F2: React-based frameworks must be detected *in
@@ -50,5 +52,61 @@ describe('React-family detection (F2)', () => {
         const p = detectProjectProfile(['README.md', 'LICENSE'], {});
         expect(p.stacks).toEqual([]);
         expect(p.confidence).toBe(0);
+    });
+});
+
+/**
+ * FRAMEWORK_IDENTITY_TOKENS must not drift from what the profiler can actually emit
+ * (2026-08-01). The resolver's F3 rule keys off that list: a token the profiler emits
+ * but the list omits means a pack of that framework's idioms can be injected into a
+ * repo using a competitor, and nothing would fail. The failure is silent in exactly the
+ * direction that matters, so it is asserted against the source rather than trusted.
+ */
+describe('FRAMEWORK_IDENTITY_TOKENS covers what the profiler emits', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'project-profiler.ts'), 'utf8');
+
+    /** Every literal the profiler pushes into `frameworks`, via `fw()` or `add(frameworks, …)`. */
+    const emitted = new Set<string>([
+        ...Array.from(source.matchAll(/\bfw\('([^']+)'/g), m => m[1]),
+        ...Array.from(source.matchAll(/add\(frameworks,\s*'([^']+)'/g), m => m[1]),
+    ]);
+
+    /**
+     * Tokens that are emitted but deliberately not identities, each because it
+     * *co-exists* with a framework rather than replacing one. Kept explicit so adding a
+     * new exclusion is a decision someone writes down.
+     */
+    const NOT_IDENTITIES = new Set([
+        'expo', 'django-rest-framework', 'entity-framework-core', 'gorm',   // additive libraries
+        'docker', 'github-actions', 'terraform',                            // infrastructure
+        'dotnet', 'rust', 'go',                                             // bare platform tokens from fw()
+    ]);
+
+    it('found the profiler’s framework literals at all', () => {
+        // If the regexes stop matching, every assertion below passes vacuously.
+        expect(emitted.size).toBeGreaterThan(20);
+        expect(emitted.has('django')).toBe(true);
+    });
+
+    it('classifies every emitted framework as either an identity or an explicit exclusion', () => {
+        const unclassified = Array.from(emitted)
+            .filter(t => !FRAMEWORK_IDENTITY_TOKENS.includes(t) && !NOT_IDENTITIES.has(t));
+        expect(unclassified, `unclassified framework tokens: ${unclassified.join(', ')}`).toEqual([]);
+    });
+
+    it('lists no identity the profiler cannot produce', () => {
+        // A token here that the profiler never emits can never be "detected", so every
+        // pack named after it would be permanently suppressed.
+        const orphans = FRAMEWORK_IDENTITY_TOKENS.filter(t => !emitted.has(t));
+        expect(orphans, `identities the profiler never emits: ${orphans.join(', ')}`).toEqual([]);
+    });
+
+    it('every bundled pack named after an identity token can be detected', () => {
+        const packs = fs.readdirSync(path.join(__dirname, '..', 'resources', 'skills'), { withFileTypes: true })
+            .filter(e => e.isDirectory()).map(e => e.name);
+        for (const pack of packs) {
+            if (!FRAMEWORK_IDENTITY_TOKENS.includes(pack)) continue;
+            expect(emitted.has(pack), `pack "${pack}" is an identity the profiler never emits`).toBe(true);
+        }
     });
 });

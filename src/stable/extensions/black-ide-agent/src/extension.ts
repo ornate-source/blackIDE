@@ -30,7 +30,8 @@ import { generateConversationTitle } from './core/conversation-title';
 import { SkillDiagnostics } from './agent/skill-diagnostics';
 import { ChatSession } from './core/chat-session';
 import { RulesLoader } from './core/rules-loader';
-import { buildContextProviders, currentWorkspaceRoot } from './core/context-provider-setup';
+import { buildContextProviders, currentWorkspaceRoot, docsAndWebSources } from './core/context-provider-setup';
+import { DocsStore } from './core/docs-index';
 import { TerminalHistory, ContextProviderRegistry } from './core/context-providers';
 import { SkillsManager } from './agent/skills-manager';
 import { PromptLibrary } from './core/prompt-library-loader';
@@ -76,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
     registerCommands(context, secretManager, provider, {
         openSettingsPanel: () => settingsPanel!.open(),
         openManagerPanel: () => managerPanel.open(),
-    });
+    }, provider.docsStore);
 }
 
 export function deactivate() {}
@@ -100,6 +101,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     private readonly _sessions: SessionManager;
     private readonly _checkpoints: CheckpointManager;
     private readonly _index: CodebaseIndex;
+    private readonly _docsStore: DocsStore;
     private readonly _modeLoader: ModeLoader;
     /** Long-lived owner of the skills Problems-panel collection (per-task managers must not own one). */
     private readonly _skillDiagnostics = new SkillDiagnostics();
@@ -154,6 +156,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         this._sessions = new SessionManager(this._bus);
         this._checkpoints = new CheckpointManager(storageDir);
         this._index = new CodebaseIndex(storageDir);
+        // Doc sets live in extension storage, not the user's repo: a crawl is a cache of
+        // somebody else's content (Phase 3, M20).
+        this._docsStore = new DocsStore(path.join(storageDir, 'docs'));
         this._modeLoader = new ModeLoader();
 
         // Local-first operational telemetry — a second bus subscriber alongside the UI.
@@ -188,6 +193,10 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             historyStore: this._historyStore,
             terminalHistory: this._terminalHistory,
             workspaceRoot: currentWorkspaceRoot,
+            codeGraph: () => this._index.graph,
+            // `@docs` and `@web` (Phase 3, M20/M21) — assembled in the provider-setup
+            // module, which is also what keeps this file inside the ≤700 LOC gate.
+            ...docsAndWebSources(this._docsStore, _secretManager),
         });
         // Best-effort: the dropdown simply offers no skills until discovery lands.
         this._skillsForMentions.discover(this._bundledSkillsDir).catch(() => {});
@@ -323,6 +332,16 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
      * shows what is available and what fired, and shipping every body to the webview on
      * every reload would be pointless traffic.
      */
+    /**
+     * Search configuration for `@web` and the `web_search` tool (Phase 3, M21).
+     *
+     * Read on demand rather than cached: a key added in Settings must work on the next
+     * turn, and a stale cached "no key" would look like the key was rejected. Keys are in
+     * `SecretStorage` with the model config (G2), never in settings.json.
+     */
+    /** The `@docs` store, shared with the `black-ide.addDocs` command (Phase 3, M20). */
+    public get docsStore(): DocsStore { return this._docsStore; }
+
     private _ruleSummaries() {
         return this._rulesLoader.getRules().map(r => ({
             name: r.name,
