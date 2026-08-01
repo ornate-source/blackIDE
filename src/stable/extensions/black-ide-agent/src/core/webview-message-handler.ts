@@ -14,6 +14,7 @@ import { PromptLibrary } from './prompt-library-loader';
 import { parseSlashInvocation, expandPrompt, resolveWorkflow } from './prompt-library';
 import { Rule } from './rules';
 import { ContextProviderRegistry } from './context-providers';
+import { advertisedTools, applyToggle, toolPanelEntries } from './tool-toggles';
 
 /**
  * Router for messages arriving from the chat webview.
@@ -246,6 +247,29 @@ export async function handleWebviewMessage(
             });
             break;
         }
+        case 'toggleTool': {
+            // Session-scoped tool toggles (Phase 2, M10) — the tools half of the panel.
+            // `applyToggle` refuses to disable `complete_task` (the loop's terminator), so
+            // a stale webview cannot wedge the agent through this message.
+            const name = String(data.value?.name || '');
+            if (!name) break;
+            host.session.disabledTools = applyToggle(host.session.disabledTools, name, !!data.value?.enabled);
+            webview.postMessage({ type: 'toolTogglesChanged', value: { disabled: host.session.disabledTools } });
+            break;
+        }
+        case 'requestTools': {
+            // The panel needs the toggleable set *before* the first turn, and it must be
+            // the set for the mode the user is actually in — showing Agent's write tools
+            // while Ask is selected would offer switches for capabilities the mode does
+            // not have. Each turn re-posts the real list from `chat-task.ts`, which also
+            // accounts for browser availability; this pre-turn view is mode-accurate and
+            // says nothing about the browser it cannot check from here.
+            webview.postMessage({
+                type: 'toolsAvailable',
+                value: toolPanelEntries(advertisedForMode(host, String(data.value || 'agent')), host.session.disabledTools),
+            });
+            break;
+        }
         case 'openModeSelector':
             const allModes = host.modeLoader.getSelectableModes();
             const currentMode = data.value || 'agent';
@@ -471,4 +495,19 @@ export async function handleWebviewMessage(
             }
             break;
     }
+}
+
+/**
+ * The tool list for a mode name coming from the webview.
+ *
+ * Resolves the coarse sandbox the same way `chat-task.ts` does — only Ask and Plan are
+ * distinct sandboxes, every other mode (custom or built-in) runs as `agent` and is
+ * shaped by its declared `tools` array. Getting this wrong in either direction is a
+ * lie in the panel, not a cosmetic issue.
+ */
+function advertisedForMode(host: WebviewMessageHost, modeName: string) {
+    const def = host.modeLoader.getMode(modeName || 'agent');
+    const lowered = def?.name.toLowerCase();
+    const coarse: AgentMode = lowered === 'ask' || lowered === 'plan' ? lowered as AgentMode : 'agent';
+    return advertisedTools(coarse, def?.tools);
 }

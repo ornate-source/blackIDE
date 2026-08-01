@@ -87,15 +87,42 @@ export function validateSkill(skill: {
     return problems;
 }
 
-/** Parse a frontmatter array/CSV field: `roles: [backend, testing]` or `roles: backend, testing`. */
+/**
+ * Parse a frontmatter array/CSV field: `roles: [backend, testing]` or `roles: backend, testing`.
+ *
+ * Quote-aware, and that is not a nicety (eval finding F3b, 2026-08-01). Splitting on
+ * every comma broke exactly the entries that needed quoting: the `express` pack's
+ * `triggers: [express, "app.use", middleware, "req, res", router]` became six triggers
+ * including the bare token **`res`**, which — matched as a substring, as triggers were —
+ * fires on "**Res**tyle", "**res**ource", "add**res**s". A backend Express pack was
+ * therefore a candidate on almost any English prompt, in any language's repo. Silent,
+ * and invisible to every test, because a corrupted trigger list still parses.
+ */
 function parseListField(fm: string, key: string): string[] {
     const m = fm.match(new RegExp(`${key}:\\s*(.+)`));
     if (!m) return [];
-    return m[1]
-        .replace(/^\[|\]$/g, '')
-        .split(',')
-        .map(s => s.trim().replace(/["']/g, '').toLowerCase())
+    return splitTopLevel(m[1].trim().replace(/^\[|\]$/g, ''))
+        .map(s => s.trim().replace(/^["']|["']$/g, '').toLowerCase())
         .filter(Boolean);
+}
+
+/** Splits on commas that are not inside single or double quotes. */
+function splitTopLevel(value: string): string[] {
+    const out: string[] = [];
+    let current = '';
+    let quote: string | undefined;
+    for (const ch of value) {
+        if (quote) {
+            if (ch === quote) quote = undefined;
+            else current += ch;
+            continue;
+        }
+        if (ch === '"' || ch === "'") { quote = ch; continue; }
+        if (ch === ',') { out.push(current); current = ''; continue; }
+        current += ch;
+    }
+    out.push(current);
+    return out;
 }
 
 export class SkillsManager {

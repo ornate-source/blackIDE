@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_RERANK_WEIGHTS,
     LexicalReranker,
+    ModelReranker,
     RERANK_DEPTH,
     RerankCandidate,
+    buildRerankPrompt,
+    parseRerankScores,
     proximityScore,
 } from '../src/core/reranker';
 
@@ -153,5 +156,111 @@ describe('proximityScore', () => {
 
     it('handles repeated occurrences without breaking the window scan', () => {
         expect(proximityScore(['a', 'a', 'a', 'b'], new Set(['a', 'b']))).toBeGreaterThan(0);
+    });
+});
+
+/**
+ * The model-backed reranker — Phase 4 closing M17's remaining half.
+ *
+ * M17 shipped the interface and the deterministic fallback because the cross-encoder needs
+ * the `rerank` role, which arrived with the ModelRouter. The assertions here are the two
+ * findings M17 paid for, restated for a stronger signal: the prior still counts, and
+ * failure is a downgrade rather than an error.
+ */
+describe('ModelReranker', () => {
+    const candidates: RerankCandidate[] = [
+        { file: 'a.ts', startLine: 1, text: 'charge the card and store the receipt', rank: 1 },
+        { file: 'b.ts', startLine: 1, text: 'unrelated helper', rank: 2 },
+        { file: 'c.ts', startLine: 1, text: 'refund a charge', rank: 3 },
+    ];
+
+    const scorer = (scores: number[]) => ({ score: async () => scores });
+
+    it('reorders on the model’s judgement', async () => {
+        const reranker = new ModelReranker(scorer([0.1, 0.2, 1.0]));
+        const out = await reranker.rerank('how is a refund processed', candidates);
+        expect(out[0].file).toBe('c.ts');
+    });
+
+    it('does not let the model overturn a strong prior on a small margin', async () => {
+        // M17's most expensive finding: a reranker given free rein made retrieval *worse* —
+        // a rank-40 chunk with every query word overtook a rank-1 chunk with most of them,
+        // costing 8 points of recall@5. The model is better evidence, not unilateral.
+        const reranker = new ModelReranker(scorer([0.7, 0.8, 0.0]));
+        const out = await reranker.rerank('charge', candidates);
+        expect(out[0].file).toBe('a.ts');
+    });
+
+    it('falls back to the lexical ranking when the scorer throws', async () => {
+        // The component most likely to fail in normal use: it needs a key, a network, and a
+        // model that returns parseable output. Search degrading to first-stage quality beats
+        // search returning an error.
+        const reasons: string[] = [];
+        const reranker = new ModelReranker(
+            { score: async () => { throw new Error('401 unauthorized'); } },
+            new LexicalReranker(),
+            undefined,
+            (r) => reasons.push(r),
+        );
+        const out = await reranker.rerank('charge the card', candidates);
+        expect(out).toHaveLength(3);
+        expect(reasons[0]).toMatch(/401/);
+        expect(reasons[0]).toMatch(/lexical/);
+    });
+
+    it('treats a wrong-length score array as a broken scorer, not a partial result', async () => {
+        // Zero-filling would rank real candidates below whatever the model did answer for,
+        // which is worse than not reranking at all.
+        const reasons: string[] = [];
+        const reranker = new ModelReranker(scorer([0.9]), new LexicalReranker(), undefined, (r) => reasons.push(r));
+        const out = await reranker.rerank('charge', candidates);
+        expect(out).toHaveLength(3);
+        expect(reasons[0]).toMatch(/1 scores for 3 candidates/);
+    });
+
+    it('handles an empty candidate list without calling the model', async () => {
+        let called = false;
+        const reranker = new ModelReranker({ score: async () => { called = true; return []; } });
+        expect(await reranker.rerank('q', [])).toEqual([]);
+        expect(called).toBe(false);
+    });
+});
+
+describe('the rerank prompt and parser', () => {
+    const candidates: RerankCandidate[] = [
+        { file: 'a.ts', startLine: 1, text: 'x'.repeat(2000), symbol: 'chargeCard', rank: 1 },
+        { file: 'b.ts', startLine: 1, text: 'y', rank: 2 },
+    ];
+
+    it('scores every candidate in one request', () => {
+        // A true cross-encoder is N calls; at RERANK_DEPTH=20 that is 20 round trips inside
+        // a search the agent is blocked on.
+        const prompt = buildRerankPrompt('how is a card charged', candidates);
+        expect(prompt).toContain('[1]');
+        expect(prompt).toContain('[2]');
+        expect(prompt).toContain('chargeCard');
+        expect(prompt).toContain('how is a card charged');
+        // Snippets are capped so 20 candidates cannot become a 40 KB prompt.
+        expect(prompt.length).toBeLessThan(2500);
+    });
+
+    it('parses scores in the several shapes models actually emit', () => {
+        expect(parseRerankScores('1: 8\n2: 3', 2)).toEqual([0.8, 0.3]);
+        expect(parseRerankScores('[1]: 10\n[2]. 0', 2)).toEqual([1, 0]);
+        expect(parseRerankScores('1 - 5\n2 - 7.5', 2)).toEqual([0.5, 0.75]);
+    });
+
+    it('scores an unrated candidate 0 and clamps out-of-range values', () => {
+        expect(parseRerankScores('1: 9', 3)).toEqual([0.9, 0, 0]);
+        expect(parseRerankScores('1: 99\n2: -4', 2)).toEqual([1, 0]);
+    });
+
+    it('ignores indices outside the candidate range', () => {
+        expect(parseRerankScores('1: 5\n9: 10', 2)).toEqual([0.5, 0]);
+    });
+
+    it('throws when nothing parses, so the caller degrades instead of shuffling', () => {
+        // Ranking everything equal would present a random order as a reranking.
+        expect(() => parseRerankScores('I could not rate these.', 3)).toThrow(/no scores/);
     });
 });

@@ -5,6 +5,7 @@ import { AgentMode, LLMConfigEntry, ChatMessage, ToolCall } from '../core/types'
 import { LLMClient, supportsNativeTools } from '../core/llm-client';
 import { TokenTracker } from '../core/token-tracker';
 import { toolsForMode, renderToolDocs } from '../core/tools';
+import { advertisedTools, applyToolToggles, toolPanelEntries } from '../core/tool-toggles';
 import { CheckpointManager, diffStat } from '../core/checkpoint-manager';
 import { CodebaseIndex } from '../core/codebase-index';
 import { KnowledgeBase } from '../core/knowledge-base';
@@ -13,6 +14,11 @@ import { ModeLoader } from '../core/mode-loader';
 import { SessionManager, TaskEmitter } from '../core/session-manager';
 import { PromptBuilder } from '../core/prompt-builder';
 import { ContextManager } from '../core/context-manager';
+import { loadModelRouter, providerHealth } from '../core/model-router-loader';
+import { noModelGuidance, probeLocalRuntimes } from '../core/local-models';
+import { buildReranker } from '../core/rerank-setup';
+import { buildFastApply } from '../core/fast-apply-setup';
+import { pickSearchSettings } from '../tools/search-providers';
 import { ChatSession } from '../core/chat-session';
 import { Rule, selectRules, renderRules, renderRequestableRules } from '../core/rules';
 import { ContextProviderRegistry } from '../core/context-providers';
@@ -136,14 +142,29 @@ export async function runAgentTask(
     };
 
     try {
-        const configJson = await deps.secretManager.getKey('llm-config');
-        if (!configJson) throw new Error('No LLM configurations found. Configure a model in Settings first.');
-        const configs: LLMConfigEntry[] = JSON.parse(configJson);
-        const modelConfig = configs.find(c => c.id === modelId);
-        if (!modelConfig) throw new Error(`Configuration for model "${modelId}" not found in Settings.`);
-
-        let settings: any = {};
-        try { const s = await deps.secretManager.getKey('general-settings'); if (s) settings = JSON.parse(s); } catch {}
+        // Model resolution goes through the router (Phase 4, M23) rather than reading
+        // `selectedModelId` here. The chat dropdown's `modelId` is passed as the override
+        // because it is a decision about *this* turn and outranks a standing role mapping.
+        const { router, configs, settings } = await loadModelRouter(deps.secretManager);
+        const resolved = router.resolve('chat', modelId);
+        if (!resolved) {
+            // Zero-config first run (M27): before reporting a dead end, look for a local
+            // runtime the user already has. The offer is surfaced, never auto-enabled —
+            // silently routing prompts to a local server the user forgot was running is a
+            // surprise even when nothing leaves the machine.
+            const detections = await probeLocalRuntimes();
+            if (detections.length) {
+                webview.postMessage({
+                    type: 'localModelsAvailable',
+                    value: detections.flatMap(d => d.configs),
+                });
+            }
+            throw new Error(noModelGuidance(detections));
+        }
+        const modelConfig = resolved.config;
+        if (modelId && modelConfig.id !== modelId) {
+            log(`[Model] "${modelId}" is not configured; using ${modelConfig.name} (${resolved.reason}).`);
+        }
         // Reasoning display (B6): gate the reasoning stream on the user's toggle. Default
         // on (unset === true) so existing behavior is preserved; only an explicit `false`
         // silences it. Controls display only — the model still reasons either way.
@@ -173,10 +194,9 @@ export async function runAgentTask(
         if (effectiveMode === 'agent' && classification.kind !== 'question'
             && PlanningEngine.shouldPlan(userPrompt)) effectiveMode = 'plan';
         
-        let tools = toolsForMode(effectiveMode);
-        if (customModeDef && customModeDef.tools && customModeDef.tools.length > 0) {
-            tools = tools.filter(t => customModeDef.tools!.includes(t.name));
-        }
+        // One construction of "what this mode advertises", shared with the session
+        // panel's pre-turn view — see `advertisedTools`.
+        let tools = advertisedTools(effectiveMode, customModeDef?.tools);
 
         // Browser gating (B1/B2): honor the user's settings on the BrowserTool, and hide
         // the browser_* tools entirely unless the browser is enabled AND a Playwright
@@ -186,8 +206,28 @@ export async function runAgentTask(
         const browserUsable = isBrowserUsable(browserSettings, browserRuntimeAvailable());
         tools = filterToolsForBrowser(tools, browserUsable);
 
+        // Session tool toggles (Phase 2, M10). The panel is built from the list as it
+        // stands *here* — after the mode and browser filters, before the user's toggles —
+        // because that is the set of tools the toggles can actually decide about. A
+        // switch for a tool this mode never had would do nothing when flipped off and
+        // appear to grant a forbidden capability when flipped on.
+        const toolsBeforeToggles = tools;
+        tools = applyToolToggles(tools, deps.session.disabledTools);
+        webview.postMessage({
+            type: 'toolsAvailable',
+            value: toolPanelEntries(toolsBeforeToggles, deps.session.disabledTools),
+        });
+        if (deps.session.disabledTools.length) {
+            log(`[Tools] ${deps.session.disabledTools.length} switched off for this session: ${deps.session.disabledTools.join(', ')}`);
+        }
+
         // Everything from here publishes with a task envelope: sessionId, taskId, traceId.
         task = deps.sessions.beginTask(userPrompt, effectiveMode, modelConfig.model || modelId);
+
+        // The rerank stage, now that the `rerank` role exists (Phase 4 closes M17).
+        // Assigned per turn because the user can point the role at a different model
+        // between turns, and re-deriving it costs nothing next to a search.
+        codebaseIndex.reranker = buildReranker(router, settings, (reason) => log(`[Rerank] ${reason}`));
 
         // Incremental: a warm index only re-reads the files that actually changed.
         try {
@@ -354,6 +394,17 @@ These tools degrade to a text search when no language server is available for a 
             // Enforce the selected mode's allowlist at the executor, not just in what we
             // advertise — see the second gate in tool-executor.ts.
             allowedTools: customModeDef?.tools?.length ? customModeDef.tools : undefined,
+            // Fast-apply on the `apply` role (M25). Undefined unless the user named a
+            // model for it, in which case `edit_file`'s `intent` is refused and the model
+            // is asked for explicit blocks — never applied unverified.
+            fastApply: buildFastApply(router, settings, log),
+            // Keyed search with DDG as the default (Phase 3, M21). Read from the same
+            // settings blob the rest of this turn uses, so a key added between turns applies
+            // on the next one.
+            searchSettings: pickSearchSettings(settings),
+            // The user's session toggles, enforced here rather than only unadvertised —
+            // a model that calls a tool it saw two turns ago must still be refused.
+            deniedTools: deps.session.disabledTools,
             scheduleTask: (tc) => deps.scheduleAgentTask(tc, modelId, webview, effectiveMode),
             cancelTask: (id) => deps.scheduler.cancel(id),
             spawnSubagent,
@@ -421,6 +472,11 @@ These tools degrade to a text search when no language server is available for a 
                 if (subModeDef?.tools) {
                     subTools = subTools.filter(t => subModeDef.tools!.includes(t.name));
                 }
+                // A subagent inherits the session's tool toggles for the same reason it
+                // inherits the mode: otherwise `spawn_subagent` is a one-line bypass for
+                // every switch the user flipped. `subDeps` carries `deniedTools` through
+                // `baseDeps`, so the executor gate applies to the delegate as well.
+                subTools = applyToolToggles(subTools, deps.session.disabledTools);
                 
                 const res = await runAgentLoop({
                     modelConfig, system: subSystem, initialMessage: { role: 'user', content: task },
@@ -501,6 +557,20 @@ These tools degrade to a text search when no language server is available for a 
             priorMessages: deps.session.conversation,
             tools, executor, maxLoops, signal,
             context: new ContextManager(modelLimit),
+            // Cross-provider failover (M24). The substitution is announced, never silent:
+            // a run that quietly finishes on a different model produces output the user
+            // cannot account for, and the model is part of what makes a result reproducible.
+            failover: {
+                chain: router.chainFor('chat', modelId),
+                health: providerHealth,
+                onSubstitution: (s) => {
+                    log(`[Model] ${s.from.name} failed (${s.because}) — continuing on ${s.to.name}.`);
+                    webview.postMessage({
+                        type: 'modelSubstituted',
+                        value: { from: s.from.name, to: s.to.name, because: s.because },
+                    });
+                },
+            },
             callbacks: {
                 onTurn: (n, maxTurns) => {
                     emit({ type: 'TurnStarted', turn: n });

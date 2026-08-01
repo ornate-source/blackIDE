@@ -94,7 +94,14 @@ function run() {
     }
 
     // ── 2 & 3. Skill resolution + coverage ───────────────────────────────────
-    const resolution = { total: 0, exact: 0, partial: 0, covered: 0, coverable: 0, failSafe: 0, failSafeTotal: 0, rows: [] };
+    const resolution = {
+        total: 0, exact: 0, partial: 0, covered: 0, coverable: 0, failSafe: 0, failSafeTotal: 0, rows: [],
+        // Wrong-idiom: tasks that name packs which must NOT fire, and the ones where
+        // one did. §4.2 lists this metric as "record"; this is the deterministic half
+        // of it (injecting another framework's idioms). The model-behaviour half —
+        // does it then *write* raw SQL where the ORM is idiomatic — needs the model tier.
+        wrongIdiomTotal: 0, wrongIdiomLeaks: 0, leaks: [],
+    };
     for (const task of tasks) {
         const fx = byFixture.get(task.fixture);
         if (!fx) throw new Error(`Task ${task.id} references unknown fixture "${task.fixture}"`);
@@ -104,6 +111,18 @@ function run() {
             .map(s => s.name);
 
         resolution.total++;
+
+        // Scored independently of expect/gap status, because a task can perfectly well
+        // select the right pack *and* a wrong one alongside it — which is exactly what
+        // F3 looked like: `flask` first, `django` and `fastapi` right behind it.
+        if (task.forbidSkills?.length) {
+            resolution.wrongIdiomTotal++;
+            const fired = task.forbidSkills.filter(f => picked.includes(f));
+            if (fired.length) {
+                resolution.wrongIdiomLeaks++;
+                resolution.leaks.push(`${task.id}: ${fired.join(', ')} must not fire on a ${task.fixture} repo`);
+            }
+        }
 
         if (task.forbidAny) {
             resolution.failSafeTotal++;
@@ -146,6 +165,10 @@ function run() {
         totalTasks: resolution.total,
         failSafePassed: resolution.failSafe,
         failSafeTotal: resolution.failSafeTotal,
+        fixtureCount: fixtures.length,
+        wrongIdiomTasks: resolution.wrongIdiomTotal,
+        wrongIdiomLeaks: resolution.wrongIdiomLeaks,
+        wrongIdiomRatePct: pct(resolution.wrongIdiomLeaks, resolution.wrongIdiomTotal),
     };
 
     return { metrics, detection, resolution };
@@ -156,16 +179,24 @@ function report({ metrics, detection, resolution }) {
     line();
     line('══ Black IDE — Golden-Task Eval ═══════════════════════════════════════');
     line(`  bundled skill packs         ${metrics.bundledPackCount}`);
+    line(`  golden tasks / fixtures     ${metrics.totalTasks} tasks over ${metrics.fixtureCount} fixtures`);
     line(`  stack detection accuracy    ${metrics.stackDetectionAccuracyPct}%  (${metrics.stackDetectionPassed}/${metrics.stackDetectionTotal})`);
     line(`  skill exact-match rate      ${metrics.skillExactMatchPct}%  (of ${metrics.coverableTasks} coverable tasks)`);
     line(`  skill any-hit rate          ${metrics.skillAnyHitPct}%`);
     line(`  known library gaps          ${metrics.knownGapTasks} task(s) with no suitable pack bundled`);
     line(`  fail-safe (no stack→none)   ${metrics.failSafePassed}/${metrics.failSafeTotal}`);
+    line(`  wrong-idiom rate            ${metrics.wrongIdiomRatePct}%  (${metrics.wrongIdiomLeaks} of ${metrics.wrongIdiomTasks} tasks that name a forbidden pack)`);
     line();
 
     if (detection.failures.length) {
         line('  Detection failures:');
         for (const f of detection.failures) line(`    ✗ ${f}`);
+        line();
+    }
+
+    if (resolution.leaks.length) {
+        line('  Wrong-idiom leaks:');
+        for (const l of resolution.leaks) line(`    ✗ ${l}`);
         line();
     }
 
@@ -283,6 +314,7 @@ function gate(result) {
         ['skillExactMatchPct', 'skill exact-match rate', 0],
         ['skillAnyHitPct', 'skill any-hit rate', 0],
         ['failSafePassed', 'fail-safe passes', 0],
+        // Inverted metric: guarded as a *ceiling* below, not a floor.
         ['recallAt5Pct', 'retrieval recall@5', RECALL_TOLERANCE_PCT],
         ['recallAt10Pct', 'retrieval recall@10', RECALL_TOLERANCE_PCT],
         ['recallAt20Pct', 'retrieval recall@20', RECALL_TOLERANCE_PCT],
@@ -291,6 +323,16 @@ function gate(result) {
     const regressions = guarded
         .filter(([k, , tol]) => typeof baseline[k] === 'number' && result.metrics[k] < baseline[k] - tol)
         .map(([k, label]) => `  ✗ ${label}: ${baseline[k]} → ${result.metrics[k]}`);
+
+    /*
+     * Wrong-idiom is a count of failures, so "no regression" means it must not *rise* —
+     * the opposite direction from every other guarded metric. Guarding it with the same
+     * comparator would have made a leak look like an improvement, which is the kind of
+     * inverted-metric bug that only shows up when someone reintroduces the defect.
+     */
+    if (typeof baseline.wrongIdiomLeaks === 'number' && result.metrics.wrongIdiomLeaks > baseline.wrongIdiomLeaks) {
+        regressions.push(`  ✗ wrong-idiom leaks: ${baseline.wrongIdiomLeaks} → ${result.metrics.wrongIdiomLeaks} (a pack fired on a repo of another framework)`);
+    }
 
     if (regressions.length) {
         process.stderr.write('\nFAIL: metrics regressed against eval/baseline.json\n');

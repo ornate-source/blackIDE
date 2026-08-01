@@ -1,6 +1,7 @@
 import {
     LLMConfigEntry, CompletionRequest, AgentTurnResult, ChatMessage, ToolCall, ImagePart, ToolDefinition
 } from './types';
+import { authHeaders, endpointFor, isOpenAICompatible } from './providers';
 
 // ─── Multi-Provider AI Client ───────────────────────────────────────────────
 // One structured entry point (streamAgentTurn) that speaks each provider's
@@ -13,8 +14,9 @@ export function isAbortError(err: any): boolean {
 }
 
 export function supportsNativeTools(config: LLMConfigEntry): boolean {
-    return config.type === 'google' || config.type === 'claude'
-        || config.type === 'openai' || config.type === 'openrouter';
+    // Every OpenAI-compatible provider (Phase 4, M26) speaks the same `tools` parameter,
+    // so the list lives in one place rather than growing an `||` per provider here.
+    return config.type === 'google' || config.type === 'claude' || isOpenAICompatible(config.type);
 }
 
 async function fetchWithRetry(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
@@ -74,11 +76,14 @@ export class LLMClient {
         return result.text;
     }
 
-    // ─── OpenAI-compatible (OpenAI, OpenRouter) ─────────────────────────────
+    // ─── OpenAI-compatible (OpenAI, OpenRouter, DeepSeek, Groq, Mistral, xAI,
+    //     Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure) ────────────────
     private static async openAITurn(config: LLMConfigEntry, request: CompletionRequest, onToken: (t: string) => void, signal?: AbortSignal): Promise<AgentTurnResult> {
-        const url = config.url || 'https://api.openai.com/v1/chat/completions';
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+        const url = endpointFor(config) || 'https://api.openai.com/v1/chat/completions';
+        // Auth shape comes from the provider registry: Azure uses `api-key`, everyone
+        // else uses a bearer token, and sending the wrong one produces a 401 that is
+        // indistinguishable from a bad key.
+        const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders(config) };
         if (config.type === 'openrouter') {
             headers['HTTP-Referer'] = 'https://github.com/blackide';
             headers['X-Title'] = 'Black IDE';

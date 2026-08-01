@@ -58,11 +58,40 @@ function firstControlCharacter(text: string): { index: number; code: number } | 
     return undefined;
 }
 
+/**
+ * The roadmap docs are checked too, and finding out why is the best argument for this
+ * guard existing at all (2026-08-01).
+ *
+ * `docs/notes/enhancement.md` contained a **literal NUL byte** — inside the very
+ * paragraph describing the Phase 3 defect where a literal NUL byte shipped in source.
+ * Writing "the escape `'\0'`" as an actual escape produced an actual NUL, which made the
+ * roadmap binary to `grep`. It was found the same way as the original: a search that
+ * plainly should have matched silently returned nothing.
+ *
+ * These files are the project's shared record and are read with exactly the tools the byte
+ * defeats, so they are held to the same rule as source.
+ */
+// __tests__ → black-ide-agent → extensions → stable → src → repo root.
+const DOCS = path.join(__dirname, '..', '..', '..', '..', '..', 'docs', 'notes');
+
+function markdownFiles(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir, { withFileTypes: true })
+        .filter(e => e.isFile() && e.name.endsWith('.md'))
+        .map(e => path.join(dir, e.name));
+}
+
 describe('source hygiene', () => {
-    const files = [...sourceFiles(SRC), ...sourceFiles(EVAL), ...sourceFiles(__dirname)];
+    const files = [...sourceFiles(SRC), ...sourceFiles(EVAL), ...sourceFiles(__dirname), ...markdownFiles(DOCS)];
 
     it('finds source files to check', () => {
         expect(files.length).toBeGreaterThan(20);
+    });
+
+    it('finds the roadmap docs to check', () => {
+        // The docs path is relative to this package, so a repo re-layout would silently
+        // reduce this guard to source-only. Asserting the count keeps that visible.
+        expect(markdownFiles(DOCS).length).toBeGreaterThanOrEqual(3);
     });
 
     it('contains no raw control characters', () => {
@@ -76,5 +105,27 @@ describe('source hygiene', () => {
             offenders.push(`${path.relative(SRC, file)}:${line} contains U+${code} — write it as an escape`);
         }
         expect(offenders).toEqual([]);
+    });
+});
+
+/**
+ * The `extension.ts` size gate (G10, Phase 0's M2).
+ *
+ * Added 2026-08-01, after wiring three `@docs`/`@web` provider functions inline took the
+ * file from 652 to **704 lines** — past a gate that three revisions of the roadmap discuss
+ * and nothing enforced. It was caught by hand, which is exactly the wrong mechanism: the
+ * file went to 2537 lines the first time by growing a few lines per feature, and every
+ * phase since has had a reason to add "just this bit of wiring" to it.
+ *
+ * The number is the gate from the roadmap, not the current size — there is deliberately
+ * headroom, so a real need can spend it rather than being blocked.
+ */
+describe('extension entry point stays small', () => {
+    const MAX_LINES = 700;
+
+    it(`extension.ts is at most ${MAX_LINES} lines`, () => {
+        const file = path.join(SRC, 'extension.ts');
+        const lines = fs.readFileSync(file, 'utf8').split('\n').length;
+        expect(lines, `extension.ts is ${lines} lines; extract the new wiring into a module instead`).toBeLessThanOrEqual(MAX_LINES);
     });
 });

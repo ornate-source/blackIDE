@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { runAgentLoop, LoopCallbacks } from './agent-loop';
+import { providerHealth } from '../core/model-router-loader';
 import { AgentToolExecutor } from './tool-executor';
 import { LLMConfigEntry, ToolDefinition, ChatMessage } from '../core/types';
 import { CustomMode } from '../core/mode-loader';
@@ -111,6 +112,26 @@ export function resolveModelForPhase(
     const overrideId = phaseModelOverrides[modeId];
     if (!overrideId) return defaultModel;
     return availableModels.find(m => m.id === overrideId) ?? defaultModel;
+}
+
+/**
+ * The failover order for a phase: its own model, then the healthy alternatives with a
+ * *different provider* first.
+ *
+ * Same reasoning as `ModelRouter.chainFor` — when a provider is down, another of its
+ * models is behind the same outage. This is a local build rather than a router call
+ * because the orchestrator is handed `availableModels` and a resolved per-phase model
+ * already, and threading a router through five call sites to re-derive what it has would
+ * be more coupling for the same list. Pure, so it is unit-testable with the rest of the
+ * phase-model logic.
+ */
+export function failoverChain(primary: LLMConfigEntry, available: LLMConfigEntry[]): LLMConfigEntry[] {
+    const rest = available.filter(m => m.id !== primary.id && m.enabled !== false);
+    return [
+        primary,
+        ...rest.filter(m => m.type !== primary.type),
+        ...rest.filter(m => m.type === primary.type),
+    ];
 }
 
 /**
@@ -257,7 +278,23 @@ export class PipelineOrchestrator {
                     executor,
                     maxLoops: mode.maxIterations ?? 15,
                     signal: this.signal,
-                    callbacks: this.callbacks.loopCallbacks
+                    callbacks: this.callbacks.loopCallbacks,
+                    /*
+                     * Cross-provider failover (Phase 4, M24) — and it matters more here
+                     * than in chat. A pipeline run is unattended and minutes long across
+                     * seven phases; before this, one 529 from the provider in phase five
+                     * failed the whole run, discarding four phases of completed work. The
+                     * chain is built from the models the user already configured, and a
+                     * substitution is reported as a phase log line rather than silently,
+                     * because the model is part of what makes a phase's output explainable.
+                     */
+                    failover: {
+                        chain: failoverChain(modelConfig, this.availableModels),
+                        health: providerHealth,
+                        onSubstitution: (s) => this.callbacks.loopCallbacks?.onToken?.(
+                            `\n[Model] ${s.from.name} failed (${s.because}) — continuing on ${s.to.name}.\n`,
+                        ),
+                    },
                 });
 
                 if (result.aborted) {

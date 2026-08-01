@@ -79,6 +79,15 @@ export class ChatSession {
     requestedRules: string[] = [];
 
     /**
+     * Tools the user switched off for this session (Phase 2, M10).
+     *
+     * Session-scoped for the same reason as the rule toggles above. Enforced at the
+     * executor as well as removed from the advertised list — see `core/tool-toggles.ts`
+     * for why both are needed.
+     */
+    disabledTools: string[] = [];
+
+    /**
      * What actually fired on the last turn, as produced by `selectRules` itself.
      * The session panel renders this array directly rather than recomputing, which is
      * what makes "what the panel shows" and "what the model was sent" the same thing.

@@ -52,6 +52,42 @@ function safeJson(text: string | undefined): any {
  *                  project files whose name varies, use the keys 'csproj'/'sln' with any one
  *                  matching file's content.
  */
+/**
+ * Framework tokens that are **mutually-exclusive alternatives** within a language.
+ *
+ * The distinction this list draws is not "is it a framework" but "does choosing it rule
+ * the others out". Two of these in one language means one of them is wrong: a repo is
+ * on Nest *or* Express, Django *or* Flask, Next *or* React Native. That is what makes
+ * the token usable as a *pack identity* by `resolveSkills` (eval finding F3, 2026-08-01):
+ * a pack named after one of these must have that framework actually detected before it
+ * may be injected, or a TypeScript repo receives every TypeScript framework's idioms.
+ *
+ * Deliberately excluded, because they *co-exist* rather than compete, and requiring a
+ * detection for them would suppress packs that legitimately apply:
+ *   - test runners and libraries (`jest`, `pytest`) — a repo can use any of them with
+ *     any framework, and the profiler only sometimes sees them;
+ *   - additive libraries (`expo`, `django-rest-framework`, `entity-framework-core`,
+ *     `gorm`) — they extend a framework rather than replacing one;
+ *   - infrastructure (`docker`, `github-actions`, `terraform`) — orthogonal to all of it;
+ *   - bare language/platform tokens (`dotnet`, `rust`, `go`) — `fw()` emits these for
+ *     manifest-only detections, so treating them as identities would make a Cargo repo
+ *     with no web framework reject a Rust pack.
+ *
+ * Kept in the profiler rather than the resolver because the profiler is what emits
+ * them; `__tests__/project-profiler.test.ts` asserts the two cannot drift apart.
+ */
+export const FRAMEWORK_IDENTITY_TOKENS: readonly string[] = [
+    // JS/TS
+    'nextjs', 'react', 'react-native', 'angular', 'vue', 'svelte-kit', 'nestjs', 'express', 'fastify',
+    // Python
+    'django', 'fastapi', 'flask',
+    // .NET / Ruby / Rust / Go / JVM / PHP / Dart
+    'aspnet-core', 'rails', 'axum', 'actix-web', 'rocket', 'gin', 'echo', 'fiber',
+    'spring-boot', 'laravel', 'symfony', 'flutter',
+    // Styling: a pack of Tailwind idioms is wrong for a repo that does not use Tailwind.
+    'tailwind',
+];
+
 export function detectProjectProfile(files: string[], manifests: Record<string, string> = {}): ProjectProfile {
     const languages: string[] = [];
     const frameworks: string[] = [];

@@ -193,3 +193,119 @@ export function proximityScore(tokens: string[], matched: Set<string>): number {
 function unique(values: string[]): string[] {
     return Array.from(new Set(values));
 }
+
+// ─── Model-backed reranker (Phase 4 closes M17) ─────────────────────────────
+//
+// The cross-encoder the roadmap asked for, now that the `rerank` role exists. It scores
+// each candidate against the query with a model and blends that score with the same
+// first-stage prior the lexical reranker uses.
+//
+// ── Blending, not replacing, is the lesson from M17 ──────────────────────────
+// M17's most expensive finding was that a reranker given free rein makes retrieval
+// *worse*: a first draft let a rank-40 chunk with every query word overtake a rank-1
+// chunk with most of them and cost 8 points of recall@5. A model's relevance judgement is
+// better evidence than a lexical score, but it is not so much better that it should
+// discard a well-founded ranking over the same text — so the model score enters as a
+// signal with a weight, exactly as `coverage` does, and the prior still counts.
+//
+// ── Failure is a downgrade, never an error ───────────────────────────────────
+// This is the component most likely to fail in normal use: it needs a key, a network and
+// a model that returns parseable output. Every one of those failures falls back to the
+// lexical ranking with a warning, because search that degrades to first-stage quality
+// beats search that returns an error — the property `CodebaseIndex` already relies on.
+
+export interface RerankScorer {
+    /** Returns one score per candidate, in the same order. Higher is more relevant. */
+    score(query: string, candidates: RerankCandidate[]): Promise<number[]>;
+}
+
+/**
+ * Weight of the model's judgement relative to the prior.
+ *
+ * Set to the same magnitude as the prior rather than above it: the model is the better
+ * signal, so it should be able to *move* a candidate several places, and it should not be
+ * able to lift the 20th candidate over the 1st on its own. Those two sentences are the
+ * whole tuning rationale, and they are the M17 finding restated for a stronger signal.
+ */
+export const DEFAULT_MODEL_RERANK_WEIGHT = 3.0;
+
+export class ModelReranker implements Reranker {
+    readonly id = 'model';
+
+    constructor(
+        private readonly scorer: RerankScorer,
+        private readonly fallback: Reranker = new LexicalReranker(),
+        private readonly modelWeight = DEFAULT_MODEL_RERANK_WEIGHT,
+        private readonly onDegrade?: (reason: string) => void,
+    ) {}
+
+    async rerank(query: string, candidates: RerankCandidate[]): Promise<RerankedCandidate[]> {
+        if (!candidates.length) return [];
+        try {
+            const scores = await this.scorer.score(query, candidates);
+            // A scorer that returns the wrong shape is a broken scorer, not a partial
+            // result: silently zero-filling would rank real candidates below whatever the
+            // model did answer for, which is worse than not reranking at all.
+            if (!Array.isArray(scores) || scores.length !== candidates.length) {
+                throw new Error(`scorer returned ${Array.isArray(scores) ? scores.length : 'non-array'} scores for ${candidates.length} candidates`);
+            }
+            return candidates
+                .map((candidate, i) => ({
+                    ...candidate,
+                    score: this.modelWeight * clamp01(scores[i]) + DEFAULT_RERANK_WEIGHTS.prior * (1 / Math.log2(candidate.rank + 2)),
+                }))
+                .sort((a, b) => b.score - a.score);
+        } catch (err: any) {
+            this.onDegrade?.(`rerank model unavailable (${err?.message || err}); using the lexical reranker`);
+            return this.fallback.rerank(query, candidates);
+        }
+    }
+}
+
+/**
+ * Prompt and parser for the scoring call.
+ *
+ * Scores all candidates in **one** request rather than one request per candidate: a true
+ * cross-encoder pass is N calls, and at RERANK_DEPTH=20 that is 20 round trips inside a
+ * search a user is waiting on. One call with numbered snippets gets the same ordering
+ * signal at 1/20th the latency, which is the trade that makes this usable at all.
+ */
+export function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string {
+    const items = candidates.map((c, i) =>
+        `[${i + 1}] ${c.file}${c.symbol ? ` — ${c.symbol}` : ''}\n${c.text.slice(0, 800)}`,
+    );
+    return [
+        'Rate how well each code snippet answers the question. Output one line per snippet,',
+        'formatted exactly as `<number>: <score 0-10>`, nothing else.',
+        '',
+        `Question: ${query}`,
+        '',
+        ...items,
+    ].join('\n');
+}
+
+/**
+ * Parses `1: 8` lines into normalised scores.
+ *
+ * Missing lines score 0 — a candidate the model declined to rate is not evidence of
+ * relevance — but a response that rates *nothing* throws, so `ModelReranker` degrades to
+ * the lexical pass instead of silently ranking everything equal, which would present a
+ * random order as a reranking.
+ */
+export function parseRerankScores(response: string, count: number): number[] {
+    const scores = new Array<number>(count).fill(0);
+    let seen = 0;
+    for (const match of response.matchAll(/^\s*\[?(\d+)\]?\s*[:.)-]\s*(\d+(?:\.\d+)?)/gm)) {
+        const index = Number(match[1]) - 1;
+        if (index < 0 || index >= count) continue;
+        scores[index] = clamp01(Number(match[2]) / 10);
+        seen++;
+    }
+    if (seen === 0) throw new Error('no scores could be parsed from the rerank response');
+    return scores;
+}
+
+function clamp01(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(1, value));
+}
