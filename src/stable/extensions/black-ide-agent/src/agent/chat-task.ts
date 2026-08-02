@@ -19,6 +19,7 @@ import { noModelGuidance, probeLocalRuntimes } from '../core/local-models';
 import { buildReranker } from '../core/rerank-setup';
 import { buildFastApply } from '../core/fast-apply-setup';
 import { createSummarizer } from '../core/summarizer';
+import { describeMindmap, readMindmap, renderMindmapContext } from '../core/mindmap-readback';
 import { pickSearchSettings } from '../tools/search-providers';
 import { ChatSession } from '../core/chat-session';
 import { Rule, selectRules, renderRules, renderRequestableRules } from '../core/rules';
@@ -263,6 +264,20 @@ export async function runAgentTask(
         await hooks.loadFromWorkspace(rootPath);
         const knowledgeContext = await knowledgeStore.getRelevantContext(userPrompt);
 
+        /*
+         * Mindmap read-back (Phase 8, M46).
+         *
+         * The write half has shipped since plan.md's Phase 5 — every pipeline run syncs the
+         * detected stack into `project_mindmap.md` — and nothing has ever read it. So the
+         * file has been a write-only log: the agent recomputes what it already wrote down,
+         * and any convention a *human* added to it ("we use the repository pattern, not the
+         * ORM directly") has been invisible to every run, in a file the agent itself
+         * maintains and the user therefore assumes it reads.
+         */
+        const mindmap = readMindmap(rootPath);
+        const mindmapContext = renderMindmapContext(mindmap);
+        if (mindmapContext) log(`[Memory] ${describeMindmap(mindmap)}`);
+
         // Rules v2 (Phase 2). Was a single unconditional read of `.blackide/AGENTS.md`;
         // now every rule source is resolved and only the ones that apply to *this* turn
         // are injected. `AGENTS.md` is still loaded — as an always-on project rule — so a
@@ -337,6 +352,10 @@ These tools degrade to a text search when no language server is available for a 
             .add({ name: 'skills', budgetTokens: 1500, content: skillInstructions })
             .add({ name: 'mcp_tools', budgetTokens: 1200, content: mcpToolDocs ? `External MCP tools available:\n${mcpToolDocs}` : '' })
             .add({ name: 'knowledge', budgetTokens: 2000, content: knowledgeContext })
+            // Budgeted separately from `knowledge` for the reason Phase 2 settled for rules
+            // and skills: one merged section would have to arbitrate two unrelated ranking
+            // schemes into a single allowance, and neither can starve the other this way.
+            .add({ name: 'mindmap', budgetTokens: 800, content: mindmapContext })
             .build(promptBudget);
 
         const system = built.text;

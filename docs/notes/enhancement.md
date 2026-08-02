@@ -2,9 +2,9 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 9 (2026-08-02)** — **phases 0–7 delivered**; **40 of 71 gaps
-addressed — 38 complete and two partial (M38's review panel and M40's pipeline/visual halves)**.
-Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
+**Status:** **In progress · rev 10 (2026-08-02)** — **phases 0–8 delivered**; **46 of 71 gaps
+addressed — 43 complete and three partial (M38's review panel, M40's pipeline/visual halves, and
+M45's memory UI)**. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
@@ -18,7 +18,8 @@ Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. 
 | 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
 | 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
 | 7 — Artifacts, steering & verification | 🟡 | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction. **Outstanding:** the artifact *review panel* is not rendered, and verification runs for task agents but not yet for pipeline runs or visual evidence. |
-| 8–12 | — | M41–M71 | Not started. |
+| 8 — Memory v2 | 🟡 | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back, closing a write-only loop open since plan.md's Phase 5. **Outstanding:** M45's memory visualization panel, and end-of-turn extraction is not yet driven by a model. |
+| 9–12 | — | M47–M71 | Not started. |
 
 **Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
 suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
@@ -127,6 +128,31 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 10 (2026-08-02).** Delivery: **Phase 8 (M41–M46)** — four complete, M41
+> partial, M45 not started. Tally **46 of 71**. Three of the phase's four gate clauses are met; the
+> fourth is a retrieval-quality measurement with no corpus behind it yet.
+>
+> **The byte-stable markdown round-trip is the clause worth naming.** ADR 007 makes the markdown the
+> authority and the typed index derived, and byte-stability is what stops that inverting: the file is
+> in the user's repo and therefore in their diffs, so a projection that churns it on every pass is one
+> they stop reading and then delete.
+>
+> **Two decisions recorded rather than absorbed.** Contradiction similarity is **lexical, not
+> embedding-based** — E7 specifies embeddings, and using them would make every memory write a network
+> call, so the feature guaranteeing memories are never silently lost would acquire a failure mode
+> that silently loses them. And **M41's extractor is not wired**: the bands and the filter exist, but
+> the model call that turns a finished turn into candidates belongs in §4.6's opt-in tier rather than
+> as a per-turn cost nobody asked for.
+>
+> **A defect the gate caught in its own implementation:** decay advanced one stage per call, so an
+> entry's state depended on how often the consolidation job had run rather than on elapsed time.
+> Reopening a project after a gap gave a different answer from leaving the editor open.
+>
+> **And the suite's only flaky test, fixed rather than tolerated.** Phase 3's index-build budget
+> measures wall clock inside a 46-file worker pool, so it had started measuring the other suites
+> (~1.2 s alone, over the 2 s gate under contention). Best-of-three now: contention can only make a
+> sample slower, and a genuine regression still fails all three.
+>
 > **What changed in rev 9 (2026-08-02).** Delivery: **Phase 7 (M38–M40)** — one complete, two
 > partial — plus the closure of Phase 6's partial, M37. Mid-run steering, the verify contract, and
 > typed artifacts. Tally **40 of 71**.
@@ -357,8 +383,8 @@ the argument for the eval tier, restated with each finding.
 | C3 | Bundled skill packs | 🔴 | 🟡 | 16 shipped: `django`, `fastapi`, `flask`, `express`, `aspnet-core`, `axum`, `gin`, `rails`, `react`, `nextjs`, `angular`, `react-native`, `tailwind`, `jest`, `pytest`, `a11y-wcag-aria`. Missing all of Wave 2. → **E9** |
 | C4 | Rules engine (glob-scoped, activation modes, per-session toggles) | 🟢 | ✅ | **Shipped (Phase 2, M9/M10).** `core/rules.ts` + `core/rules-loader.ts`: `.blackide/rules/*.md`, four activation modes (`always`/`glob`/`agent-requested`/`manual`), three scopes, priority, own glob engine, hot-reload, Problems-panel diagnostics, `AGENTS.md` back-compat. Session panel toggles rules and reports what fired. **At Cursor's and Continue's bar**, with `agent-requested` (budget-deferred bodies) as a small edge. **Tool toggles landed 2026-08-01 (M10)** — enforced at the executor, not advertised — so the panel is complete. |
 | C5 | Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | ✅ | `core/knowledge-base.ts` (308 LOC), `memory/knowledge-store.ts`. Human-readable markdown is a real strength (ADR 007). |
-| C6 | **Automatic memory extraction / dedup / decay / contradiction detection** | 🔴 | ❌ | `remember` tool is model-invoked only — nothing extracts facts automatically, nothing ages them out, nothing detects contradictions. Cursor Memories; OPIDE Engram (3-tier, decay, contradiction detection, idle consolidation). → **E7** |
-| C7 | Mindmap sync (`project_mindmap.md`) | 🟡 | ✅ | Sectioned upsert of detected stack shipped (plan.md Phase 5). Read-back is still thin. |
+| C6 | **Automatic memory extraction / dedup / decay / contradiction detection** | 🟡 | 🟡 | **Phase 8 (M41–M44).** Typed tiered entries beside a byte-stable markdown projection; identity-based dedup (the old SHA-256 store treated "Use pnpm." and "Use pnpm" as two memories); decay that demotes then archives and never deletes; contradiction detection that **asks and never overwrites**; idempotent consolidation. Two tiers not three — OPIDE's sensory tier is a second name for the transcript `ContextManager` already bounds. **Still 🟡:** the extractor that produces candidates from a turn needs a model call and is not wired, so nothing is yet extracted *automatically*. |
+| C7 | Mindmap sync (`project_mindmap.md`) | 🟢 | ✅ | **Read-back shipped (Phase 8, M46),** closing plan.md's Phase 5 follow-up. The file had been write-only since then: the agent recomputed what it had written and never saw a convention a human added to it. Now injected as its own budgeted prompt section, with auto-sync blocks excluded so a run does not re-read its own history. |
 | C8 | Team / org-level shared rules | 🟢 | ✅ | **Shipped (Phase 2, M11).** `team-rules/` or `$BLACKIDE_TEAM_RULES`; injected first so they survive truncation, and not user-disableable. At Cursor Team Rules' bar. *(Team-level shared **memory** is separate and still absent — see C6.)* |
 
 ### 1.4 Retrieval & context
@@ -451,7 +477,7 @@ the argument for the eval tier, restated with each finding.
 | **Rules & project config** | 🟢 | Cursor, Continue | **At bar** as of Phase 2 — glob/activation/scope rules, team rules, prompt library, session panel. |
 | **Test integration** | 🟢 | A-Coder | **At/above bar.** Failures-only reporting from the detected stack. |
 | Retrieval & code graph | 🟢 | OPIDE, Cursor | **At bar as of Phase 3.** Symbol chunking, a code graph with impact analysis, rerank, 11 context providers, `@docs`. recall@5 84.7→91.2 · @10 93.1→97.2 · @20 100. |
-| Memory | 🔴 | Cursor, OPIDE | **We are behind.** Durable markdown store, but nothing extracts, ages, dedups or contradicts. → Phase 8 |
+| Memory | 🟡 | Cursor, OPIDE | **Closing as of Phase 8.** Ages, dedups, contradicts and consolidates — with a markdown projection that round-trips byte-stable, which neither competitor documents. Behind on the one thing the grade turns on: extraction is not yet automatic. |
 | Daily-driver autocomplete | 🟢 | Cursor | **At bar on capability as of Phase 5** — next-edit with cross-file jump, terminal `Cmd+K`. Still behind on the *model*: Cursor trains one for this and we route a role. |
 | Parallel task agents | 🟢 | Antigravity, Cursor | **At bar as of Phase 6.** N independent agents, one governor, an inbox, and an apply gate neither competitor makes explicit. *Steering* (mid-run correction) is still absent — Phase 7. |
 | Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
@@ -907,12 +933,12 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M38 | Typed artifacts + review panel | P1 | E4 | 7 🟡 | `core/artifacts.ts` + `agent/artifact-store.ts` — seven types incl. binary, run association, comments, and an index that **rebuilds from filenames** when lost. **Partial:** the review panel itself is not rendered; artifacts are stored and typed but not yet browsable |
 | M39 | Mid-run steering (comment-on-artifact → inject) | P1 | E4 | 7 ✅ | `core/steering.ts` + a drain at the top of every loop turn; a per-agent queue so a correction meant for one of four runs cannot reach the other three. Never lands between a `tool_use` and its `tool_result`, never produces two consecutive user turns |
 | M40 | Verification loop with evidence (tests + screenshots + recordings) | P1 | E5 | 7 🟡 | `core/verification.ts` + `agent/verify-runner.ts` — four outcomes (an unrunnable suite is **not** a pass), one bounded self-correction, a `test-report` artifact on every path. **Partial:** wired for task agents only; pipeline runs and visual capture are not |
-| M41 | Automatic memory extraction | P1 | E7 | 8 |
-| M42 | Contradiction detection on memory write | P2 | E7 | 8 |
-| M43 | Memory decay / archive | P2 | E7 | 8 |
-| M44 | Idle consolidation job | P2 | E7 | 8 |
-| M45 | Memory visualization UI | P3 | E7 | 8 |
-| M46 | Mindmap read-back by agents | P1 | E7 | 8 |
+| M41 | Automatic memory extraction | P1 | E7 | 8 🟡 | `sortCandidates` — three bands (auto ≥0.8 / confirm ≥0.5 / drop) plus a content filter that rejects transcript narration, task restatements and questions. **Partial:** the extractor that *produces* candidates from a turn needs a model call and is not wired |
+| M42 | Contradiction detection on memory write | P2 | E7 | 8 ✅ | similarity **and** conflict, because either alone is useless; `decideWrite` returns `ask` and `supersede` archives rather than deletes. Lexical rather than embedding-based **by decision** — a memory write that can fail on a rate limit is one that silently does not happen |
+| M43 | Memory decay / archive | P2 | E7 | 8 ✅ | demote → archive, never hard-delete; high-confidence and used entries exempt. The stage is a function of elapsed time, not of how often the job ran |
+| M44 | Idle consolidation job | P2 | E7 | 8 ✅ | merges near-duplicates by normalised identity; **idempotent and order-independent**, which is what the gate asks and what a max/sum/min merge rule buys |
+| M45 | Memory visualization UI | P3 | E7 | 8 ❌ | not started. The data it would render — entries, confidence, provenance, status — all exists |
+| M46 | Mindmap read-back by agents | P1 | E7 | 8 ✅ | `core/mindmap-readback.ts`, injected as its own budgeted prompt section; auto-sync blocks excluded so the agent does not re-read its own history |
 | M47 | Reviewer agent on the working diff | P1 | E8 | 9 |
 | M48 | Opt-in PR review via `gh` | P2 | E8 | 9 |
 | M49 | MCP streamable HTTP + SSE + OAuth | P1 | E12 | 9 |
@@ -946,7 +972,7 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–7): 40 of 71 — 38 complete, two partial** (2026-08-02). The four
+**Delivered so far (Phases 0–8): 46 of 71 — 43 complete, three partial** (2026-08-02). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
@@ -2289,6 +2315,91 @@ evidence; a deliberately broken change is caught by verify, not by the user.
 **Gate:** a fact stated in session 1 is retrieved in session 3 without re-derivation (≥70% of
 eligible facts); contradicting a fact prompts rather than overwrites; consolidation is idempotent;
 the markdown stays human-editable and round-trips byte-stable.
+
+
+> ### 🟡 Delivered 2026-08-02 — four of six complete, M41 partial, M45 not started
+> `core/memory-model.ts` · `core/memory-markdown.ts` · `core/memory-lifecycle.ts` ·
+> `core/mindmap-readback.ts` · `memory/memory-store.ts` · mindmap injected as its own budgeted
+> prompt section in `agent/chat-task.ts`.
+> vitest **988/988 / 46 suites** (was 920/44) · harness **418/418** · eval green, no regression ·
+> `tsc -b` clean · webview builds.
+>
+> **Gate status.** Three of four clauses are decidable without a model, and all three are met.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | The markdown stays human-editable and round-trips byte-stable | **met** | `__tests__/memory-v2.test.ts` — stable over repeated passes, preserves the user's own prose above *and* below, survives a missing trailing newline and a malformed metadata comment |
+> | Contradicting a fact prompts rather than overwrites | **met** | `decideWrite` returns `ask`; `supersede` archives the old entry and keeps its text |
+> | Consolidation is idempotent | **met** | identical output on the second and third run, and independent of input order |
+> | A fact from session 1 is retrieved in session 3 (≥70% of eligible) | **not measured** | a retrieval-quality number; needs an eval corpus of multi-session facts, which does not exist yet |
+>
+> **Byte-stability is the clause that protects a file the user owns.** ADR 007 makes the markdown
+> authoritative and the typed index derived, and the property that keeps "derived" from quietly
+> becoming "authoritative" is that the projection can be re-rendered without changing a byte. The
+> file lives in the user's repo, so it lives in their diffs: a projection that reorders entries or
+> rewrites `0.80` as `0.8` produces a spurious diff on every consolidation pass, and a generated file
+> that churns without changing meaning is one people stop reading, then stop trusting, then delete.
+> Two consequences fall out of that and neither is decoration — confidences are rendered at fixed
+> width (`0.6 * 0.9` is `0.5399999999999999`, and decay multiplies confidences), and anything the
+> parser does not understand is preserved verbatim, because a projection that drops what it cannot
+> model is one that eats the user's notes.
+>
+> **M42 — two signals, because either alone is useless.** Similarity finds entries about the same
+> subject; conflict decides whether they disagree. Similarity alone flags every restatement of a fact
+> as a contradiction. Conflict alone flags "never use tabs" against "never use `any`", since both
+> contain a negator. Both are asserted.
+>
+> **The similarity is lexical, not embedding-based, and that is a decision rather than a shortcut.**
+> E7 specifies "embedding-near + negation heuristic". Embeddings would make contradiction detection a
+> network call on the `embed` role *on every memory write* — and a write that can fail on a rate
+> limit is a write that silently does not happen, which turns the one feature guaranteeing memories
+> are never silently lost into one that silently loses them. The lexical form catches the case that
+> actually occurs (the same subject asserted two ways) with no failure mode; the embedding variant
+> stays available for when the store is large enough to need it.
+>
+> **M43 — a defect the idempotency assertion caught.** The first decay implementation advanced one
+> stage per call, so an entry idle for a year was `demoted` if the consolidation job had run once and
+> `archived` if it had run twice. The store's contents depended on *job scheduling*: reopening a
+> project after a long gap gave a different answer from having left the editor open. Decay is now a
+> function of elapsed time, which is both correct and what makes it a fixed point.
+>
+> **And decay never hard-deletes**, because the markdown is a user file. Archiving keeps the line and
+> marks it — visible, reversible, diffable. Deleting a line from a document somebody owns is not
+> decay, it is editing.
+>
+> **M44 — idempotent means order-independent.** The merge picks max confidence, summed uses, earliest
+> creation and latest use, all of which are commutative; a rule as ordinary as "keep the first one's
+> confidence" would make the result depend on iteration order, and the second run would then differ
+> from the first. Identity is the *normalised* text rather than the id, because entries a human typed
+> by hand have no id, and two hand-written lines differing only by a full stop are exactly the
+> duplicates this exists for. That is also the deduplication the existing SHA-256 store could not do:
+> it hashed raw content, so "Use pnpm, not npm." and "Use pnpm, not npm" were two memories.
+>
+> **M46 closes a loop that has been open since plan.md's Phase 5.** The mindmap's *write* half has
+> always worked — every pipeline run syncs the detected stack into `project_mindmap.md` — and nothing
+> ever read it, so the file was a write-only log. The agent recomputed what it had already written
+> down, and any convention a *human* added to it ("we use the repository pattern, not the ORM
+> directly") was invisible to every run, in a file the agent itself maintains and the user therefore
+> assumes it reads. It is now its own budgeted prompt section, with auto-sync blocks excluded so the
+> agent does not spend its allowance re-reading its own history.
+>
+> **Why M41 is 🟡.** The bands, the content filter and the store are built and tested; what is not
+> wired is the thing that *produces* candidates from a finished turn. That is a model call — "what
+> did this conversation establish about the project" — and it belongs in the same opt-in tier as
+> §4.6's other model-dependent work rather than as a per-turn cost the user did not ask for. The
+> filter that matters most is already in place: automatic extraction fails not by missing a fact but
+> by remembering a hundred worthless ones, and a store full of "the user asked me to fix a bug" costs
+> context on every turn while burying the three entries that matter.
+>
+> **A flaky gate, found and fixed rather than tolerated.** `index-build-budget` — Phase 3's ≤2 s per
+> 5 000 files — became the suite's only intermittent failure, failing roughly two runs in three. It
+> measures **wall clock** while vitest runs 46 files in a worker pool, so as the suite grew from 32
+> files to 46 across phases 5–8 it started measuring the other suites rather than the index (~1.2 s
+> alone, over 2 s under contention). It now takes the best of up to three samples: contention can only
+> make a sample slower, so the minimum is the closest estimate of the code's own cost, and a real
+> regression still fails every sample. Raising the budget until the noise fit would have raised the
+> gate above the thing it exists to catch — and §4.6's argument applies exactly here, since a gate
+> that fails randomly gets switched off, and then nothing is guarded.
 
 ### Phase 9 — Review automation, MCP parity & hardening
 *Covers M47–M58.*
