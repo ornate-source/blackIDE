@@ -2,10 +2,10 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 13 (2026-08-02)** — **phases 0–8 and 10 delivered; 9 and 11
-part-delivered**; **56 of 71 gaps addressed — 52 complete and four partial**. Every **P0** in the
-inventory is done. Phase 11's boundary is **enforced rather than asserted**: a transitive import
-check fails the build if anything reachable from `agent-core` touches `vscode`. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
+**Status:** **In progress · rev 14 (2026-08-02)** — **phases 0–8 and 10 delivered; 9, 11 and 12
+part-delivered**; **59 of 71 gaps addressed — 54 complete and five partial**. Every **P0** is done.
+Phase 12's four privacy/authority gate clauses are **all met and enforced by tests**, including an
+egress register that fails the build when an undeclared network call is added. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
@@ -23,7 +23,7 @@ check fails the build if anything reachable from `agent-core` touches `vscode`. 
 | 9 — Review automation, MCP parity & hardening | 🟡 | M47–M58 | **Security spine delivered:** secret redaction (P0) · untrusted-content posture with injection fixtures (P0) · one central workspace-boundary guard, replacing four scratch scripts that asserted nothing · per-tool circuit breakers · append-only audit trail, redacted on the way in. **Not started:** the Reviewer agent (M47/M48), MCP transport parity (M49–M51), sandbox tiers (M57), at-rest encryption (M58). |
 | 10 — Skill breadth, distribution & notebooks | ✅ | M59–M61 | **16 → 47 bundled packs** with an eval task each · a registry with pinned refs and checksums, and **load-time enforcement that a pack can never widen a capability** · notebook read/edit/checkpointing that preserves nbformat's `source` array shape. |
 | 11 — Headless core, CLI & SDK | 🟡 | M62–M65 | The core boundary **declared and transitively enforced** (zero `vscode` reachable), a Node host implementing it with no editor, and a CLI surface with a JSON event stream and CI exit codes. **Outstanding:** the physical package move, the executor's host refactor, and the daemon (M65). |
-| 12 | — | M66–M71 | Not started. |
+| 12 — Remote execution, integrations, analytics | 🟡 | M66–M71 | **All four gate clauses met:** the default build phones home to nobody (enforced by a source-walking egress accounting test) · an org policy can only **tighten**, never widen · nothing is posted externally without a per-action confirmation that *cannot* be granted in advance · disabling the analytics sink removes its egress by construction. **Not started:** remote execution (M66), domain verticals (M70), voice (M71). |
 
 **Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
 suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
@@ -132,6 +132,25 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 14 (2026-08-02).** Delivery: **Phase 12's privacy and authority spine —
+> M67–M69**, with M66, M70 and M71 not started. Tally **59 of 71**. All four of Phase 12's gate
+> clauses are met and enforced by tests, which is the first phase since Phase 5 where every clause
+> landed.
+>
+> **The egress register found two undeclared network callers on its first run** — a model-list fetch
+> and a loopback Ollama probe. Both legitimate, both now declared. That is the normal state of such a
+> list and the reason it is enforced by a source walk rather than written down: "we don't phone home"
+> is a claim about code that does not exist, and you cannot test for absence by looking at the thing.
+>
+> **A sentinel that would have inverted the org policy.** `sessionTokenBudget: 0` means *unlimited*,
+> so `Math.min(0, 50_000)` is 0 — an org imposing a ceiling on a user who had none would have
+> removed it. Caught because the tighten-only property is asserted as one capability score over the
+> whole structure, not field by field.
+>
+> **The per-action confirmation is enforced by a type, not a policy.** `OutboundContext` has no field
+> for a remembered answer, so a caller cannot express "they allowed this last week"; adding ambient
+> posting means changing the type, which a reviewer sees.
+>
 > **What changed in rev 13 (2026-08-02).** Delivery: **Phase 11's boundary and headless surface —
 > M62–M64**, with M65 not started. Tally **56 of 71**.
 >
@@ -523,15 +542,15 @@ the argument for the eval tier, restated with each finding.
 | G1 | Command policy: hard deny list + user allow/deny + ask | 🟢 | ✅ | `core/command-policy.ts`. **Ahead of the field** — nobody else documents an unoverridable deny list. |
 | G2 | Secrets in OS keychain (`SecretStorage`), never `settings.json` | 🟢 | ✅ | `core/secret-manager.ts`. At OPIDE's keychain bar. |
 | G3 | Auto-approve deliberately ignored in unattended pipeline runs | 🟢 | ✅ | Best-in-class safety posture. |
-| G4 | Local-only telemetry + diagnostics export | 🟢 | ✅ | `core/telemetry-sink.ts`. Privacy parity with CortexIDE/A-Coder. |
+| G4 | Local-only telemetry + diagnostics export | 🟢 | ✅ | `core/telemetry-sink.ts`, and as of Phase 12 **enforced rather than asserted**: `core/egress.ts` registers every outbound destination with a reason and a trigger, and a source walk fails the build on any undeclared network call. "The default build phones home to nobody" is a test. **Ahead of the field** — nobody else publishes an enumerable egress list. |
 | G5 | Append-only audit trail per run (who/what/when/which tool/which model) | 🟢 | ✅ | **Shipped (Phase 9, M53).** `core/audit-trail.ts` — JSONL in the user's repo, monotonic sequence, **no update method by construction**, tolerant of the truncated final line a crash leaves, and redacted on the way *in* rather than at export. At OPIDE's bar. |
 | G6 | Prompt/log secret redaction | 🟢 | ✅ | **Shipped (Phase 9, M54 — P0).** `core/redaction.ts` — 13 vendor-shape detectors that fire anywhere, plus entropy gated behind an assignment context *and* a token-shape check, because over-redaction is the failure that gets the feature switched off. Half its tests assert what must survive untouched. |
 | G7 | Workspace-boundary enforcement on file tools | 🟢 | ✅ | **Shipped (Phase 9, M55).** `core/workspace-guard.ts` — one chokepoint covering traversal, prefix collision, symlinks and protected paths (`.git`, because `core.fsmonitor` escapes the command policy). The `test_sandbox_*.js` scripts it replaces printed things, asserted nothing, and were run by nothing. |
 | G8 | Skill validation diagnostics + skills-fired telemetry | 🟢 | ✅ | **Shipped (Phase 0, M5),** closing out plan.md Phase 6. `agent/skill-diagnostics.ts` surfaces malformed packs in the Problems panel — `loadSkillDir` previously collapsed every failure into a silent `undefined`. The two valuable checks catch packs that can *never* fire and packs that would fire on *every* turn. `SkillsFired` telemetry names bundled packs only; user pack names can encode project detail, so those are counted, not named. |
 | G9 | Test architecture | 🟢 | ✅ | **Four tiers as of Phase 2.** Harness 426 assertions (bespoke but pinned as the compatibility tier) · **vitest 195 tests / 13 suites** (was 2 orphaned files that no installed runner could even execute) · **19 real-host integration tests** under `@vscode/test-electron` · the eval gate. One shared `vscode` stub (`test/vscode-stub.js`) serves the vscode-free tiers, so a suite cannot pass in one and fail in the other. |
 | G11 | At-rest encryption for agent artifacts / memory | ⬜ | ❌ | OPIDE claims AES-256-GCM. Our `.blackIDE/` is plaintext on disk (defensible — it's the user's repo — but not an option we offer). → **E15** |
-| G12 | Team analytics / admin policy dashboard | ⬜ | ❌ | Cursor ships admin analytics; NeuralInverse ships audit export for regulated work. Our telemetry is local-only by design (G4) — so this must be **opt-in, self-hosted**, never a phone-home. → **E32** |
-| G13 | Issue-tracker / chat integrations (GitHub Issues, Linear, Jira, Slack) | ⬜ | ❌ | Cursor Slack + Linear. Needs the headless core (E14) to be worth building. → **E33** |
+| G12 | Team analytics / admin policy dashboard | 🟡 | 🟡 | **Phase 12, M69.** Opt-in, self-hosted, **no default endpoint anywhere in the source** — the sink does nothing without a URL the org supplies, which makes "disabling it removes all egress" true by construction. The payload is an eight-field allowlist projection of the audit trail: counts, never content. Org policy is **tighten-only**, asserted as a capability-score property. **Partial:** no dashboard; the sink transport is not wired. |
+| G13 | Issue-tracker / chat integrations (GitHub Issues, Linear, Jira, Slack) | 🟡 | 🟡 | **Phase 12, M67/M68.** Reference parsing that refuses to guess a tracker from a bare key, and an outbound model where **the type makes a standing grant inexpressible** — every post is confirmed individually, with the body shown verbatim. **Partial:** per-tracker fetchers and a Slack transport are not wired. |
 | G10 | `extension.ts` maintainability | 🟢 | ✅ | **2537 → 652 LOC (−74%)** across thirteen modules — the **≤700 gate is met** as of 2026-07-29 (623 after the Phase 0 cut; 652 once Phase 3's M19 wiring landed, which is why that phase's provider assembly went into its own module). Two cuts needed a design decision rather than a move, and both are the reason this took three passes. `core/chat-session.ts` holds the chat lane's mutable state as one object shared *by reference*, because `_runAgentTask` reassigns it mid-run while the webview handler reads it afterwards — passing values would have handed the extracted code a stale snapshot. `agent/managed-runs.ts` moved the Manager lane as a **class**, not the deps-object function the other extractions used, because its live `Map` and persisted history must be folded together on every transition or a reload shows ghost "running" rows; moving those methods without the state they guard would have split that invariant across two files. → **E0 (closed)** |
 
 ### 1.8 Scoreboard
@@ -1027,12 +1046,12 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M63 | Headless CLI | P1 | E14 | 11 🟡 | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. **Partial:** the `bin` entry that wires them to a real run is not shipped |
 | M64 | SDK entry point | P2 | E14 | 11 ✅ | the barrel *is* the SDK surface: `AgentHost` plus the loop, router, retrieval, memory and safety exports, with `silentNotifier`/`denyingApproval` baselines for embedding |
 | M65 | Background (local daemon) agents | P2 | E14 | 11 ❌ | not started |
-| M66 | Remote/cloud agent execution | P3 | E14 | 12 |
-| M67 | Issue-tracker context + task sources (Issues/Linear/Jira) | P2 | E33 | 12 |
-| M68 | Slack / chat completion notifications | P3 | E33 | 12 |
-| M69 | Self-hosted team analytics + tightening-only org policy | P2 | E32 | 12 |
-| M70 | Domain verticals (firmware, modernization pipeline template) | P3 | E17 | 12 |
-| M71 | Voice input | P3 | E31 | 12 |
+| M66 | Remote/cloud agent execution | P3 | E14 | 12 ❌ | not started; unblocked by Phase 11's host seam but depends on the runner that phase did not finish |
+| M67 | Issue-tracker context + task sources (Issues/Linear/Jira) | P2 | E33 | 12 🟡 | `core/task-sources.ts` — reference parsing that **refuses to guess** a tracker from a bare key, plus the outbound model. **Partial:** the per-tracker fetchers are not wired |
+| M68 | Slack / chat completion notifications | P3 | E33 | 12 🟡 | notices are rendered for the **inbox**, which is local; forwarding onward is an outbound action like any other and goes through the confirmation gate. **Partial:** no Slack transport |
+| M69 | Self-hosted team analytics + tightening-only org policy | P2 | E32 | 12 ✅ | `core/org-policy.ts` (tighten-only, asserted as a **capability-score** property over the whole structure, not field by field) + `core/egress.ts` (no default endpoint anywhere in the source; an allowlist projection that sends counts, never content) |
+| M70 | Domain verticals (firmware, modernization pipeline template) | P3 | E17 | 12 ❌ | not started. E17 says "ship only if a real user pulls for it" — no such pull |
+| M71 | Voice input | P3 | E31 | 12 ❌ | not started; "genuinely low value for us, scheduled last" |
 
 **Counts:** 71 gaps — **P0: 13 · P1: 30 · P2: 22 · P3: 6**. All 71 are scheduled.
 
@@ -1041,7 +1060,7 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–11, 9 and 11 partial): 56 of 71 — 52 complete, four partial** (2026-08-02). The four
+**Delivered so far (Phases 0–12; 9, 11 and 12 partial): 59 of 71 — 54 complete, five partial** (2026-08-02). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
@@ -2790,6 +2809,80 @@ on the full harness; a daemon run's results appear in the inbox.
 **Gate:** the default build phones home to nobody (asserted in tests); an org policy cannot widen
 the deny list; nothing is posted to an external service without an explicit per-action
 confirmation; disabling the sink removes all egress.
+
+
+> ### 🟡 Delivered 2026-08-02 — all four gate clauses met; M66, M70, M71 not started
+> `core/org-policy.ts` · `core/egress.ts` · `core/task-sources.ts` ·
+> `__tests__/phase12-gate.test.ts`.
+> vitest **1 488/1 488 / 56 suites** (was 1 452/55) · harness **418/418** · eval green, no
+> regression · `tsc -b` clean.
+>
+> **This phase's gate is four security clauses and nothing else, and all four are now tests.**
+>
+> | Gate clause | Status |
+> |---|---|
+> | The default build phones home to nobody | **met** — computed from the egress register, and a source walk fails on any undeclared network call |
+> | An org policy cannot widen the deny list | **met** — and the property is asserted over the *whole structure*, not per field |
+> | Nothing is posted externally without an explicit per-action confirmation | **met** — and there is no type through which a standing grant could be expressed |
+> | Disabling the sink removes all egress | **met** — there is no default endpoint anywhere in the source |
+>
+> **"We don't phone home" is a claim about code that does not exist**, and you cannot test for the
+> absence of a thing by looking at the thing. So `egress.ts` inverts it: every outbound destination
+> is registered with a reason and a trigger, and a test walks the source for `fetch`/`https.request`/
+> `WebSocket` and fails on anything not in the register. The claim becomes "the only egress is this
+> list" — which is checkable, and the list is short enough to read.
+>
+> **It found two undeclared callers on its first run**, which is the normal state of such a list and
+> exactly why it needs enforcing rather than writing down: `agent/model-fetcher.ts` (fetching a
+> provider's model list when Settings asks) and `core/webview-message-handler.ts` (probing a local
+> Ollama on loopback). Both are legitimate and both are now registered. The register also
+> distinguishes egress that **is the feature the user asked for** from egress that happens *because
+> we decided it should* — only the second is phoning home, and there is none. Recording both kinds,
+> labelled, is what stops the claim being a word game: "we send no telemetry" is easy to say while
+> sending everything else.
+>
+> **M69 — tighten-only, and the sentinel that would have broken it.** An org policy file arrives with
+> a `git pull`, from anyone with commit access, and is precisely what a prompt injection (M56) would
+> try to write. If merging could widen, then committing `.blackide/policy.json` with
+> `autoApprove: true` bypasses G1, G3 and the mode allowlists in one change that looks like
+> configuration. So booleans only go false-ward, permission lists only shrink, prohibition lists only
+> grow — and a policy that asks to widen is **clamped and reported**, not errored, because a policy
+> file that can cause an outage is one an org stops deploying.
+>
+> The bug this nearly shipped with is `sessionTokenBudget`, where **0 means unlimited**. `Math.min`
+> is the obvious merge and it is wrong in the dangerous direction: `min(0, 50_000)` is 0, so an org
+> imposing a 50 000-token ceiling on a user who had none would have *removed* the ceiling. A sentinel
+> meaning infinity while sorting as the smallest number is exactly the kind of thing that passes
+> review, which is why the tighten-only property is asserted as a single **capability score** over
+> the whole structure rather than field by field — a per-field test passes forever and cannot catch
+> the next field added with the direction reversed.
+>
+> **M67 — the parser refuses to guess.** A bare `ENG-45` is equally a Linear id, a Jira key and a
+> branch name; resolving it means a request to a tracker the user does not use, with their token
+> attached. Only a URL or an explicit `#n` counts. `#fff` and `#introduction` are not issues either.
+>
+> **M67/M68 — the confirmation cannot be granted in advance, and the type is the enforcement.**
+> E8 set the rule: "**never** an ambient bot posting without the user asking". The natural product
+> request is a "don't ask me again" checkbox, and it is exactly what turns this into an ambient bot —
+> the tenth post authorised by a click from three weeks ago on a different repository. So
+> `OutboundContext` has no field for a remembered answer. A caller *cannot* express one, and adding
+> ambient posting later means changing that type, which is a change a reviewer sees. A test asserts
+> the absence of `alwaysAllow`/`remember`/`dontAskAgain` in the type.
+>
+> The confirmation also carries the body **verbatim** rather than a summary, because a prompt that
+> says "post a comment to issue #123?" asks the user to approve something they have not read, and the
+> entire value of the gate is that they read it.
+>
+> **The analytics projection is an allowlist, not a redaction pass.** The payload is derived from the
+> Phase 9 audit trail, which is already redacted (M54) — but redaction answers "does this look like a
+> secret", and this answers a different question: an org's sink should learn how much the team used
+> the agent, not what they were working on. Eight fields, named. That is the only formulation that
+> survives somebody adding a field to the audit trail later.
+>
+> **What is left in Phase 12, named:** remote/BYO-runner execution (M66 — unblocked by Phase 11's
+> host seam, blocked by the runner Phase 11 did not finish), the per-tracker fetchers and a Slack
+> transport (M67/M68's wiring), domain verticals (M70 — E17 says ship only if a real user pulls for
+> them, and none has), and voice (M71, P3, "genuinely low value for us").
 
 ### 4.1 Sequencing
 
