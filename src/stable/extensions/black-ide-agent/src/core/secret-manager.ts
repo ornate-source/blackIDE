@@ -1,11 +1,25 @@
-import * as vscode from 'vscode';
 import { PROVIDER, LEGACY_ANTHROPIC_KEY } from './constants';
+
+/**
+ * The three methods this class uses from `vscode.SecretStorage`.
+ *
+ * Structural rather than imported (Phase 11, M62): `vscode.SecretStorage` is an interface,
+ * so importing the module bought a type and cost the whole editor dependency — and it is
+ * the reason the *entire retrieval stack* was reachable from `vscode`, since the codebase
+ * index takes a SecretManager. A `vscode.SecretStorage` still satisfies this by structure,
+ * so the extension passes one unchanged; a CLI passes an env-backed store.
+ */
+export interface SecretVault {
+    get(key: string): Thenable<string | undefined> | Promise<string | undefined>;
+    store(key: string, value: string): Thenable<void> | Promise<void>;
+    delete(key: string): Thenable<void> | Promise<void>;
+}
 
 const LEGACY_ANTHROPIC_STORAGE_KEY = `black-ide-${LEGACY_ANTHROPIC_KEY}-key`;
 
 // Secure Secret Manager wrapper using VS Code Secrets API
 export class SecretManager {
-    constructor(private readonly secrets: vscode.SecretStorage) {}
+    constructor(private readonly secrets: SecretVault) {}
 
     /** Canonicalize the legacy 'antropics' typo (MF-36) to the real provider id. */
     private canonical(provider: string): string {

@@ -171,7 +171,7 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
         // agents received NO skills; this resolves stack+role-appropriate packs per phase and
         // appends them to each executor's system prompt via the orchestrator's skillsForMode.
         const pipelineSkills = new SkillsManager();
-        await pipelineSkills.discover(deps.bundledSkillsDir);
+        await pipelineSkills.discover(deps.bundledSkillsDir, rootPath);
         const pipelineProfile = await deps.getProjectProfile();
         // Phase 5: reflect the detected stack in the project mindmap (idempotent).
         if (rootPath && pipelineProfile.stacks.length) deps.syncStackToMindmap(pipelineProfile, rootPath);

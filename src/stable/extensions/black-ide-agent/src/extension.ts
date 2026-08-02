@@ -218,7 +218,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             ...docsAndWebSources(this._docsStore, _secretManager),
         });
         // Best-effort: the dropdown simply offers no skills until discovery lands.
-        this._skillsForMentions.discover(this._bundledSkillsDir).catch(() => {});
+        this._skillsForMentions.discover(this._bundledSkillsDir, currentWorkspaceRoot()).catch(() => {});
 
         // Seed the knowledge base's architecture.md from a first-run repo scan, so the
         // read side (KnowledgeBase.readContext) has real content to inject on the very

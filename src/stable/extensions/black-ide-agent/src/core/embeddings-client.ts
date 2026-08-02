@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 
 // Multi-Provider Embeddings Client — Feature 17 / MF-17
 // Fetches vector representations of code chunks from OpenAI or local Ollama.

@@ -2,10 +2,10 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 12 (2026-08-02)** — **phases 0–8 and 10 delivered, phase 9
-part-delivered**; **54 of 71 gaps addressed — 51 complete and three partial**. Every **P0** in the
-inventory is done. The bundled skill catalog went **16 → 47 packs**, and the eval corpus grew with
-it (74 → 112 tasks, 13 → 21 fixtures) so no pack ships without a golden task. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
+**Status:** **In progress · rev 13 (2026-08-02)** — **phases 0–8 and 10 delivered; 9 and 11
+part-delivered**; **56 of 71 gaps addressed — 52 complete and four partial**. Every **P0** in the
+inventory is done. Phase 11's boundary is **enforced rather than asserted**: a transitive import
+check fails the build if anything reachable from `agent-core` touches `vscode`. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
@@ -22,7 +22,8 @@ it (74 → 112 tasks, 13 → 21 fixtures) so no pack ships without a golden task
 | 8 — Memory v2 | 🟡 | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back, closing a write-only loop open since plan.md's Phase 5. **Outstanding:** M45's memory visualization panel, and end-of-turn extraction is not yet driven by a model. |
 | 9 — Review automation, MCP parity & hardening | 🟡 | M47–M58 | **Security spine delivered:** secret redaction (P0) · untrusted-content posture with injection fixtures (P0) · one central workspace-boundary guard, replacing four scratch scripts that asserted nothing · per-tool circuit breakers · append-only audit trail, redacted on the way in. **Not started:** the Reviewer agent (M47/M48), MCP transport parity (M49–M51), sandbox tiers (M57), at-rest encryption (M58). |
 | 10 — Skill breadth, distribution & notebooks | ✅ | M59–M61 | **16 → 47 bundled packs** with an eval task each · a registry with pinned refs and checksums, and **load-time enforcement that a pack can never widen a capability** · notebook read/edit/checkpointing that preserves nbformat's `source` array shape. |
-| 11–12 | — | M62–M71 | Not started. |
+| 11 — Headless core, CLI & SDK | 🟡 | M62–M65 | The core boundary **declared and transitively enforced** (zero `vscode` reachable), a Node host implementing it with no editor, and a CLI surface with a JSON event stream and CI exit codes. **Outstanding:** the physical package move, the executor's host refactor, and the daemon (M65). |
+| 12 | — | M66–M71 | Not started. |
 
 **Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
 suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
@@ -131,6 +132,30 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 13 (2026-08-02).** Delivery: **Phase 11's boundary and headless surface —
+> M62–M64**, with M65 not started. Tally **56 of 71**.
+>
+> **The phase's decision is a barrel rather than a `git mv`.** "Zero vscode imports in the core" can
+> be reached by moving eighty files in one change — a diff across most of the repository that the
+> harness cannot meaningfully verify — or by **naming the boundary and enforcing it transitively**,
+> then moving modules when there is a reason to. The second makes the property true, checked on every
+> commit, and true incrementally. The first is how a decoupling ships as a directory rename.
+>
+> **Four dependency edges cut, and the pattern is the finding.** Three of the four were a *single
+> line* each holding a whole subsystem hostage: an unused `vscode` import; one type
+> (`vscode.SecretStorage`) that made the entire retrieval stack editor-bound because the index takes
+> a `SecretManager`; and a value-import of the tool executor where only its shape was needed, which
+> pulled the LSP bridge and the codebase index into everything importing the agent loop. The fourth
+> was `workspaceFolders[0]` inside the skills manager — also M36 in miniature.
+>
+> **The boundary checker distinguishes `import type`**, because a type-only import is erased and
+> creates no runtime dependency. A checker that cannot tell a contract from a dependency forces
+> duplicate type declarations to satisfy it.
+>
+> **A block comment closed by its own example.** A glob written out in a doc comment in
+> `node-host.ts` — doubled star, slash, star — terminates the comment. Same family as this
+> codebase's three NUL bytes: invisible as prose, changes what the file means.
+>
 > **What changed in rev 12 (2026-08-02).** Delivery: **Phase 10 (M59–M61)**. The bundled catalog
 > went **16 → 47 packs**, and because `eval-task-coverage` asserts every pack has a golden task, the
 > eval corpus grew with it: **74 → 112 tasks, 13 → 21 fixtures**, plus profiler detection for six
@@ -404,7 +429,7 @@ the argument for the eval tier, restated with each finding.
 | A7 | Request classification / auto-plan / auto-orchestrate | 🟡 | ✅ | Keyword heuristics in `planning-engine.ts`; not learned, not model-assisted. |
 | A8 | Parallel wave execution | ⬜ | ❌ | **Deleted in Phase 6 (M35)** rather than graduated. Default-off and unverified for six phases; the role E18 reserved for it — E3's execution engine — is filled by task agents, where the isolation is asserted. Concurrency now lives in the Agent Manager, not in the pipeline. |
 | A9 | Mid-run steering (correct an agent without restarting the task) | 🟢 | ✅ | **Shipped (Phase 7, M39).** `core/steering.ts` — a correction is queued per agent and drained at the top of the next turn, keeping every file the run has read and every conclusion it reached. Never lands between a `tool_use` and its `tool_result`, and never produces two consecutive user turns; both are provider rejections rather than degraded answers. At Antigravity's steering bar; the comment-*on-artifact-region* surface is plumbed but not yet rendered (M38). |
-| A10 | Background / cloud agents (off-machine execution) | ⬜ | ❌ | Cursor Background Agent, Antigravity async tasks. → **E14** |
+| A10 | Background / cloud agents (off-machine execution) | ⬜ | ❌ | Cursor Background Agent, Antigravity async tasks. Unblocked by Phase 11's host seam — a run needs an `AgentHost`, and nothing in the core now assumes that host is an editor — but the daemon itself (M65) is not started. → **E14** |
 
 ### 1.2 The fleet (agents & modes)
 
@@ -479,7 +504,7 @@ the argument for the eval tier, restated with each finding.
 | F7 | **Cross-provider failover / health-aware routing** | 🟢 | ✅ | **Shipped (Phase 4, M24).** Per-provider circuit breaker (consecutive failures, cooldown, half-open retry); failover at the *turn* so a run keeps its context; a different provider tried before another of the same one; **never after output has streamed**, since that would append a second answer to half of one. Covers chat *and* unattended pipeline runs. `fallbackTurn` remains the local-protocol path and is no longer the only thing here. |
 | F8 | Fast-apply path (small model applies a large diff) | 🟢 | ✅ | **Shipped (Phase 4, M25).** `edit_file`'s `intent` → apply-role model → verified with the *real* applier. Malformed, missing-anchor, ambiguous, no-change and oversized results all escalate to the strong model, so a silently wrong edit is not reachable. |
 | F9 | Output modes (`apply` / `pr`) | 🟢 | ✅ | `core/git-pr.ts`. Ahead of most. |
-| F10 | Headless CLI / SDK surface | ⬜ | ❌ | Antigravity ships desktop + CLI + SDK + IDE. Blocks CI use and background agents. → **E14** |
+| F10 | Headless CLI / SDK surface | 🟡 | 🟡 | **Phase 11 (M62–M64).** The core boundary is declared and **transitively enforced** — nothing reachable from `agent-core` imports `vscode` — with a Node host that implements it using no editor, and a CLI surface (JSON-per-line stdout, logs on stderr, six CI exit codes distinguishing *completed but unverified* from *completed*). **Partial:** the runnable `bin` entry and the package move are not shipped. |
 | F11 | Skill/rule distribution (registry or hub) | 🟡 | 🟡 | **Phase 10, M60.** `core/skill-registry.ts` — registry entries with a **pinned** ref (a moving ref is refused, since it makes the checksum meaningless), SHA-256 verified before the content is examined, installs to `.blackide/skills/` where a same-named local pack shadows it, and a forbidden-key deny list so a pack can never declare `tools`/`autoApprove`/`policy`. **Partial:** the fetching command is not wired. |
 | F12 | **Terminal `Cmd+K`** (natural language → shell command) | 🟢 | ✅ | **Shipped (Phase 5, M29).** `core/terminal-command.ts` — single-line by construction, because `sendText(text, false)` suppresses one *trailing* newline and executes every embedded one; judged by the same `CommandPolicy` as the agent's `run_command`, so this surface cannot be more permissive than that one; mandatory preview, and inserted with `shouldExecute: false` even for allow-listed commands. **At Cursor's bar, with a stricter never-run posture.** |
 | F13 | **Provider breadth** | 🟢 | ✅ | **6 → 16 (Phase 4, M26).** Added DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI — one dispatch, one preset table, so the streaming and tool-call parsing cannot drift per provider. **Bedrock and Vertex remain absent by decision:** SigV4 signing and a Google OAuth exchange are auth implementations, not base URLs. |
@@ -527,7 +552,7 @@ the argument for the eval tier, restated with each finding.
 | Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
 | Model routing | 🟢 | Continue, OPIDE | **At bar as of Phase 4.** Seven roles, health-aware cross-provider failover, fast-apply, 16 providers, zero-config local first run. |
 | Review automation | ⬜ | Cursor BugBot | **Absent.** |
-| Distribution / surfaces | ⬜ | Continue Hub, Antigravity CLI/SDK | **Absent.** |
+| Distribution / surfaces | 🟡 | Continue Hub, Antigravity CLI/SDK | **Started.** Skill distribution with pinned refs and checksums (Phase 10); an enforced vscode-free core with a Node host and a CLI surface (Phase 11). Behind on the runnable binary and the daemon. |
 
 > **Board update after Phases 0–2 (2026-07-27).** Three areas moved from behind to at-or-above
 > bar: code intelligence (Phase 1 exposed the language servers the fork already runs), rules and
@@ -998,10 +1023,10 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M59 | Skill library Wave 2 (16 → full catalog) | P1 | E9 | 10 ✅ | **16 → 47.** Frameworks, testing and the cross-cutting packs, each with ≥1 golden task; the eval corpus grew 74 → 112 tasks and 13 → 21 fixtures to hold that property |
 | M60 | Skill/rule registry + `addSkillFrom` + checksums | P2 | E9 | 10 🟡 | `core/skill-registry.ts` — pinned refs (a moving ref is **refused**, since it makes the checksum meaningless), SHA-256 verification before content is examined, and a forbidden-key deny list so a pack cannot declare `tools`/`autoApprove`/`policy`. **Partial:** the `black-ide.addSkillFrom` command that fetches over the network is not wired |
 | M61 | Notebook (`.ipynb`) read/edit/checkpoint | P2 | E21 | 10 🟡 | `core/notebook.ts` — byte-stable round-trip, per-cell edit preserving the `source` array shape Jupyter writes, outputs excluded from prompts by default, cell-granular snapshot/restore. **Partial:** the `edit_notebook_cell` tool is not registered in the executor |
-| M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 |
-| M63 | Headless CLI | P1 | E14 | 11 |
-| M64 | SDK entry point | P2 | E14 | 11 |
-| M65 | Background (local daemon) agents | P2 | E14 | 11 |
+| M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 🟡 | boundary declared (`src/agent-core/index.ts`) and **transitively enforced** by `__tests__/agent-core-boundary.test.ts`; four dependency edges cut to make it hold. **Partial:** the modules are named, not yet physically moved into a package |
+| M63 | Headless CLI | P1 | E14 | 11 🟡 | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. **Partial:** the `bin` entry that wires them to a real run is not shipped |
+| M64 | SDK entry point | P2 | E14 | 11 ✅ | the barrel *is* the SDK surface: `AgentHost` plus the loop, router, retrieval, memory and safety exports, with `silentNotifier`/`denyingApproval` baselines for embedding |
+| M65 | Background (local daemon) agents | P2 | E14 | 11 ❌ | not started |
 | M66 | Remote/cloud agent execution | P3 | E14 | 12 |
 | M67 | Issue-tracker context + task sources (Issues/Linear/Jira) | P2 | E33 | 12 |
 | M68 | Slack / chat completion notifications | P3 | E33 | 12 |
@@ -1016,7 +1041,7 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–10, 9 partial): 54 of 71 — 51 complete, three partial** (2026-08-02). The four
+**Delivered so far (Phases 0–11, 9 and 11 partial): 56 of 71 — 52 complete, four partial** (2026-08-02). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
@@ -2665,6 +2690,86 @@ individually revertible.
 **Gate:** `grep -r "vscode"` in the core package returns nothing; `blackide "add a test for X"
 --output pr` completes on a fixture repo with no editor running; the refactored extension is green
 on the full harness; a daemon run's results appear in the inbox.
+
+
+> ### 🟡 Delivered 2026-08-02 — the boundary is enforced; the package move and the daemon are not
+> `src/agent-core/index.ts` (the declared surface) · `agent-core/host.ts` (the host interface) ·
+> `agent-core/node-host.ts` (a second implementation, with no editor) · `agent-core/cli.ts` ·
+> `__tests__/agent-core-boundary.test.ts`.
+> vitest **1 452/1 452 / 55 suites** (was 1 415/53) · harness **418/418** · eval green, no
+> regression · `tsc -b` clean · webview builds.
+>
+> **Gate status.**
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | `grep -r "vscode"` in the core returns nothing | **met, and stronger than the grep** | transitive import walk from the barrel; a chain of five clean hops into a dirty module fails |
+> | The refactored extension is green on the full harness | **met** | 418/418 unchanged through four dependency-edge cuts |
+> | `blackide "…" --output pr` completes on a fixture repo | **not met** | parsing, host and exit codes exist and are tested; the `bin` entry that runs a task is not shipped |
+> | A daemon run's results appear in the inbox | **not met** | M65 not started |
+>
+> **The decision this phase turns on: a barrel, not a `git mv`.** There are two ways to reach "zero
+> vscode imports in the core". One moves eighty files into `packages/agent-core/` in a single
+> change — a diff across most of the repository which the harness cannot meaningfully verify, since
+> every import path changes and "still green" then mostly proves the rewrite was mechanical. The
+> other **names the boundary and enforces it**, and moves modules across it when there is a reason
+> to. The property the gate is really after — *the core does not depend on an editor* — is then true,
+> checked on every commit, and true **incrementally**. Doing it the other way round is how a
+> decoupling ships as a directory rename.
+>
+> **The check is transitive, and that is not a detail.** A barrel importing a clean module that
+> imports a dirty one passes a one-level grep and fails the actual requirement. The first run
+> reported five offenders — and reported the *chains*, which is what made them fixable:
+> `agent-core → agent-loop → tool-executor → lsp-tools → vscode` says something a filename does not.
+>
+> **Four edges cut, and the third one is the interesting one.**
+> - `embeddings-client.ts` imported `vscode` and **used it zero times**.
+> - `secret-manager.ts` needed one *type*, `vscode.SecretStorage`. It is an interface, so importing
+>   the module bought a type and cost the entire editor dependency — and since the codebase index
+>   takes a `SecretManager`, that single line is why the whole retrieval stack was editor-bound. It
+>   is now a three-method structural type that a real `SecretStorage` satisfies unchanged.
+> - `agent-loop.ts` imported `AgentToolExecutor` as a **value** when it only needs the shape. That
+>   one import pulled the LSP bridge, the codebase index and the artifact manager into everything
+>   that imported the loop. `import type` is erased at compile time, so the boundary checker was
+>   taught the difference — a contract is not a dependency, and a checker that cannot tell them apart
+>   forces you to duplicate types to satisfy it.
+> - `skills-manager.ts` read `workspaceFolders[0]` once, which made skill resolution — which every
+>   prompt goes through — editor-bound. It was also M36 in miniature: in a two-root workspace it read
+>   folder zero's packs whatever the agent was working on. The root is now a parameter.
+>
+> **The reachable count *fell* when the loop's import became type-only, and the test says so.** That
+> is correct — the loop legitimately stopped dragging half the tool surface with it — but a boundary
+> whose size can shrink silently is one that can be satisfied by exporting less. The floor is
+> asserted so a shrink has to be deliberate.
+>
+> **The host interface is deliberately small, and the honest test of it is what is *optional*.**
+> Diagnostics, the language server, the Problems panel and "open this file" are all optional
+> capabilities the core must work without — because if a missing one broke the agent rather than
+> merely informing it less, the dependency was structural and the split would be cosmetic. The
+> Node host implements none of them, which is what makes that claim checkable rather than stated.
+>
+> **The notifier cannot ask a question, and that is a design constraint rather than an omission.** A
+> core that can prompt the user cannot run unattended, and every caller awaiting an answer is a place
+> a headless run hangs forever. Approval is separate and explicit so that "there is nobody to ask" is
+> a first-class answer — which is also how G3's "auto-approve is ignored in unattended runs" becomes
+> a property of the *host* rather than a flag somebody must remember to set.
+>
+> **The CLI's two properties are both about being consumed, not about the agent.** stdout is one JSON
+> object per line and nothing else, with logs on stderr, because a tool that interleaves them forces
+> every consumer to write a parser that guesses. And the exit codes distinguish **completed but
+> unverified** from **completed** — the agent believing it is done while the tests disagree must not
+> be a green build. An unknown flag is refused rather than ignored, because a typo silently dropped
+> is a CI job running with the wrong settings and reporting success.
+>
+> **A defect of the kind this codebase keeps finding, in a comment this time.** A doc comment in
+> `node-host.ts` contained a glob example — a doubled star, a slash, a star — which *closes a block
+> comment*. The comment terminated mid-sentence and the file stopped parsing. Same family as the
+> three NUL bytes: a character sequence that is invisible as prose and changes what the file means.
+>
+> **What is left in Phase 11, named:** the physical package move (mechanical, once the boundary is
+> known to hold); refactoring `tool-executor`, `codebase-index` and `artifact-manager` onto the host
+> interface so they can cross it; the `bin` entry that turns the CLI surface into a runnable binary;
+> and the local daemon (M65).
 
 ### Phase 12 — Remote execution, integrations, analytics & long tail
 *Covers M66–M71. Everything here depends on Phase 11.*

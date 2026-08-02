@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -136,8 +135,18 @@ export class SkillsManager {
      *   3. workspace skills    (<repo>/.blackide/skills) — highest precedence
      * So a workspace `django` pack shadows the built-in one of the same name.
      */
-    async discover(bundledDir?: string): Promise<void> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    async discover(bundledDir?: string, workspaceRoot?: string): Promise<void> {
+        /*
+         * The root is a parameter, not a lookup (Phase 11, M62).
+         *
+         * One `workspaceFolders[0]` read was the whole reason the skills manager — and
+         * therefore skill resolution, which every prompt goes through — could not exist
+         * outside an editor. It was also the M36 bug in miniature: in a two-root workspace
+         * it read folder zero's packs whatever the agent was working on. Callers pass the
+         * root they mean; the extension passes the one the user is in, the CLI passes its
+         * cwd.
+         */
+        const rootPath = workspaceRoot;
         const sources: Array<{ dir: string; origin: Skill['origin'] }> = [];
         if (bundledDir) sources.push({ dir: bundledDir, origin: 'bundled' });
         sources.push({ dir: path.join(require('os').homedir(), '.blackide', 'skills'), origin: 'global' });

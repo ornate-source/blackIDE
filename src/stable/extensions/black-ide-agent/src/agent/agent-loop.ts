@@ -2,7 +2,13 @@ import { LLMConfigEntry, ChatMessage, ToolDefinition, ToolCall, ToolResult } fro
 import { ProviderHealth, Substitution, runWithFailover } from '../core/model-router';
 import { LLMClient, isAbortError } from '../core/llm-client';
 import { ContextManager } from '../core/context-manager';
-import { AgentToolExecutor } from './tool-executor';
+/**
+ * Type-only (Phase 11, M62). The loop needs the executor's *shape*, and importing the
+ * class dragged `tool-executor.ts` — and through it the LSP bridge, the codebase index and
+ * the artifact manager — into anything that imported the loop. A type-only import is
+ * erased at compile time, so this is a contract rather than a dependency.
+ */
+import type { AgentToolExecutor } from './tool-executor';
 import { SteeringNote, applySteering } from '../core/steering';
 
 export interface LoopCallbacks {

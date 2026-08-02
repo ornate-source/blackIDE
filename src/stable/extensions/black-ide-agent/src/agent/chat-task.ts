@@ -241,7 +241,7 @@ export async function runAgentTask(
 
         // Project-aware skills (Phase 2/4): resolve by (agent role + detected stack + prompt),
         // including the bundled built-in packs, not prompt keywords alone.
-        await skillsManager.discover(deps.bundledSkillsDir);
+        await skillsManager.discover(deps.bundledSkillsDir, rootPath);
         // Surface malformed/unreachable user packs in the Problems panel (M5). Done
         // on every discovery so fixing a SKILL.md clears its warning on the next run.
         deps.skillDiagnostics.publish(skillsManager.getProblems());
