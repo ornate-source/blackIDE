@@ -106,7 +106,6 @@ interface BlackIDESettings {
   pipelineOutputMode: 'apply' | 'pr';
   // Experimental, default off: run each dependency wave's phases concurrently in separate
   // worktrees. Not yet covered by extension-host integration tests.
-  pipelineParallelExecution: boolean;
   // Mode name (e.g. "Backend Executor") -> LLMConfigEntry id. Unset/unresolvable
   // entries fall back to the pipeline's main selected model.
   pipelinePhaseModels: Record<string, string>;
@@ -174,7 +173,6 @@ const DEFAULT_SETTINGS: BlackIDESettings = {
   pipelineAutoOpenAllFiles: false,
   pipelineTokenBudget: 0,
   pipelineOutputMode: 'apply',
-  pipelineParallelExecution: false,
   pipelinePhaseModels: {},
   searchProvider: 'auto',
   braveApiKey: '',
@@ -2492,14 +2490,13 @@ export default function App() {
                   icon={<svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>}
                 />
 
-                <CheckboxRow
-                  id="pipelineParallelExecution"
-                  title="Parallel Phase Execution (experimental)"
-                  description="Run independent phases (e.g. design and backend) at the same time in separate git worktrees, then merge their changes. Faster on multi-phase plans, but newer and less tested than the default sequential path — leave off unless you want to try it."
-                  checked={settings.pipelineParallelExecution}
-                  onToggle={() => updateSetting('pipelineParallelExecution', !settings.pipelineParallelExecution)}
-                  icon={<svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>}
-                />
+                {/*
+                  "Parallel Phase Execution (experimental)" was removed in Phase 6 (M35).
+                  It shipped default-off and unverified for six phases; the capability it
+                  was reserved for now lives in the Agent Manager's task agents, where the
+                  isolation is asserted rather than hoped for. A stale `true` in an
+                  existing settings blob is simply ignored.
+                */}
 
                 <div className="h-px bg-[rgba(255,255,255,0.04)]" />
 

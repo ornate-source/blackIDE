@@ -8,6 +8,7 @@ import { SecretManager } from './core/secret-manager';
 import { AgentMode, ToolCall } from './core/types';
 import { registerEditorFeatures } from './core/editor-features';
 import { compactSession } from './core/compact-session';
+import { TaskAgentLane } from './agent/task-agent-lane';
 import { CheckpointManager, diffStat } from './core/checkpoint-manager';
 import { CodebaseIndex } from './core/codebase-index';
 import { EventBus } from './core/event-bus';
@@ -18,7 +19,8 @@ import { SessionManager } from './core/session-manager';
 import { HistoryStore } from './memory/history-store';
 import { ModeLoader } from './core/mode-loader';
 import { PlanningEngine } from './agent/planning-engine';
-import { detectProjectProfile, formatProfileLine, MANIFEST_FILENAMES, ProjectProfile, stackMindmapSection, upsertMarkdownSection, STACK_MINDMAP_HEADING } from './core/project-profiler';
+import { ProjectProfile, stackMindmapSection, upsertMarkdownSection, STACK_MINDMAP_HEADING } from './core/project-profiler';
+import { ProjectProfileCache } from './core/project-profile-cache';
 import { AgentScheduler } from './agent/scheduler';
 import { generateCommitMessage as generateCommitMessageCore } from './core/commit-message';
 import { getHtmlForWebview as buildWebviewHtml } from './core/webview-html';
@@ -113,6 +115,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     /** Recent agent-run commands, feeding the `@terminal` provider (Phase 3, M19). */
     private readonly _terminalHistory = new TerminalHistory();
 
+    /** Task agents, the governor, the inbox and the race (Phase 6). See task-agent-lane.ts. */
+    private _taskAgents!: TaskAgentLane;
+
     /**
      * `@`-mention providers (Phase 3, M19). Assembled in the constructor rather than
      * here because it needs `_historyStore`, which arrives as a constructor
@@ -183,6 +188,17 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             context: this._context,
             runPipelineCore: (params) => runPipelineCore(this._pipelineCoreDeps, params),
         });
+
+        // Phase 6. Constructed after `_managedRuns` because the inbox reads both lanes.
+        this._taskAgents = new TaskAgentLane({
+            context: _context, secretManager: _secretManager,
+            codebaseIndex: this._index, modeLoader: this._modeLoader,
+            getProjectProfile: () => this._getProjectProfile(),
+            log: (m) => console.log(m),
+            listPipelineRuns: () => this._managedRuns.list(),
+            postToManager: (message) => ManagerPanel.post(message),
+        });
+        _context.subscriptions.push(this._taskAgents);
 
         this._contextProviders = buildContextProviders({
             getRules: () => this._rulesLoader.getRules(),
@@ -256,42 +272,18 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     }
 
     /** Cached project profile (Phase 1). Detected once per window, refreshed lazily. */
-    private _projectProfile?: ProjectProfile;
+    /** Per-root stack detection (Phase 6, M36). */
+    private readonly _profiles = new ProjectProfileCache();
 
     /**
-     * Detect the project's stack from its manifests (package.json, Cargo.toml, *.csproj, …) so the
-     * skill resolver can pick stack-appropriate packs. Cached; best-effort — any failure yields an
-     * empty profile, which simply means "inject no stack skills" (fail safe).
+     * The project's stack, per workspace root (Phase 6, M36).
+     *
+     * Delegates to `core/project-profile-cache.ts`, which answers about the root the user
+     * is actually in rather than about folder zero — see that file for what the old
+     * single-profile version did to a two-root workspace.
      */
-    private async _getProjectProfile(): Promise<ProjectProfile> {
-        if (this._projectProfile) return this._projectProfile;
-        const empty: ProjectProfile = { languages: [], frameworks: [], testFrameworks: [], packageManagers: [], stacks: [], confidence: 0, evidence: [] };
-        try {
-            const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!rootPath) return empty;
-
-            const uris = await vscode.workspace.findFiles('**/*', '**/{node_modules,.git,dist,out,build,.next,coverage,vendor,target,bin,obj}/**', 4000);
-            const files = uris.map(u => vscode.workspace.asRelativePath(u));
-
-            const manifests: Record<string, string> = {};
-            const readIfExists = (rel: string, key: string) => {
-                try { manifests[key] = fs.readFileSync(path.join(rootPath, rel), 'utf8'); } catch { /* absent */ }
-            };
-            for (const name of MANIFEST_FILENAMES) readIfExists(name, name);
-            // Globbed manifests: grab the first .csproj/.sln content, if any.
-            const csproj = files.find(f => /\.csproj$/i.test(f));
-            if (csproj) readIfExists(csproj, 'csproj');
-            const sln = files.find(f => /\.sln$/i.test(f));
-            if (sln) readIfExists(sln, 'sln');
-
-            this._projectProfile = detectProjectProfile(files, manifests);
-            if (this._projectProfile.stacks.length) {
-                console.log(`[Profiler] Detected stack — ${formatProfileLine(this._projectProfile)}`);
-            }
-            return this._projectProfile;
-        } catch {
-            return empty;
-        }
+    private _getProjectProfile(): Promise<ProjectProfile> {
+        return this._profiles.current();
     }
 
     /**
@@ -351,6 +343,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     public async detectedStacks(): Promise<string[]> {
         return (await this._getProjectProfile()).stacks;
     }
+
+    /** The Phase 6 lane: task agents, governor, inbox, race. */
+    public get taskAgents(): TaskAgentLane { return this._taskAgents; }
 
     /** `/compact`'s palette twin (Phase 5, M30) — same path as the slash command. */
     public compactConversation() {

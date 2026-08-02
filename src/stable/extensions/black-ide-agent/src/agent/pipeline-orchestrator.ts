@@ -11,7 +11,6 @@ import { scheduleTasks, toParallelWaves } from '../core/task-scheduler';
 import { capSections } from '../core/text-cap';
 import { parsePlanTasks, PlanTask } from '../core/plan-parser';
 import { OutputMode } from '../core/git-pr';
-import { shouldRunParallel, planParallelExecution } from '../core/parallel-execution';
 
 export interface PipelinePhase {
     modeId: string;
@@ -46,8 +45,14 @@ export function selectExecutionPhases(planContent: string): string[] {
     return order.map(t => t.id);
 }
 
-/** The execution phases grouped into parallelizable waves (dependency depth). Ready for a
- *  future parallel executor; pure/exported for testing. */
+/**
+ * The execution phases grouped by dependency depth.
+ *
+ * Retained after Phase 6 deleted the parallel *executor* (M35): this is what renders
+ * `dependency_graph.md`, which tells a human which phases are independent of each other.
+ * Describing the shape of the work is useful on its own and carries none of the risk of
+ * running it that way.
+ */
 export function selectExecutionWaves(planContent: string): string[][] {
     const present = Object.entries(EXECUTION_PHASE_GRAPH)
         .filter(([, v]) => planContent.includes(v.tag))
@@ -233,13 +238,6 @@ export class PipelineOrchestrator {
          */
         private outputMode: OutputMode = 'apply',
         /**
-         * Run each dependency wave's phases concurrently in separate worktrees. Default OFF:
-         * this path mutates how execution touches git and is not yet covered by
-         * extension-host integration tests (P6b). The sequential path stays the default
-         * until it is.
-         */
-        private parallelExecution: boolean = false,
-        /**
          * Project-aware skills (Phase 4): returns extra system-prompt text (resolved skill packs)
          * for a given phase mode, appended to that mode's system prompt. Without it, the pipeline
          * executors run with their static prompts only — which is what they did before this existed.
@@ -390,17 +388,6 @@ export class PipelineOrchestrator {
             // tree. Silently combining them would leave the user's tree modified by a run
             // that promised not to touch it, so the safer contract wins and we stay
             // sequential.
-            const waves = selectExecutionWaves(planContent);
-            if (this.outputMode === 'pr' && this.parallelExecution) {
-                console.warn('[Pipeline] Parallel execution is not supported with PR output mode — running sequentially.');
-            }
-            if (this.outputMode !== 'pr' && shouldRunParallel(waves, this.parallelExecution)) {
-                await this.runWavesInParallel(waves, branchName);
-                const overviewPath = this.generateOverview(userPrompt);
-                this.callbacks.onPipelineCompleted(overviewPath);
-                return;
-            }
-
             let worktreeDir = '';
             let baselineSha = '';
             try {
@@ -513,80 +500,6 @@ export class PipelineOrchestrator {
         const fileList = entry.files.map(f => `- \`${path.relative(this.workspaceRoot, f.path)}\` (${f.kind})`).join('\n');
         const section = `\n\n## ${phaseName} — Auto-Sync (${timestamp})\nFiles touched:\n${fileList}\n`;
         fs.writeFileSync(mindmapPath, PipelineOrchestrator.capMindmap(existing + section), 'utf8');
-    }
-
-    /**
-     * Run each dependency wave's phases CONCURRENTLY, one git worktree per phase, merging
-     * their deltas back sequentially after the wave completes (P5).
-     *
-     * The safety argument, phase by phase:
-     * - Each phase gets its OWN worktree off the current live state, so two concurrently
-     *   running agents can never write the same file.
-     * - Execution is concurrent; MERGES are strictly sequential under gitMutex, because two
-     *   `git apply` runs against one working tree would race. Deterministic merge order
-     *   makes a conflict reproducible rather than dependent on finishing order.
-     * - Waves are sequential: wave N+1 syncs from the live state wave N already merged, so
-     *   a phase always sees its prerequisites' output.
-     * - A merge failure preserves that phase's worktree and reports it (same contract as
-     *   the sequential path) instead of discarding real work.
-     *
-     * NOT YET VERIFIED under the extension host: concurrent cancellation mid-wave and a
-     * budget trip spanning parallel phases. Those need P6b — which is why this whole path
-     * is behind a default-off setting.
-     */
-    private async runWavesInParallel(waves: string[][], baseBranch: string): Promise<void> {
-        const plans = planParallelExecution(waves, baseBranch);
-        const executionPrompt = `Execute your assigned tasks from features_plan.md. Be sure to update the OpenSpec Mindmap when finished.`;
-
-        for (const wavePlan of plans) {
-            const prepared: { phase: string; branch: string; dir: string; baselineSha: string }[] = [];
-            try {
-                // 1. One worktree per phase, each off the CURRENT live state (which already
-                //    includes every earlier wave's merged output).
-                for (const p of wavePlan.phases) {
-                    const dir = await worktreeManager.createWorktree(p.branch);
-                    await worktreeManager.syncUncommittedChanges(p.branch);
-                    const baselineSha = await worktreeManager.commitWorktreeChanges(p.branch, 'pipeline: sync baseline');
-                    prepared.push({ phase: p.phase, branch: p.branch, dir, baselineSha });
-                }
-
-                // 2. Run the wave's phases concurrently. Each gets a FRESH context rather
-                //    than a shared conversation: they run simultaneously, so there is no
-                //    coherent order in which to thread one phase's messages into another's.
-                //    Cross-phase information flows through the plan and the merged tree.
-                await Promise.all(prepared.map(p => this.runPhase(
-                    { modeId: p.phase, description: `${p.phase} Execution` },
-                    executionPrompt, [], 2, p.dir
-                )));
-                for (const p of prepared) this.autoSyncMindmap(p.phase, p.dir);
-            } catch (err) {
-                // Nothing has been merged into the live tree yet for this wave — discard.
-                for (const p of prepared) await worktreeManager.removeWorktree(p.branch).catch(() => {});
-                throw err;
-            }
-
-            // 3. Merge sequentially, in the planned (deterministic) order.
-            for (const branch of wavePlan.mergeOrder) {
-                const p = prepared.find(x => x.branch === branch)!;
-                try {
-                    const executionSha = await worktreeManager.commitWorktreeChanges(p.branch, `Pipeline execution: ${p.phase}`);
-                    await worktreeManager.applyDelta(p.branch, p.baselineSha, executionSha);
-                } catch (mergeErr: any) {
-                    // Preserve this phase's worktree (its work is real) and clean up the
-                    // rest of the wave, mirroring the sequential path's contract.
-                    for (const other of prepared) {
-                        if (other.branch !== p.branch) await worktreeManager.removeWorktree(other.branch).catch(() => {});
-                    }
-                    throw new Error(
-                        `Parallel execution succeeded, but merging the "${p.phase}" phase into the live workspace failed: ` +
-                        `${mergeErr.message}. That phase's completed work is preserved on git branch "${p.branch}" at ` +
-                        `${p.dir} (baseline ${p.baselineSha.slice(0, 8)}) — resolve manually, or discard it with ` +
-                        `'git worktree remove --force "${p.dir}"'.`
-                    );
-                }
-            }
-            for (const p of prepared) await worktreeManager.removeWorktree(p.branch).catch(() => {});
-        }
     }
 
     /**

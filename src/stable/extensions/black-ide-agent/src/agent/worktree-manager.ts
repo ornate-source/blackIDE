@@ -28,12 +28,27 @@ export class WorktreeManager {
 
     private getWorktreeRoot(rootPath: string, branchName: string): string {
         const hash = this.getHash(rootPath);
-        return path.join(os.homedir(), '.blackide', 'worktrees', hash, branchName);
+        // Branch names contain slashes (`blackide/agent/ta_...`), which would nest real
+        // directories; flatten so one branch is one directory.
+        return path.join(os.homedir(), '.blackide', 'worktrees', hash, branchName.replace(/[\\/]/g, '_'));
+    }
+
+    /**
+     * The repo a worktree operation is about (Phase 6, M36).
+     *
+     * Every method here used to read `workspaceFolders[0]` directly, which is correct
+     * until a second folder is open — and then a task agent declared against the React
+     * root would create its worktree from the Django repo's HEAD and apply its delta
+     * there. Callers that know their root pass it; the rest keep the old behaviour, so
+     * this is additive rather than a behaviour change for the pipeline.
+     */
+    private repoRoot(rootPath?: string): string | undefined {
+        return rootPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     }
 
     /** Create a new branch and checkout into an isolated worktree folder */
-    public async createWorktree(branchName: string): Promise<string> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async createWorktree(branchName: string, root?: string): Promise<string> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) {
             throw new Error('No workspace folder open. Cannot create worktree.');
         }
@@ -72,8 +87,8 @@ export class WorktreeManager {
      * file at all — callers depending on the live uncommitted state must call this right
      * after `createWorktree`, before running anything inside it.
      */
-    public async syncUncommittedChanges(branchName: string): Promise<void> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async syncUncommittedChanges(branchName: string, root?: string): Promise<void> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) throw new Error('No workspace folder open. Cannot sync worktree.');
         const worktreeDir = this.getWorktreeRoot(rootPath, branchName);
 
@@ -117,8 +132,8 @@ export class WorktreeManager {
      * new commit's SHA. `git diff`/`git apply` (see applyDelta) need real commits to
      * diff between — uncommitted working-directory state isn't visible to them.
      */
-    public async commitWorktreeChanges(branchName: string, message: string): Promise<string> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async commitWorktreeChanges(branchName: string, message: string, root?: string): Promise<string> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) throw new Error('No workspace folder open. Cannot commit worktree changes.');
         const worktreeDir = this.getWorktreeRoot(rootPath, branchName);
 
@@ -151,8 +166,8 @@ export class WorktreeManager {
      * the execution phases' own changes, which the live tree was never dirty for (unless a
      * phase touched a file the user was also concurrently editing — that should conflict).
      */
-    public async applyDelta(branchName: string, fromRef: string, toRef: string): Promise<void> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async applyDelta(branchName: string, fromRef: string, toRef: string, root?: string): Promise<void> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) throw new Error('No workspace folder open. Cannot apply worktree delta.');
         const worktreeDir = this.getWorktreeRoot(rootPath, branchName);
 
@@ -178,8 +193,8 @@ export class WorktreeManager {
     }
 
     /** Merge subagent branch back into the current branch in main workspace */
-    public async mergeWorktree(branchName: string): Promise<void> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async mergeWorktree(branchName: string, root?: string): Promise<void> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) {
             throw new Error('No workspace folder open. Cannot merge worktree.');
         }
@@ -197,8 +212,8 @@ export class WorktreeManager {
     }
 
     /** Prune and clean up a subagent worktree and delete its temporary branch */
-    public async removeWorktree(branchName: string): Promise<void> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async removeWorktree(branchName: string, root?: string): Promise<void> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) return;
 
         const worktreeDir = this.getWorktreeRoot(rootPath, branchName);
@@ -222,8 +237,8 @@ export class WorktreeManager {
     }
 
     /** Prune any dangling worktrees registered in Git */
-    public async pruneOrphans(): Promise<void> {
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    public async pruneOrphans(root?: string): Promise<void> {
+        const rootPath = this.repoRoot(root);
         if (!rootPath) return;
 
         await gitMutex.run(async () => {

@@ -215,10 +215,10 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
         // 'apply' (default) reconciles onto the live tree; 'pr' leaves the work on its
         // branch and opens a pull request. Anything unrecognised degrades to 'apply'.
         const outputMode = resolveOutputMode(generalSettings.pipelineOutputMode);
-        // Default OFF — see core/parallel-execution.ts. Only an explicit `true` enables
-        // it, so a malformed settings blob can never silently opt a user into the
-        // unproven path.
-        const parallelExecution = generalSettings.pipelineParallelExecution === true;
+        // `pipelineParallelExecution` was removed in Phase 6 (M35). It is deliberately
+        // not read here any more: a setting that is honoured by nothing is worse than an
+        // absent one, because it reads as a promise. Stale values in a user's settings
+        // blob are simply ignored.
 
         // Tracks which files each phase touched, keyed by mode id, so the orchestrator
         // can build a deterministic mindmap entry + overview.md without depending on
@@ -439,7 +439,6 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
             configs,
             phaseModelOverrides,
             outputMode,
-            parallelExecution,
             skillsForMode
         );
 

@@ -2,8 +2,9 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 7 (2026-08-02)** — **phases 0–5 delivered**; **30 of 71 gaps
-addressed, all complete (no partials)**. The only work left in a started phase is the **model tier**
+**Status:** **In progress · rev 8 (2026-08-02)** — **phases 0–6 delivered**; **37 of 71 gaps
+addressed — 36 complete and one partial (M37, whose ranking has no test evidence to rank on
+yet)**. The no-partials run ended here, and it is recorded rather than rounded off. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
@@ -15,7 +16,8 @@ addressed, all complete (no partials)**. The only work left in a started phase i
 | 3 — Retrieval substrate | ✅ | M14–M22 | **All nine milestones.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction 37.5% at realistic path depth · git history tools · **index build 5 000 files in 1 247 ms** against a ≤2 s gate · 11 `@`-mention providers incl. `@symbol`, `@docs`, `@web`. |
 | 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **16 providers** (Bedrock/Vertex deferred with a reason) · zero-config local first run. |
 | 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
-| 6–12 | — | M31–M71 | Not started. |
+| 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
+| 7–12 | — | M38–M71 | Not started. |
 
 **Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
 suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
@@ -124,6 +126,36 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 8 (2026-08-02).** Delivery: **Phase 6 (M31–M37)** — six complete, one
+> partial — taking the tally to **37 of 71** and clearing the last P1 items in the Manager lane.
+> Task agents, one governor across both lanes, the agent inbox, per-root profiles, the multi-model
+> race, and **the deletion of parallel wave execution**.
+>
+> **The no-partials run ended, and it is recorded rather than smoothed.** M37's ranking is built and
+> tested; the evidence it ranks on is not wired, so `raceOutcome` reports `testsRan: false` and the
+> comparison falls through to diff size — the fourth tiebreak doing the first one's job. A race that
+> silently ranks on churn while claiming to rank on tests is exactly what this document exists to
+> catch, so it is 🟡.
+>
+> **M35 is closed by deletion, decided by the owner.** Six revisions of "default-off, unverified"
+> ended by removing the path rather than by verifying it, on the argument that E18's reserved role for
+> it — E3's execution engine — is now filled by the task-agent lane, where the isolation is asserted
+> rather than hoped for. The deletion test then caught what makes deletions leak: `tsc -b` leaves the
+> compiled artifact behind, so the "deleted" module was still `require`-able at runtime.
+>
+> **Four defects found by building it.** A cancelled agent that sat `running` forever if its task
+> never observed the abort signal (status is now the user's intent, applied at once; the concurrency
+> slot stays held until the run truly ends, because a streaming final turn is still spending).
+> Concurrent agents sharing one `BrowserTool` and one `MCPClient` — four agents driving one Chromium
+> session. `WorktreeManager` reading `workspaceFolders[0]` in all seven methods, so an agent declared
+> against one root would build its worktree from another repo's HEAD. And a leaked concurrency slot
+> when worktree creation itself failed, which would have ratcheted the cap down by one, permanently,
+> every time git hiccuped.
+>
+> **The ≤700-line gate fired for the third consecutive phase** (711 lines). This time the extraction
+> it forced — `_getProjectProfile` into `core/project-profile-cache.ts` — is where the profile became
+> per-root, so the gate produced M36's substance instead of merely surviving it.
+>
 > **What changed in rev 7 (2026-08-02).** Delivery: **Phase 5 (M28–M30)**, taking the tally to
 > **30 of 71, still with no partials**, and clearing the eleventh of thirteen P0 items. Next-edit
 > prediction, terminal `Cmd+K`, and rolling summarization; full note under Phase 5 in §4.
@@ -278,9 +310,9 @@ the argument for the eval tier, restated with each finding.
 | A3 | Multi-agent pipeline (HLD→LLD→Planner→Design/Backend/Frontend/Testing) | 🟢 | ✅ | `agent/pipeline-orchestrator.ts` (614 LOC). **Ahead of all seven** — nobody else ships a fixed SDLC pipeline. |
 | A4 | Subagent isolation via git worktrees + delta reconcile | 🟢 | ✅ | `agent/worktree-manager.ts`. At Cursor's worktree bar. |
 | A5 | Concurrent pipeline runs (≤4) with durable history | 🟢 | ✅ | `core/pipeline-runs.ts`. |
-| A6 | **Agent Manager: N independent user-launched agents, each own worktree + own model** | 🟡 | 🟡 | *Corrected 2026-07-27:* `webview/src/ManagerPanel.tsx` **already exists** — `RunSummary` carries `modelId`, `status: awaiting_approval`, `currentPhase`, and `ParallelSubagents.tsx` renders subagents. The surface is real; what's missing is the **independent (non-pipeline) task agent** as a first-class unit inside it. Antigravity Manager (5 parallel), Cursor (8 worktree agents). → **E3** (smaller than first assessed — extend, don't build) |
+| A6 | **Agent Manager: N independent user-launched agents, each own worktree + own model** | 🟢 | ✅ | *Corrected 2026-07-27:* `webview/src/ManagerPanel.tsx` **already exists** — `RunSummary` carries `modelId`, `status: awaiting_approval`, `currentPhase`, and `ParallelSubagents.tsx` renders subagents. **Shipped (Phase 6, M31/M32).** The missing unit — the independent, non-pipeline task agent — now exists: own worktree, mode, model and workspace root, listed beside pipeline runs. Isolation is structural (the executor is rooted in the worktree, not the repo) and the live workspace is untouched until an explicit apply. At Antigravity Manager's and Cursor's bar on parallelism; ahead on the apply gate, which neither makes explicit. |
 | A7 | Request classification / auto-plan / auto-orchestrate | 🟡 | ✅ | Keyword heuristics in `planning-engine.ts`; not learned, not model-assisted. |
-| A8 | Parallel wave execution | 🔴 | 🧪 | `core/parallel-execution.ts`; default OFF, unverified under extension host. → **E18** |
+| A8 | Parallel wave execution | ⬜ | ❌ | **Deleted in Phase 6 (M35)** rather than graduated. Default-off and unverified for six phases; the role E18 reserved for it — E3's execution engine — is filled by task agents, where the isolation is asserted. Concurrency now lives in the Agent Manager, not in the pipeline. |
 | A9 | Mid-run steering (correct an agent without restarting the task) | ⬜ | ❌ | Antigravity's comment-on-artifact loop. We can only cancel + rerun. → **E4** |
 | A10 | Background / cloud agents (off-machine execution) | ⬜ | ❌ | Cursor Background Agent, Antigravity async tasks. → **E14** |
 
@@ -362,10 +394,10 @@ the argument for the eval tier, restated with each finding.
 | F12 | **Terminal `Cmd+K`** (natural language → shell command) | 🟢 | ✅ | **Shipped (Phase 5, M29).** `core/terminal-command.ts` — single-line by construction, because `sendText(text, false)` suppresses one *trailing* newline and executes every embedded one; judged by the same `CommandPolicy` as the agent's `run_command`, so this surface cannot be more permissive than that one; mandatory preview, and inserted with `shouldExecute: false` even for allow-listed commands. **At Cursor's bar, with a stricter never-run posture.** |
 | F13 | **Provider breadth** | 🟢 | ✅ | **6 → 16 (Phase 4, M26).** Added DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI — one dispatch, one preset table, so the streaming and tool-call parsing cannot drift per provider. **Bedrock and Vertex remain absent by decision:** SigV4 signing and a Google OAuth exchange are auth implementations, not base URLs. |
 | F14 | Zero-config first run (works before a key is added) | 🟢 | ✅ | **Shipped (Phase 4, M27), local-first by design.** Probes Ollama / LM Studio / llama.cpp on a 1.2 s timeout and *offers* what it finds; never auto-enables, ignores a runtime with no models pulled, and types the result `local` so tool calls go through the protocol that works on every local model. We still do not operate a hosted free tier (§4.5). |
-| F15 | **Multi-model race** (same prompt, N models, compare & pick) | ⬜ | ❌ | Cursor 2.0. `ManagerPanel` already tracks `modelId` per run, so the substrate is closer than it looks. → **E27** |
-| F16 | **Agent inbox / notifications when input is needed** | 🔴 | 🟡 | `status: awaiting_approval` exists in `ManagerPanel.tsx` but there is no notification surface — an unattended run can idle unnoticed. Antigravity has an inbox. → **E28** |
+| F15 | **Multi-model race** (same prompt, N models, compare & pick) | 🟡 | 🟡 | **Phase 6, M37.** `core/model-race.ts` ranks lexicographically — a failing candidate never outranks a passing one, whatever its diff size — caps the field, and returns *no winner* rather than nominating one on weak evidence. Nothing is auto-applied. **Partial:** the test-result half is not wired, so ranking currently falls through to diff size. |
+| F16 | **Agent inbox / notifications when input is needed** | 🟢 | ✅ | **Shipped (Phase 6, M34).** `core/agent-inbox.ts` — blocked / parked / failed / **review** across both lanes, badge counts in the Manager header, and a notification fired once per (item, reason) so a poll of an unchanged inbox is silent. At Antigravity's inbox bar; the `review` reason (finished work nobody has applied) is an addition. |
 | F17 | Reusable prompt / notepad library | 🟢 | ✅ | **Shipped (Phase 2, M12).** `core/prompt-library.ts` + loader: `.blackide/prompts/*.md` become slash commands with `$ARGS`/`$1`…`$9` and cycle-safe `steps:` workflows; built-in names refused at load so a user file cannot silently redefine `/plan`. At Cursor Notepads' and Continue prompt blocks' bar, plus workflow chaining neither has. |
-| F18 | Multi-root / multi-workspace support | 🔴 | 🟡 | Profiler, index and knowledge base all assume a single workspace root. → **E30** |
+| F18 | Multi-root / multi-workspace support | 🟡 | ✅ | **Phase 6, M36.** `core/workspace-roots.ts` gives longest-prefix, boundary-aware attribution and `core/project-profile-cache.ts` caches a profile per root, so a Django+React workspace stops injecting Django skills into React files. Worktree operations take the root they act on. Still 🟡 on level: the codebase index remains a single shard. |
 | F19 | Voice input | ⬜ | ❌ | Cursor ships it. Genuinely low value for us; scheduled last. → **E31** |
 | F20 | Extension marketplace / Open VSX compatibility | 🟢 | ✅ | `config/product.json` carries full gallery + `extensionKind`/API-proposal compatibility tables. **Already at OPIDE's Open VSX bar** — no work needed. |
 
@@ -401,7 +433,7 @@ the argument for the eval tier, restated with each finding.
 | Retrieval & code graph | 🟢 | OPIDE, Cursor | **At bar as of Phase 3.** Symbol chunking, a code graph with impact analysis, rerank, 11 context providers, `@docs`. recall@5 84.7→91.2 · @10 93.1→97.2 · @20 100. |
 | Memory | 🔴 | Cursor, OPIDE | **We are behind.** Durable markdown store, but nothing extracts, ages, dedups or contradicts. → Phase 8 |
 | Daily-driver autocomplete | 🟢 | Cursor | **At bar on capability as of Phase 5** — next-edit with cross-file jump, terminal `Cmd+K`. Still behind on the *model*: Cursor trains one for this and we route a role. |
-| Parallel task agents & steering | 🔴 | Antigravity, Cursor | **We are behind.** |
+| Parallel task agents | 🟢 | Antigravity, Cursor | **At bar as of Phase 6.** N independent agents, one governor, an inbox, and an apply gate neither competitor makes explicit. *Steering* (mid-run correction) is still absent — Phase 7. |
 | Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
 | Model routing | 🟢 | Continue, OPIDE | **At bar as of Phase 4.** Seven roles, health-aware cross-provider failover, fast-apply, 16 providers, zero-config local first run. |
 | Review automation | ⬜ | Cursor BugBot | **Absent.** |
@@ -845,13 +877,13 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M28 | Next-edit prediction (multi-file, edit-history, jump-to) | P0 | E1 | 5 ✅ | coalescing edit-history ring buffer + M15 graph neighbourhood → a SEARCH/REPLACE-anchored prediction, verified against the live file and discarded if any document moved; cross-file is a first-class outcome via a jump affordance, not a special case |
 | M29 | Terminal `Cmd+K` | P2 | E25 | 5 ✅ | `core/terminal-command.ts` — single-line by construction (an embedded newline in `sendText` executes), judged by the same `CommandPolicy` as the agent, mandatory preview, inserted with `shouldExecute: false` **always** |
 | M30 | Automatic rolling summarization (beyond manual `/compact`) | P2 | E11 | 5 ✅ | threshold-triggered fold of the older middle into prose, layered *above* `ContextManager.fit` rather than replacing it; refuses outright while an approval is open, and `/compact` — a suggestion that did nothing since Phase 2 — now runs the same path |
-| M31 | Independent parallel task agents (non-pipeline) in Manager | P1 | E3 | 6 |
-| M32 | Per-agent model assignment for task agents | P1 | E3 | 6 |
-| M33 | Global concurrency + token governor | P1 | E3 | 6 |
-| M34 | Agent inbox + notifications for blocked runs | P1 | E28 | 6 |
-| M35 | Parallel wave execution graduated or removed | P1 | E18 | 6 |
-| M36 | Multi-root / multi-workspace correctness | P1 | E30 | 6 |
-| M37 | Multi-model race (N models, compare, pick) | P2 | E27 | 6 |
+| M31 | Independent parallel task agents (non-pipeline) in Manager | P1 | E3 | 6 ✅ | `TaskAgentRegistry` + `task-agent-entry.ts`; the executor is rooted in the agent's **worktree**, so isolation is structural rather than promised. Four concurrent agents, four worktrees, kill-one asserted |
+| M32 | Per-agent model assignment for task agents | P1 | E3 | 6 ✅ | each agent carries its own `modelId` and mode into its run, resolved through the Phase 4 router with failover |
+| M33 | Global concurrency + token governor | P1 | E3 | 6 ✅ | `core/agent-governor.ts` — **one** governor across both lanes; admission is a reservation, not a boolean, so two launches in one tick cannot both win a last slot |
+| M34 | Agent inbox + notifications for blocked runs | P1 | E28 | 6 ✅ | `core/agent-inbox.ts` — blocked / parked / failed / **review**, badge counts, notified once per (item, reason); polled at 3 s against a 5 s gate |
+| M35 | Parallel wave execution graduated or removed | P1 | E18 | 6 ✅ | **removed.** Unverified for six phases, and the role E18 reserved for it is now filled by the task-agent lane, where the isolation is asserted. Deletion asserted rather than assumed — including the stale compiled artifact |
+| M36 | Multi-root / multi-workspace correctness | P1 | E30 | 6 ✅ | `core/workspace-roots.ts` (longest-prefix attribution, boundary-aware) + `core/project-profile-cache.ts` (per-root profiles); worktree ops take the root they act on |
+| M37 | Multi-model race (N models, compare, pick) | P2 | E27 | 6 🟡 | `core/model-race.ts` — lexicographic ranking (a failing candidate never outranks a passing one), capped field, refuses to name a winner without evidence. **The test-result half is not wired**: `raceOutcome` reports `testsRan: false`, so ranking falls to diff size — see the delivery note |
 | M38 | Typed artifacts + review panel | P1 | E4 | 7 |
 | M39 | Mid-run steering (comment-on-artifact → inject) | P1 | E4 | 7 |
 | M40 | Verification loop with evidence (tests + screenshots + recordings) | P1 | E5 | 7 |
@@ -894,7 +926,7 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–5): 30 of 71 — all complete, no partials** (2026-08-02). The four
+**Delivered so far (Phases 0–6): 37 of 71 — 36 complete, one partial** (2026-08-02). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
@@ -1991,6 +2023,131 @@ pending approval or tool result.
 the live workspace is untouched until an explicit apply; a 2-root workspace (Django API + React app)
 yields two profiles and injects the correct stack skills per root; blocked runs notify within 5 s
 and survive a window reload.
+
+
+> ### ✅ Delivered 2026-08-02 — six of seven complete, M37 partial
+> `core/agent-governor.ts` · `core/workspace-roots.ts` · `core/project-profile-cache.ts` ·
+> `core/task-agents.ts` · `agent/task-agent-registry.ts` · `agent/task-agent-entry.ts` ·
+> `agent/task-agent-lane.ts` · `core/agent-inbox.ts` · `core/model-race.ts` · Manager panel
+> gains a task-agent lane, an inbox badge and per-agent apply/discard.
+> vitest **841/841 / 41 suites** (was 693/36) · harness **418/418** · eval green, no regression ·
+> `tsc -b` clean · webview builds · `extension.ts` **688 LOC**.
+>
+> **Gate status.** Three of the five clauses are asserted; two need a real repository and a real
+> host, which is the same tier that has been unavailable since Phase 5.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | 4 concurrent agents → 4 independently mergeable worktrees | **met** | `__tests__/task-agents.test.ts` — distinct branches, distinct dirs, and `cwd !== rootPath` on every run |
+> | Kill-one isolation holds | **met** | one `AbortController` per agent; cancelling one leaves its neighbours running, and a failing one does not disturb them |
+> | The live workspace is untouched until an explicit apply | **met** | `apply()` is the only caller of the delta operation, guarded by `canApply`; asserted from six directions including a failed apply |
+> | A 2-root workspace yields two profiles and the correct skills per root | **partly** | attribution and per-root caching are asserted pure; the end-to-end injection needs a real 2-root host |
+> | Blocked runs notify within 5 s and survive a reload | **partly** | 3 s poll and `reconcileInterruptedAgents` are asserted; the notification itself is `vscode.window` and needs the host |
+>
+> **M31 — the isolation is one word, and that is the whole risk.** `rootPath: params.cwd` in
+> `task-agent-entry.ts` is what makes four concurrent agents unable to see each other: every file
+> tool, every `run_command`, every grep resolves against it. Pointing it at the live root instead
+> would silently turn four sandboxed agents into four processes editing the user's tree at once, and
+> nothing in the type system distinguishes the two — both are strings, both are absolute paths, both
+> are plausible. So the registry's tests assert `cwd !== rootPath` on *every* run rather than trusting
+> the line to stay correct.
+>
+> **Admission is a reservation, not a boolean.** `canStart()` then `start()` is a race this codebase
+> would lose: runs are launched from webview messages, so two clicks in the same tick both see three
+> of four slots used and both proceed. `reserve()` returns a handle or a refusal and holds the slot
+> from that moment — there is no window between the check and the claim. Releasing is idempotent for
+> the mirror-image reason: `finally` blocks and error paths both release, and a double release would
+> hand back a slot somebody else now holds.
+>
+> **The slot and the status answer to different authorities.** Cancelling flips the status to
+> `cancelled` immediately, because the user pressed cancel and the panel should say so — and because
+> a task that never observes its signal would otherwise sit `running` forever in a state nothing could
+> clear. The *slot* is released only when the run truly ends: a final turn that is still streaming is
+> still spending, and freeing it early would let a fifth agent start against a cap of four. Found by a
+> test that expected `cancelled` and got `running`.
+>
+> **A cancelled agent's worktree is kept, and that is a deliberate refusal to be helpful.** It may
+> hold real work, and `canApply` still says no — offering to apply a run that stopped halfway is how a
+> half-finished refactor reaches a user's tree with nothing indicating it. The branch is on every
+> card, so recovering it is a git operation the user performs on purpose. Same reasoning when an apply
+> *fails*: the worktree survives, because that is precisely when it holds the only copy.
+>
+> **M33 — one governor, not one per lane.** Task agents and pipeline runs hit the same repo and the
+> same provider account, so two caps of four is a cap of eight discovered at the worst moment.
+> Concurrency is clamped rather than validated (the value comes from a hand-editable settings blob, so
+> `0`, `-1` and `"eight"` are all reachable, and a garbled setting should behave like an absent one
+> rather than like a cap of 1), and the spend ceiling is checked *during* a run as well as at
+> admission — a ceiling checked only at the door is one that exactly one unbounded run can exceed.
+>
+> **M34 — the inbox's fourth reason is the one that was missing.** F16 recorded that
+> `awaiting_approval` existed with no notification surface. Blocked, parked and failed are the obvious
+> three; **review** — an agent that finished and whose work is sitting in a worktree — is the one that
+> would otherwise be missed entirely, because nothing is wrong, nothing is on a timer, and the work
+> simply never lands. Notification is keyed by (item, **reason**), so blocked→failed is announced
+> again while a poll of an unchanged inbox is silent; a surface that re-announces on every poll gets
+> switched off within the hour, after which the user has both the missed run and a dead channel.
+>
+> **M35 — deleted, on the merits, with the owner's decision recorded.** The path was default-off and
+> explicitly unverified for six phases, and it could not be verified in this pass either — the
+> real-host tier still does not launch here. What settled it is that E18 reserved it as "E3's
+> execution engine", and E3 is the Agent Manager, which now exists with *asserted* isolation. Keeping
+> an unverified auto-merge of concurrent worktrees into the live tree — the highest-risk operation in
+> this codebase — to serve a role something safer already fills is not a trade worth making. Gone:
+> `core/parallel-execution.ts`, `runWavesInParallel`, the orchestrator flag, the
+> `pipelineParallelExecution` setting and its UI. The dependency-**wave analysis** stays, because it
+> renders `dependency_graph.md`: describing which phases are independent is useful without running
+> them that way.
+>
+> **The deletion test found the thing that makes deletions leak.** `tsc -b` does not remove the
+> compiled output of a source file you delete, so `dist/core/parallel-execution.js` was still on disk
+> and still `require`-able — the module was "deleted" and the unverified code path was still reachable
+> at runtime. The harness now asserts the artifact's absence, not just the source's.
+>
+> **M36 — the bug was never an error, which is why it survived thirteen call sites.** Everything
+> reached for `workspaceFolders[0]`. In a two-root workspace (a Django API and a React app, the
+> ordinary shape of a real project) that means the profiler reports `python, django` while the agent
+> edits a React component: Django skills injected with full confidence, `run_tests` picking pytest for
+> a Jest suite, and nothing anywhere logging a complaint. Two rules carry the fix and both are the
+> kind that pass review and fail in production — **longest prefix wins** (nested roots are normal, and
+> first-match resolves every file in `repo/packages/api/` to `repo/`), and **boundaries are
+> respected** (`startsWith` makes `/repo/app` claim `/repo/application/x.ts`). Profiles are now cached
+> per root, and paths are made relative to *their own* root before detection, because
+> `asRelativePath` prefixes the folder name in a multi-root workspace and `api/manage.py` never
+> matches `manage.py`.
+>
+> **M37 — ranked lexicographically, and this is the interesting half of the feature.** The tempting
+> design is a weighted score: tests 0.6, diff size 0.3, speed 0.1. It is wrong in a way that costs
+> real money — *any* weighting admits a trade where a candidate whose **tests fail** outranks one
+> whose tests pass because it was tidier or quicker, and a race that recommends broken code because it
+> is short has made the user's decision worse than a coin flip. So the comparison is strictly ordered:
+> tests pass, then tests actually ran ("no test command here" is not "the suite is green"), then fewer
+> failures, then less churn. `pickWinner` will return **no winner** — when nothing is verifiably good,
+> and when two candidates genuinely tie — because a recommendation carries an implicit claim of
+> confidence, and picking the first of a tie is picking by list order and calling it a judgement.
+> Nothing in a race is ever auto-applied.
+>
+> **Why M37 is 🟡 and not ✅.** The ranking is built and tested; the *evidence* it ranks on is not
+> wired. `TaskAgentLane.raceOutcome` currently reports `testsRan: false` for every candidate, so in
+> practice ranking falls through to diff size — which is the fourth tiebreak being used as the first.
+> Running Phase 1's `run_tests` inside each candidate's worktree and threading the result through is
+> the remaining work, and it is named here rather than smoothed over: a race that silently ranks on
+> churn while claiming to rank on tests is exactly the kind of thing this document exists to catch.
+>
+> **Two things fixed on the way past.** Concurrent agents each get their **own** `BrowserTool`,
+> `MCPClient`, `ArtifactManager` and `CheckpointManager` — one shared browser would mean agent B
+> navigating away from the page agent A is asserting on, and one shared checkpoint store is the
+> concurrency bug that already forced pipeline runs to have their own. And `WorktreeManager`'s seven
+> hard-coded `workspaceFolders[0]` reads now take an optional root, so an agent declared against the
+> React root does not create its worktree from the Django repo's HEAD.
+>
+> **The ≤700-line gate fired for a third consecutive phase**, at 711 lines. The extraction this time
+> was `_getProjectProfile` into `core/project-profile-cache.ts` — which is also where it became
+> per-root, so the gate produced the M36 refactor rather than merely surviving it.
+>
+> **Not run in this environment:** the real-host integration tier, unchanged from Phase 5
+> (`@vscode/test-electron` spawns `Contents/MacOS/Electron`; VS Code 1.131.0 ships
+> `Contents/MacOS/Code`). Two of Phase 6's five gate clauses are the ones that need it, and they are
+> marked "partly" above rather than claimed.
 
 ### Phase 7 — Artifacts, steering & verification *(the review story)*
 *Covers M38–M40. Depends on Phase 6.*

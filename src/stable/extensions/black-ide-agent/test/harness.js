@@ -37,6 +37,7 @@ Module._resolveFilename = function (request, ...rest) {
 require.cache['vscode'] = { id: 'vscode', filename: 'vscode', loaded: true, exports: vscodeStub };
 
 const DIST = path.join(__dirname, '..', 'dist');
+const SRC = path.join(__dirname, '..', 'src');
 const { LLMClient } = require(path.join(DIST, 'core/llm-client.js'));
 const { runAgentLoop } = require(path.join(DIST, 'agent/agent-loop.js'));
 const { BASE_TOOLS, toolsForMode, isToolAllowedInMode, renderToolDocs } = require(path.join(DIST, 'core/tools.js'));
@@ -1327,35 +1328,35 @@ async function main() {
     ok('the newest decision is readable through readContext', kb.readContext(4000).includes('Decision 40'));
   }
 
-  console.log('\n[40] P5: parallel execution planning (pure)');
+  console.log('\n[40] P6/M35: the parallel wave executor is gone, not disabled');
   {
-    const { shouldRunParallel, planParallelExecution, slugify } = require(path.join(DIST, 'core/parallel-execution.js'));
+    // Phase 6 deleted `core/parallel-execution.ts` and `runWavesInParallel` rather than
+    // graduating them (M35 — "no third option"). The path was unverified for six phases,
+    // and the role E18 reserved for it — E3's execution engine — is now filled by the
+    // task-agent lane, which has asserted kill-one isolation and never touches the live
+    // tree without an explicit apply.
+    //
+    // This asserts the deletion is complete rather than partial. A half-removed feature
+    // is the failure mode here: a setting still read, or a branch still reachable, would
+    // leave the unverified git path live while the roadmap recorded it as gone.
+    ok('the parallel-execution module is deleted',
+      !fs.existsSync(path.join(DIST, 'core/parallel-execution.js')));
 
-    // Default-off is the load-bearing safety property: the flag must be required.
-    ok('disabled means sequential even with a parallelizable wave',
-      shouldRunParallel([['Design Executor', 'Backend Executor']], false) === false);
-    ok('enabled + a multi-phase wave goes parallel',
-      shouldRunParallel([['Design Executor', 'Backend Executor']], true) === true);
-    // No opportunity => don't pay the cost.
-    ok('enabled but all waves single-phase stays sequential',
-      shouldRunParallel([['Design Executor'], ['Testing Executor']], true) === false);
-    ok('an empty plan stays sequential', shouldRunParallel([], true) === false);
+    const orchestrator = fs.readFileSync(path.join(SRC, 'agent/pipeline-orchestrator.ts'), 'utf8');
+    ok('no parallel wave executor remains in the orchestrator',
+      !orchestrator.includes('runWavesInParallel'));
+    ok('the orchestrator no longer takes a parallelExecution flag',
+      !orchestrator.includes('parallelExecution'));
 
-    const plans = planParallelExecution([['Design Executor', 'Backend Executor'], ['Frontend Executor']], 'pipeline-abc');
-    ok('one plan per wave', plans.length === 2);
-    ok('each phase gets its own branch',
-      plans[0].phases.map(p => p.branch).join(',') === 'pipeline-abc-w0-design-executor,pipeline-abc-w0-backend-executor', plans[0].phases);
-    ok('branches are unique across the whole run',
-      new Set(plans.flatMap(w => w.phases.map(p => p.branch))).size === 3);
-    ok('branch names embed the wave index so waves cannot collide', plans[1].phases[0].branch.includes('-w1-'));
-    ok('merge order is deterministic and covers every phase',
-      JSON.stringify(plans[0].mergeOrder) === JSON.stringify(plans[0].phases.map(p => p.branch)));
-    ok('two runs of the same plan produce identical branch layouts',
-      JSON.stringify(planParallelExecution([['Design Executor']], 'x')) === JSON.stringify(planParallelExecution([['Design Executor']], 'x')));
+    const entry = fs.readFileSync(path.join(SRC, 'agent/pipeline-entry.ts'), 'utf8');
+    ok('the pipelineParallelExecution setting is no longer read',
+      !/generalSettings\.pipelineParallelExecution/.test(entry));
 
-    ok('slugify makes a mode id git-safe', slugify('Backend Executor') === 'backend-executor');
-    ok('slugify strips punctuation', slugify('Sr Architect (HLD)!') === 'sr-architect-hld');
-    ok('slugify never returns empty', slugify('///') === 'phase');
+    // The dependency-wave *analysis* stays: it renders dependency_graph.md, which
+    // describes which phases are independent without running them that way.
+    const { selectExecutionWaves } = require(path.join(DIST, 'agent/pipeline-orchestrator.js'));
+    ok('wave analysis survives for the dependency graph',
+      typeof selectExecutionWaves === 'function');
   }
 
   console.log('\n[41] P5: disjoint vs overlapping wave merges (real git)');

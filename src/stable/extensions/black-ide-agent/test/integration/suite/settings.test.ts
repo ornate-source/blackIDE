@@ -10,8 +10,10 @@ const EXTENSION_ID = 'blackide.black-ide-agent';
  * never reach the pipeline. Only a host test can catch that break.
  *
  * These are the two flags whose DEFAULT is load-bearing for safety:
- *   - pipelineOutputMode      — wrong default silently stops applying the user's work
- *   - pipelineParallelExecution — wrong default opts users into the unproven git path
+ *   - pipelineOutputMode — wrong default silently stops applying the user's work
+ *
+ * `pipelineParallelExecution` used to be the second; Phase 6 deleted the path it guarded
+ * (M35), so what is asserted now is its absence rather than its default.
  */
 suite('Settings defaults', () => {
     suiteSetup(async () => {
@@ -26,18 +28,15 @@ suite('Settings defaults', () => {
         assert.strictEqual(resolveOutputMode(null), 'apply');
     });
 
-    test('parallel execution requires an explicit true', () => {
-        const { shouldRunParallel } = require('../../../../dist/core/parallel-execution.js');
-        const parallelizable = [['Design Executor', 'Backend Executor']];
-        // Every falsy/malformed settings value must keep the proven sequential path.
-        for (const raw of [undefined, null, false, 0, '', 'true', 1, {}]) {
-            assert.strictEqual(
-                shouldRunParallel(parallelizable, (raw as any) === true),
-                false,
-                `settings value ${JSON.stringify(raw)} must not enable parallel execution`
-            );
-        }
-        assert.strictEqual(shouldRunParallel(parallelizable, true), true);
+    test('the parallel wave executor is gone, not merely defaulted off', () => {
+        // Phase 6 deleted it (M35). This suite used to assert its default was safe; the
+        // stronger property now is that there is no path to it at all — including no
+        // stale compiled artifact, which is how a deleted module stays requirable.
+        assert.throws(
+            () => require('../../../../dist/core/parallel-execution.js'),
+            /Cannot find module/,
+            'core/parallel-execution should no longer exist in dist',
+        );
     });
 
     test('the extension declares no contributes.configuration (settings live in the blob)', () => {

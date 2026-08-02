@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SecretManager } from './secret-manager';
 import { PipelineRunSummary } from './pipeline-runs';
+import { TaskAgentSummary } from './task-agents';
 
 /**
  * The ✦ Pipeline Manager webview panel — launches and monitors concurrent
@@ -20,10 +21,37 @@ export interface ManagerPanelHost {
     approveManagedPipelineRun(runId: string): void;
     rejectManagedPipelineRun(runId: string): void;
     listManagedPipelineRuns(): PipelineRunSummary[];
+    /** The Phase 6 lane. Typed loosely here to keep this file free of agent imports. */
+    readonly taskAgents: {
+        launch(prompt: string, modelId: string, mode: string | undefined, rootPath: string):
+            { agent: TaskAgentSummary } | { error: string };
+        cancel(id: string): void;
+        apply(id: string): Promise<{ ok: true } | { error: string }>;
+        discard(id: string): Promise<{ ok: true } | { error: string }>;
+        list(): TaskAgentSummary[];
+        startRace(prompt: string, modelIds: string[], rootPath: string): { raceId: string } | { error: string };
+        raceOutcome(raceId: string): unknown;
+        inbox(): unknown[];
+        configureFromSettings(): Promise<void>;
+    };
 }
 
 export class ManagerPanel {
     private _panel?: vscode.WebviewPanel;
+
+    /**
+     * The live panel, so background lanes can push to it without holding a reference.
+     *
+     * Static because the pushers (the task-agent lane's inbox poller) outlive any
+     * particular panel: the panel is opened and closed by the user, while agents keep
+     * running. A posted message with no panel open is dropped, which is correct — the
+     * state is re-sent on mount, so nothing is lost by not being watched.
+     */
+    private static _live?: ManagerPanel;
+
+    static post(message: any): void {
+        ManagerPanel._live?._panel?.webview.postMessage(message);
+    }
 
     constructor(
         private readonly _context: vscode.ExtensionContext,
@@ -51,6 +79,7 @@ export class ManagerPanel {
             }
         );
 
+        ManagerPanel._live = this;
         this._panel.webview.html = this._host.getHtmlForWebview(this._panel.webview, 'manager');
 
         this._panel.webview.onDidReceiveMessage(async (data: any) => {
@@ -81,6 +110,49 @@ export class ManagerPanel {
                     // if it was closed and reopened while the extension host stayed alive.
                     this._panel.webview.postMessage({ type: 'pipelineRunListSync', value: this._host.listManagedPipelineRuns() });
                     break;
+                // ── Task agents (Phase 6) ───────────────────────────────────
+                case 'startTaskAgent': {
+                    await this._host.taskAgents.configureFromSettings();
+                    const root = data.value?.rootPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+                    const result = this._host.taskAgents.launch(data.value?.prompt || '', data.value?.modelId || '', data.value?.mode, root);
+                    if ('error' in result) vscode.window.showWarningMessage(result.error);
+                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
+                    break;
+                }
+                case 'cancelTaskAgent':
+                    this._host.taskAgents.cancel(data.value?.agentId);
+                    break;
+                case 'applyTaskAgent': {
+                    const result = await this._host.taskAgents.apply(data.value?.agentId);
+                    if ('error' in result) vscode.window.showErrorMessage(result.error);
+                    else vscode.window.showInformationMessage('Applied the agent\'s changes to your workspace.');
+                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
+                    break;
+                }
+                case 'discardTaskAgent': {
+                    const result = await this._host.taskAgents.discard(data.value?.agentId);
+                    if ('error' in result) vscode.window.showErrorMessage(result.error);
+                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
+                    break;
+                }
+                case 'startModelRace': {
+                    await this._host.taskAgents.configureFromSettings();
+                    const root = data.value?.rootPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+                    const result = this._host.taskAgents.startRace(data.value?.prompt || '', data.value?.modelIds || [], root);
+                    if ('error' in result) vscode.window.showWarningMessage(result.error);
+                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
+                    break;
+                }
+                case 'raceOutcome':
+                    this._panel.webview.postMessage({
+                        type: 'raceOutcomeSync',
+                        value: this._host.taskAgents.raceOutcome(data.value?.raceId),
+                    });
+                    break;
+                case 'listTaskAgents':
+                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
+                    this._panel.webview.postMessage({ type: 'agentInboxSync', value: { items: this._host.taskAgents.inbox() } });
+                    break;
                 case 'loadLlmConfig': {
                     const config = await this._secretManager.getKey('llm-config');
                     this._panel.webview.postMessage({ type: 'setLlmConfig', value: config });
@@ -91,6 +163,7 @@ export class ManagerPanel {
 
         this._panel.onDidDispose(() => {
             this._panel = undefined;
+            if (ManagerPanel._live === this) ManagerPanel._live = undefined;
         }, null, this._context.subscriptions);
     }
 }
