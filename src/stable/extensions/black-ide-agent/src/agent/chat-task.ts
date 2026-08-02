@@ -20,6 +20,7 @@ import { buildReranker } from '../core/rerank-setup';
 import { buildFastApply } from '../core/fast-apply-setup';
 import { createSummarizer } from '../core/summarizer';
 import { describeMindmap, readMindmap, renderMindmapContext } from '../core/mindmap-readback';
+import { UNTRUSTED_CONTENT_POSTURE } from '../core/untrusted-content';
 import { pickSearchSettings } from '../tools/search-providers';
 import { ChatSession } from '../core/chat-session';
 import { Rule, selectRules, renderRules, renderRequestableRules } from '../core/rules';
@@ -332,6 +333,8 @@ export async function runAgentTask(
                 name: 'system', required: true, budgetTokens: 1200,
                 content: `You are the Black IDE Agent, an autonomous coding assistant working in the user's workspace at ${rootPath || '(no folder)'}.
 Work in a loop: think, call a tool, observe the result, repeat. Prefer codebase_search to locate code, read a file before editing it, and verify your work. When finished, call complete_task with a concise summary.
+
+${UNTRUSTED_CONTENT_POSTURE}
 
 Tool selection matters — you are running inside a full IDE with live language servers, so use them instead of guessing from text:
 - "Where is X defined?" → go_to_definition, not grep_search. "What uses X?" → find_references. "Where does X live?" → workspace_symbols. "What type is X?" → hover.

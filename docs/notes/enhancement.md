@@ -2,9 +2,9 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 10 (2026-08-02)** — **phases 0–8 delivered**; **46 of 71 gaps
-addressed — 43 complete and three partial (M38's review panel, M40's pipeline/visual halves, and
-M45's memory UI)**. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
+**Status:** **In progress · rev 11 (2026-08-02)** — **phases 0–8 delivered, phase 9 part-delivered**;
+**51 of 71 gaps addressed — 48 complete and three partial**. **Both remaining P0 items closed**
+(M54 secret redaction, M56 untrusted-content posture): every P0 in the inventory is now done. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
@@ -19,7 +19,8 @@ M45's memory UI)**. Phase 7 closed Phase 6's partial (M37) by building the evide
 | 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
 | 7 — Artifacts, steering & verification | 🟡 | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction. **Outstanding:** the artifact *review panel* is not rendered, and verification runs for task agents but not yet for pipeline runs or visual evidence. |
 | 8 — Memory v2 | 🟡 | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back, closing a write-only loop open since plan.md's Phase 5. **Outstanding:** M45's memory visualization panel, and end-of-turn extraction is not yet driven by a model. |
-| 9–12 | — | M47–M71 | Not started. |
+| 9 — Review automation, MCP parity & hardening | 🟡 | M47–M58 | **Security spine delivered:** secret redaction (P0) · untrusted-content posture with injection fixtures (P0) · one central workspace-boundary guard, replacing four scratch scripts that asserted nothing · per-tool circuit breakers · append-only audit trail, redacted on the way in. **Not started:** the Reviewer agent (M47/M48), MCP transport parity (M49–M51), sandbox tiers (M57), at-rest encryption (M58). |
+| 10–12 | — | M59–M71 | Not started. |
 
 **Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
 suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
@@ -128,6 +129,28 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 11 (2026-08-02).** Delivery: **Phase 9's security spine — M52–M56** — and
+> with M54 and M56 closed, **every P0 item in the 71-gap inventory is now done**. Tally **51 of 71**.
+> Five of Phase 9's twelve milestones; the Reviewer agent, MCP transport parity and sandbox tiers
+> are not started and are listed as such rather than sketched.
+>
+> **The redaction work is mostly about what it refuses to redact.** Over-redaction is not a safe
+> failure — an agent whose view of the code is full of `[redacted]` cannot reason about it, and the
+> user switches the feature off, after which nothing is protected. Six false positives were caught by
+> tests, including an ordinary English sentence: prose clears the entropy threshold, and credentials
+> have no spaces.
+>
+> **The injection fixtures assert the gates, not the filter.** A pattern matcher that blocked
+> injections would be theatre; what holds is that `isToolAllowedInMode`, `CommandPolicy` and the
+> session toggles have no parameter through which content could reach them.
+>
+> **Three defects found by tests during the phase.** `sk-ant-…` labelled as `openai-key` (the value
+> was scrubbed either way, so a weaker assertion would have passed while mislabelling every Anthropic
+> key in the audit trail); `API_KEY=${API_KEY}` redacted because a placeholder branch described a
+> prefix inside an anchored alternation; and a **literal NUL byte** in `workspace-guard.ts` — the
+> third in this codebase, caught by `source-hygiene` within the same phase, and fixed by removing the
+> sentinel rather than escaping it.
+>
 > **What changed in rev 10 (2026-08-02).** Delivery: **Phase 8 (M41–M46)** — four complete, M41
 > partial, M45 not started. Tally **46 of 71**. Three of the phase's four gate clauses are met; the
 > fourth is a retrieval-quality measurement with no corpus behind it yet.
@@ -416,7 +439,7 @@ the argument for the eval tier, restated with each finding.
 | E_6 | MCP client | 🟡 | ✅ | `tools/mcp-client.ts:51` — **stdio only**, Agent-mode only, refused in pipeline runs. Antigravity ships Chrome + Web MCP servers; remote/streamable HTTP is table stakes now. → **E12** |
 | E_7 | Vision / image input | 🟢 | ✅ | `core/llm-client.ts:334-370` — images on user turns *and* tool results, OpenAI + Anthropic shapes. At A-Coder's bar. |
 | E_8 | Agent hooks (`beforeToolCall`/`afterToolCall`/`beforeResponse`/`onError`) | 🟡 | ✅ | `agent/hooks.ts:8`. Present but under-documented and unused by first-party features. |
-| E_9 | Tool circuit breakers / per-tool failure budgets | ⬜ | ❌ | OPIDE ships them. A wedged tool currently burns iterations. → **E15** |
+| E_9 | Tool circuit breakers / per-tool failure budgets | 🟢 | ✅ | **Shipped (Phase 9, M52).** `core/tool-breaker.ts` — consecutive failures plus a latency budget, per tool and per *run* (the fix for a wedged server is a restart, so a breaker outliving the run would keep it disabled after the user fixed it). Tripped tools are removed from the advertised list **and** refused at the executor. At OPIDE's bar. |
 | E_10 | Post-edit diagnostics feedback | 🟢 | ✅ | *Corrected:* `ToolRunner.collectDiagnostics` (`tools/tool-runner.ts:306`) is called after every edit from `agent/tool-executor.ts:154` — the agent **does** see compiler/linter errors it caused. Better than the first assessment. |
 | E_11 | On-demand `get_diagnostics` + LSP navigation tools | 🟢 | ✅ | **Shipped (Phase 1, M6/M7).** `tools/lsp-tools.ts` — `get_diagnostics`, `go_to_definition`, `find_references`, `workspace_symbols`, `hover`, `code_actions`, `rename_symbol`. Symbols addressed by *name* (a model has no character offsets), every provider call raced against a timeout, and a cold/absent server degrades to grep with an explicit note instead of erroring. Verified in a real extension host. **Structural advantage over the extension-only competitors**, who cannot reach a language server this directly. |
 | E_12 | **Sandboxed command execution** | 🔴 | ❌ | `executeCommandInTerminal` (`tool-runner.ts:133`) spawns a real, unrestricted `vscode.window.createTerminal`. Policy-gated (G1) but not *contained*. Cursor 2.0 sandboxed shells; OPIDE QuickJS sandbox + 10-layer model. → **E23** |
@@ -455,9 +478,9 @@ the argument for the eval tier, restated with each finding.
 | G2 | Secrets in OS keychain (`SecretStorage`), never `settings.json` | 🟢 | ✅ | `core/secret-manager.ts`. At OPIDE's keychain bar. |
 | G3 | Auto-approve deliberately ignored in unattended pipeline runs | 🟢 | ✅ | Best-in-class safety posture. |
 | G4 | Local-only telemetry + diagnostics export | 🟢 | ✅ | `core/telemetry-sink.ts`. Privacy parity with CortexIDE/A-Coder. |
-| G5 | Append-only audit trail per run (who/what/when/which tool/which model) | 🔴 | 🟡 | Diagnostics export ≠ audit trail. OPIDE ships audit trails; NeuralInverse ships audit export for regulated migrations. → **E15** |
-| G6 | Prompt/log secret redaction | ⬜ | ❌ | We put file contents and command output into prompts and logs with no scrubbing. → **E15** |
-| G7 | Workspace-boundary enforcement on file tools | 🟡 | ✅ | Sandbox tests exist (`test_sandbox_*.js`); not centrally enforced or documented. → **E15** |
+| G5 | Append-only audit trail per run (who/what/when/which tool/which model) | 🟢 | ✅ | **Shipped (Phase 9, M53).** `core/audit-trail.ts` — JSONL in the user's repo, monotonic sequence, **no update method by construction**, tolerant of the truncated final line a crash leaves, and redacted on the way *in* rather than at export. At OPIDE's bar. |
+| G6 | Prompt/log secret redaction | 🟢 | ✅ | **Shipped (Phase 9, M54 — P0).** `core/redaction.ts` — 13 vendor-shape detectors that fire anywhere, plus entropy gated behind an assignment context *and* a token-shape check, because over-redaction is the failure that gets the feature switched off. Half its tests assert what must survive untouched. |
+| G7 | Workspace-boundary enforcement on file tools | 🟢 | ✅ | **Shipped (Phase 9, M55).** `core/workspace-guard.ts` — one chokepoint covering traversal, prefix collision, symlinks and protected paths (`.git`, because `core.fsmonitor` escapes the command policy). The `test_sandbox_*.js` scripts it replaces printed things, asserted nothing, and were run by nothing. |
 | G8 | Skill validation diagnostics + skills-fired telemetry | 🟢 | ✅ | **Shipped (Phase 0, M5),** closing out plan.md Phase 6. `agent/skill-diagnostics.ts` surfaces malformed packs in the Problems panel — `loadSkillDir` previously collapsed every failure into a silent `undefined`. The two valuable checks catch packs that can *never* fire and packs that would fire on *every* turn. `SkillsFired` telemetry names bundled packs only; user pack names can encode project detail, so those are counted, not named. |
 | G9 | Test architecture | 🟢 | ✅ | **Four tiers as of Phase 2.** Harness 426 assertions (bespoke but pinned as the compatibility tier) · **vitest 195 tests / 13 suites** (was 2 orphaned files that no installed runner could even execute) · **19 real-host integration tests** under `@vscode/test-electron` · the eval gate. One shared `vscode` stub (`test/vscode-stub.js`) serves the vscode-free tiers, so a suite cannot pass in one and fail in the other. |
 | G11 | At-rest encryption for agent artifacts / memory | ⬜ | ❌ | OPIDE claims AES-256-GCM. Our `.blackIDE/` is plaintext on disk (defensible — it's the user's repo — but not an option we offer). → **E15** |
@@ -470,7 +493,7 @@ the argument for the eval tier, restated with each finding.
 | Area | Us | Best-in-class | Verdict |
 |---|:--:|---|---|
 | Pipeline / SDLC orchestration | 🟢 | — | **We lead.** No competitor ships this. |
-| Safety & command policy | 🟢 | OPIDE | **We lead** on policy; behind on sandboxing/audit. |
+| Safety & command policy | 🟢 | OPIDE | **We lead** on policy, and level on audit and redaction as of Phase 9. Still behind on **sandboxing** — M57's execution tiers are not started. |
 | Checkpoints & undo | 🟢 | CortexIDE | **We lead.** |
 | Project-aware skills | 🟡 | — | **We lead architecturally**; resolution precision fixed (F1), still behind on library breadth. |
 | **Code intelligence (LSP tools)** | 🟢 | Cursor, OPIDE | **We lead.** Phase 1 exposed the fork's own language servers; the extension-only competitors cannot reach them this directly. |
@@ -939,18 +962,18 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M44 | Idle consolidation job | P2 | E7 | 8 ✅ | merges near-duplicates by normalised identity; **idempotent and order-independent**, which is what the gate asks and what a max/sum/min merge rule buys |
 | M45 | Memory visualization UI | P3 | E7 | 8 ❌ | not started. The data it would render — entries, confidence, provenance, status — all exists |
 | M46 | Mindmap read-back by agents | P1 | E7 | 8 ✅ | `core/mindmap-readback.ts`, injected as its own budgeted prompt section; auto-sync blocks excluded so the agent does not re-read its own history |
-| M47 | Reviewer agent on the working diff | P1 | E8 | 9 |
-| M48 | Opt-in PR review via `gh` | P2 | E8 | 9 |
-| M49 | MCP streamable HTTP + SSE + OAuth | P1 | E12 | 9 |
-| M50 | MCP resources & prompts primitives | P2 | E12 | 9 |
-| M51 | MCP in pipeline runs via vetted allowlist | P2 | E12 | 9 |
-| M52 | Tool circuit breakers | P1 | E15 | 9 |
-| M53 | Append-only audit trail per run | P1 | E15 | 9 |
-| M54 | Secret redaction into prompts and logs | P0 | E15 | 9 |
-| M55 | Central workspace-boundary guard | P1 | E15 | 9 |
-| M56 | Untrusted-content posture + injection fixtures | P0 | E15 | 9 |
-| M57 | Sandboxed execution tiers (restricted / contained) | P1 | E23 | 9 |
-| M58 | Optional at-rest encryption for `.blackIDE/` | P3 | E15 | 9 |
+| M47 | Reviewer agent on the working diff | P1 | E8 | 9 ❌ | not started |
+| M48 | Opt-in PR review via `gh` | P2 | E8 | 9 ❌ | not started |
+| M49 | MCP streamable HTTP + SSE + OAuth | P1 | E12 | 9 ❌ | not started |
+| M50 | MCP resources & prompts primitives | P2 | E12 | 9 ❌ | not started |
+| M51 | MCP in pipeline runs via vetted allowlist | P2 | E12 | 9 ❌ | not started |
+| M52 | Tool circuit breakers | P1 | E15 | 9 ✅ | `core/tool-breaker.ts` — per tool and per *run*, consecutive failures plus a latency budget; a tripped tool is removed from the advertised list **and** refused at the executor |
+| M53 | Append-only audit trail per run | P1 | E15 | 9 ✅ | `core/audit-trail.ts` — JSONL in the user's repo, monotonic sequence, no update method by construction, tolerant of the truncated final line a host crash leaves |
+| M54 | Secret redaction into prompts and logs | **P0** | E15 | 9 ✅ | `core/redaction.ts` — 13 vendor-shape detectors always on, entropy gated behind a token-shape check. Half its tests assert what it must **not** redact |
+| M55 | Central workspace-boundary guard | P1 | E15 | 9 ✅ | `core/workspace-guard.ts` — traversal, prefix collision and symlinks, plus `.git` (writing `core.fsmonitor` escapes the command policy entirely). Replaces the `test_sandbox_*.js` scripts, which asserted nothing and were run by nothing |
+| M56 | Untrusted-content posture + injection fixtures | **P0** | E15 | 9 ✅ | posture in the system prompt, source-labelled fencing, and six fixtures that assert the *capability gates are unmoved* — the detector reports and deliberately does not block |
+| M57 | Sandboxed execution tiers (restricted / contained) | P1 | E23 | 9 ❌ | not started |
+| M58 | Optional at-rest encryption for `.blackIDE/` | P3 | E15 | 9 ❌ | not started |
 | M59 | Skill library Wave 2 (16 → full catalog) | P1 | E9 | 10 |
 | M60 | Skill/rule registry + `addSkillFrom` + checksums | P2 | E9 | 10 |
 | M61 | Notebook (`.ipynb`) read/edit/checkpoint | P2 | E21 | 10 |
@@ -972,12 +995,11 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–8): 46 of 71 — 43 complete, three partial** (2026-08-02). The four
+**Delivered so far (Phases 0–9 partial): 51 of 71 — 48 complete, three partial** (2026-08-02). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
-That clears **11 of the 13 P0 items.** The two still open are **M54/M56** — secret redaction and the
-untrusted-content posture, both Phase 9. M28, the P0 rev 6 named as outstanding, closed with Phase 5;
+That clears **all 13 P0 items.** M54 and M56 — the last two — closed with Phase 9's security spine. M28, the P0 rev 6 named as outstanding, closed with Phase 5;
 it depended on Phase 3's graph for its neighbourhood and Phase 4's `autocomplete` role for its model,
 which is why it could not have gone earlier.
 
@@ -2427,6 +2449,91 @@ the markdown stays human-editable and round-trips byte-stable.
 works while unvetted servers stay refused in pipelines; injection fixtures cannot escalate
 privileges or widen an allowlist; no secret reaches a log or a provider request; a tool failing 3×
 is disabled rather than retried forever; a tier-2 command cannot reach the network.
+
+
+> ### 🟡 Delivered 2026-08-02 — the security spine (M52–M56); M47–M51, M57, M58 not started
+> `core/redaction.ts` · `core/untrusted-content.ts` · `core/workspace-guard.ts` ·
+> `core/tool-breaker.ts` · `core/audit-trail.ts` · the posture wired into the chat system prompt.
+> vitest **1 112/1 112 / 50 suites** (was 988/46) · harness **418/418** · eval green, no regression ·
+> `tsc -b` clean · webview builds.
+>
+> **Five of twelve milestones, chosen by risk rather than by list order.** M54 and M56 were the last
+> two **P0** items in the entire inventory, and M52/M53/M55 are the rest of the hardening that has
+> read 🔴 or 🟡 since rev 1. The Reviewer agent, MCP transport parity and sandbox tiers are the larger
+> half of the phase and are **not started** — said plainly rather than sketched.
+>
+> **Gate status.** Four of six clauses are met; two belong to milestones not attempted.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | No secret reaches a log or a provider request | **met** | `__tests__/redaction.test.ts` — 13 vendor shapes, assignment and header contexts, plus `redactDeep` for the audit trail |
+> | Injection fixtures cannot escalate privileges or widen an allowlist | **met** | `__tests__/injection-fixtures.test.ts` — six payloads, each asserted against the mode allowlist, the tool toggles and the command policy |
+> | A tool failing 3× is disabled rather than retried forever | **met** | `__tests__/hardening.test.ts` — consecutive counting, latency budget, removed from the advertised list *and* refused |
+> | (boundary, folded in from G7) file tools cannot escape the workspace | **met** | traversal, prefix collision, symlinks, `.git` |
+> | Reviewer ≥60% TP at ≤1 FP per 10 findings | **n/a** | M47 not started |
+> | A remote MCP server works while unvetted ones stay refused in pipelines | **n/a** | M49–M51 not started |
+>
+> **M54 — the interesting half is what it refuses to redact.** Over-redaction is not a safe failure:
+> an agent whose view of the code is peppered with `[redacted]` cannot reason about the code, and the
+> user's response is to switch redaction off, after which nothing is protected at all. So the two
+> detector families are treated completely differently — vendor shapes (`ghp_…`, `AKIA…`, PEM blocks,
+> JWTs) are unmistakable and fire anywhere, while **entropy alone never fires**. It must also sit in a
+> secret-shaped slot *and* pass a token-shape check.
+>
+> That shape check is six false positives, each caught by a test and each of which would have made
+> real source unreadable: a URL (`const url = "https://api.example.com/v2/users"` scores high), a
+> UUID, a git SHA, an integrity hash, a dotted path, and — the one that makes the point — an ordinary
+> English sentence. `description = "The quick brown fox jumps over the lazy dog"` has entropy above
+> the threshold. Prose is not a credential; credentials have no spaces.
+>
+> **Two more defects the tests caught.** `sk-ant-…` was being labelled `openai-key`, because the
+> broader `sk-…` detector ran first and the first detector to claim a span wins — the value was
+> scrubbed either way, so an assertion that only checked "something was redacted" would have passed
+> while mislabelling every Anthropic key in the audit trail. And `API_KEY=${API_KEY}` was redacted,
+> because the env-reference branch of the placeholder check described a *prefix* inside an anchored
+> alternation and therefore never matched — hiding the shape of a config file while protecting
+> nothing.
+>
+> **M56 — the detector is deliberately not a defence.** A pattern matcher that *blocked* injections
+> would be security theatre: an attacker rephrases on the first attempt, and a defender who believes
+> the filter works stops maintaining the parts that hold. What holds is that the capability gates are
+> **not reachable from content** — `isToolAllowedInMode`, `CommandPolicy` and the session tool toggles
+> are functions of configuration, with no parameter through which a tool result could reach them. So
+> the fixtures assert the *gates are unmoved*, not that the payloads were spotted. The detector's job
+> is to put a visible signal in the run log so a user wondering why an agent behaved oddly has
+> somewhere to look.
+>
+> **M55 — the boundary, and what G7 actually had.** "Sandbox tests exist (`test_sandbox_*.js`); not
+> centrally enforced or documented" has been the grade since rev 1. Those four files print things,
+> assert nothing, and are run by nothing. The guard replaces them with one chokepoint and the three
+> escapes a `startsWith(root)` check admits: **traversal** (visible only after normalisation),
+> **prefix collision** (`/work/repo-backup` starts with `/work/repo` — the same boundary problem M36
+> solved, reusing that answer rather than growing a second subtly different one), and **symlinks**
+> (not decidable by string comparison at all, so the guard takes a resolver and reports
+> `symlinkChecked: false` when it has none rather than implying a completeness it lacks).
+>
+> `.git` is denied even inside the workspace, and that one is not hygiene: an agent that can write
+> `.git/config` can set `core.fsmonitor` to an arbitrary command, and git will run it — past the
+> command policy entirely.
+>
+> **M53 — a trail, not a log.** G5's complaint is precise: "Diagnostics export ≠ audit trail." JSONL
+> so a partial write loses one line rather than the file; monotonic sequence so ordering survives
+> equal timestamps; **no update method on the class**, asserted by a test that reads the prototype,
+> because an audit trail with an edit path is a log. And it is **redacted on the way in, not on the
+> way out** — redacting at export would leave a live credential on disk in the user's repo, under a
+> filename that invites them to attach it to a bug report, for the entire window that matters.
+>
+> **The NUL byte came back, and the guard caught it inside the same phase.** `workspace-guard.ts`
+> shipped with a literal NUL as the `**` sentinel in its glob matcher — the third occurrence in this
+> codebase (Phase 3 shipped two in source, rev 6 found one in the roadmap). Invisible in an editor,
+> and it makes the file binary to `grep`. `__tests__/source-hygiene.test.ts` failed on it. The fix is
+> not an escape: the matcher now scans once with no sentinel at all, so the bug class is gone rather
+> than spelled correctly.
+>
+> **What is left in Phase 9, named:** the Reviewer agent and its `gh` PR mode (M47/M48), MCP
+> streamable HTTP/SSE/OAuth with resources, prompts and a vetted allowlist (M49–M51), sandboxed
+> execution tiers (M57), and optional at-rest encryption (M58). None of them is blocked; they are
+> simply larger than the security spine and were not attempted.
 
 ### Phase 10 — Skill breadth, distribution & notebooks
 *Covers M59–M61.*
