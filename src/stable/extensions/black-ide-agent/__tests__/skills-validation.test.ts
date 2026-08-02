@@ -218,7 +218,17 @@ describe('quoted commas in frontmatter lists', () => {
          */
         // `gin` and `jsx` are the real names of what they match; `drf` is the standard
         // abbreviation for Django REST Framework.
-        const DELIBERATE_SHORT_TRIGGERS = new Set(['gin', 'jsx', 'drf']);
+        //
+        // Wave 2 (Phase 10, M59) added seven more, each vetted against the substring test
+        // that `res` failed: none of these appears inside a common English word. Two
+        // candidates were **rejected** for exactly that reason and removed from their packs
+        // rather than allowlisted here — `orm` (f*orm*at, transf*orm*, n*orm*alize) and
+        // `ref` (*ref*actor, *ref*erence, p*ref*er). That is the decision this guard exists
+        // to force someone to make in writing.
+        const DELIBERATE_SHORT_TRIGGERS = new Set([
+            'gin', 'jsx', 'drf',
+            'jwt', 'k8s', 'dto', 'e2e', 'sfc', 'tdd', 'vue',
+        ]);
         const dir = path.join(__dirname, '..', 'resources', 'skills');
         const offenders: string[] = [];
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

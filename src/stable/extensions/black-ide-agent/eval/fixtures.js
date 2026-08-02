@@ -188,6 +188,78 @@ module.exports = [
         // React-based framework so it cannot regress for one and not the other.
         expect: { stacks: ['typescript', 'react-native', 'react'], languages: ['typescript'] },
     },
+    // ── Wave 2 fixtures (Phase 10, M59) ─────────────────────────────────────
+    // Added so the new packs have golden tasks. A pack with no eval task can rot
+    // unnoticed, which is what `eval-task-coverage.test.ts` asserts.
+    {
+        id: 'spring',
+        label: 'Java · Spring Boot',
+        files: ['pom.xml', 'src/main/java/com/example/App.java', 'src/main/java/com/example/UserController.java',
+            'src/main/java/com/example/UserService.java', 'src/main/java/com/example/UserRepository.java',
+            'src/test/java/com/example/UserServiceTest.java', 'src/main/resources/application.yml'],
+        manifests: {
+            'pom.xml': '<project><dependencies><dependency><groupId>org.springframework.boot</groupId>'
+                + '<artifactId>spring-boot-starter-web</artifactId></dependency>'
+                + '<dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>'
+                + '</dependencies></project>',
+        },
+        expect: { stacks: ['java', 'spring-boot'], languages: ['java'] },
+    },
+    {
+        id: 'laravel',
+        label: 'PHP · Laravel',
+        files: ['composer.json', 'artisan', 'app/Models/User.php', 'app/Http/Controllers/UserController.php',
+            'database/migrations/2024_01_01_create_users_table.php', 'routes/web.php', 'tests/Feature/UserTest.php'],
+        manifests: { 'composer.json': '{"require":{"laravel/framework":"^11.0"},"require-dev":{"phpunit/phpunit":"^11.0"}}' },
+        expect: { stacks: ['php', 'laravel'], languages: ['php'] },
+    },
+    {
+        id: 'vue',
+        label: 'TypeScript · Vue 3',
+        files: ['package.json', 'src/main.ts', 'src/App.vue', 'src/components/UserCard.vue',
+            'src/stores/users.ts', 'src/composables/useUsers.ts', 'tests/UserCard.spec.ts'],
+        manifests: { 'package.json': '{"dependencies":{"vue":"^3.4.0","pinia":"^2.1.0"},"devDependencies":{"vitest":"^1.2.0"}}' },
+        expect: { stacks: ['typescript', 'vue'], languages: ['typescript'] },
+    },
+    {
+        id: 'sveltekit',
+        label: 'TypeScript · SvelteKit',
+        files: ['package.json', 'svelte.config.js', 'src/routes/+page.svelte', 'src/routes/+page.server.ts',
+            'src/lib/db.ts', 'tests/page.test.ts'],
+        manifests: { 'package.json': '{"devDependencies":{"svelte":"^4.2.0","@sveltejs/kit":"^2.0.0","vitest":"^1.2.0"}}' },
+        expect: { stacks: ['typescript', 'svelte-kit'], languages: ['typescript'] },
+    },
+    {
+        id: 'remix',
+        label: 'TypeScript · Remix',
+        files: ['package.json', 'app/root.tsx', 'app/routes/_index.tsx', 'app/routes/users.tsx', 'app/db.server.ts'],
+        manifests: { 'package.json': '{"dependencies":{"@remix-run/react":"^2.5.0","@remix-run/node":"^2.5.0","react":"^18.2.0"}}' },
+        expect: { stacks: ['typescript', 'remix', 'react'], languages: ['typescript'] },
+    },
+    {
+        id: 'astro',
+        label: 'TypeScript · Astro',
+        files: ['package.json', 'astro.config.mjs', 'src/pages/index.astro', 'src/components/Card.astro',
+            'src/content/config.ts', 'src/content/posts/first.md'],
+        manifests: { 'package.json': '{"dependencies":{"astro":"^4.4.0"}}' },
+        expect: { stacks: ['typescript', 'astro'], languages: ['typescript'] },
+    },
+    {
+        id: 'flutter',
+        label: 'Dart · Flutter',
+        files: ['pubspec.yaml', 'lib/main.dart', 'lib/widgets/user_card.dart', 'lib/state/user_store.dart',
+            'test/user_card_test.dart'],
+        manifests: { 'pubspec.yaml': 'name: app\ndependencies:\n  flutter:\n    sdk: flutter\n' },
+        expect: { stacks: ['dart', 'flutter'], languages: ['dart'] },
+    },
+    {
+        id: 'infra',
+        label: 'Infrastructure · Docker + Kubernetes + Terraform + Actions',
+        files: ['Dockerfile', 'docker-compose.yml', 'k8s/deployment.yaml', 'k8s/service.yaml',
+            'infra/main.tf', 'infra/variables.tf', '.github/workflows/ci.yml', 'README.md'],
+        manifests: {},
+        expect: { stacks: ['docker', 'kubernetes', 'terraform', 'github-actions'], languages: [] },
+    },
     {
         // Guards the fail-safe contract in project-profiler.ts: an empty or unrecognisable
         // repo must yield no stacks so that nothing is injected, rather than a wrong guess.

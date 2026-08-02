@@ -83,7 +83,11 @@ export const FRAMEWORK_IDENTITY_TOKENS: readonly string[] = [
     'django', 'fastapi', 'flask',
     // .NET / Ruby / Rust / Go / JVM / PHP / Dart
     'aspnet-core', 'rails', 'axum', 'actix-web', 'rocket', 'gin', 'echo', 'fiber',
-    'spring-boot', 'laravel', 'symfony', 'flutter',
+    'spring-boot', 'laravel', 'symfony', 'flutter', 'remix', 'astro',
+    // Infrastructure. Not frameworks in the usual sense, but the same thing is true of
+    // them: a Kubernetes pack is wrong for a repo with no manifests, and the only way to
+    // know is to look.
+    'docker', 'kubernetes', 'terraform', 'github-actions',
     // Styling: a pack of Tailwind idioms is wrong for a repo that does not use Tailwind.
     'tailwind',
 ];
@@ -143,6 +147,12 @@ export function detectProjectProfile(files: string[], manifests: Record<string, 
         if (dep('@angular/core')) fw('angular', 'package.json:@angular/core', 'typescript');
         if (dep('vue')) fw('vue', 'package.json:vue', 'typescript');
         if (dep('svelte')) fw('svelte-kit', 'package.json:svelte', 'typescript');
+        // Wave 2 (Phase 10, M59) ships packs for these, and a pack that can only be
+        // reached through its *language* token matches at language strength on any repo in
+        // that language — which is finding F3 exactly. Detecting the framework is what lets
+        // the pack be scoped to it.
+        if (dep('@remix-run/react') || dep('@remix-run/node')) fw('remix', 'package.json:@remix-run', 'typescript');
+        if (dep('astro')) fw('astro', 'package.json:astro', 'typescript');
         if (dep('@nestjs/core')) fw('nestjs', 'package.json:@nestjs/core', 'typescript');
         else if (dep('express')) fw('express', 'package.json:express', 'javascript');
         if (dep('fastify')) fw('fastify', 'package.json:fastify', 'javascript');
@@ -224,6 +234,22 @@ export function detectProjectProfile(files: string[], manifests: Record<string, 
         if (java.includes('spring-boot') || java.includes('springframework')) fw('spring-boot', 'build:spring', 'java');
         if (java.includes('junit')) add(testFrameworks, 'junit', 'build:junit');
     }
+    // ── Infrastructure, by the files that define it (Phase 10, M59) ─────────
+    // File presence rather than a manifest parse: none of these has a dependency list to
+    // read, and their presence is the whole signal.
+    if (rel.some(f => /(^|\/)Dockerfile$/i.test(f) || /(^|\/)docker-compose\.ya?ml$/i.test(f))) {
+        add(frameworks, 'docker', 'Dockerfile');
+    }
+    if (rel.some(f => /(^|\/)(k8s|kubernetes|manifests|charts)\//i.test(f) || /(^|\/)Chart\.ya?ml$/i.test(f))) {
+        add(frameworks, 'kubernetes', 'k8s manifests');
+    }
+    if (rel.some(f => /\.tf$/i.test(f))) {
+        add(frameworks, 'terraform', '*.tf');
+    }
+    if (rel.some(f => /(^|\/)\.github\/workflows\/.+\.ya?ml$/i.test(f))) {
+        add(frameworks, 'github-actions', '.github/workflows');
+    }
+
     const composer = safeJson(manifests['composer.json']);
     if (composer || hasFile('composer.json')) {
         add(languages, 'php', 'composer.json → php');
