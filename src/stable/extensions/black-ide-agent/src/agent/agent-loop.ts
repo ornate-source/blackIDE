@@ -3,6 +3,7 @@ import { ProviderHealth, Substitution, runWithFailover } from '../core/model-rou
 import { LLMClient, isAbortError } from '../core/llm-client';
 import { ContextManager } from '../core/context-manager';
 import { AgentToolExecutor } from './tool-executor';
+import { SteeringNote, applySteering } from '../core/steering';
 
 export interface LoopCallbacks {
     onTurn?: (n: number, maxTurns: number) => void;
@@ -15,6 +16,8 @@ export interface LoopCallbacks {
     onCompaction?: (droppedCount: number, totalTokens: number) => void;
     /** Fired when older turns were folded into prose by the summarizer (M30). */
     onSummarized?: (foldedCount: number) => void;
+    /** Fired when the user's mid-run corrections reached the model (M39). */
+    onSteering?: (notes: SteeringNote[]) => void;
     onLoopLimitReached?: (currentTurn: number, maxTurns: number) => Promise<{ continueWith: number }>;
 }
 
@@ -54,6 +57,14 @@ export interface LoopFailover {
  */
 export type RollingSummarizer = (messages: ChatMessage[]) => Promise<{ messages: ChatMessage[]; folded: number }>;
 
+/** What the loop needs from a steering queue: take everything, and hand back what it could not use. */
+export interface SteeringSource {
+    readonly pending: number;
+    drain(): SteeringNote[];
+    /** Returns a note the loop declined to inject this turn, so it is not lost. */
+    requeue(note: SteeringNote): void;
+}
+
 /**
  * The shared agentic loop. Streams a turn, executes any tool calls via the
  * executor, feeds results back, and repeats until the model completes, the
@@ -82,8 +93,16 @@ export async function runAgentLoop(opts: {
      * this phase.
      */
     summarizer?: RollingSummarizer;
+    /**
+     * Mid-run corrections (M39), drained at the top of each turn.
+     *
+     * A narrow interface rather than the `SteeringQueue` class, so the loop stays free of
+     * anything the Phase 11 vscode-free core would have to carry, and so a test can hand
+     * it three notes without constructing a queue.
+     */
+    steering?: SteeringSource;
 }): Promise<LoopResult> {
-    const { modelConfig, system, initialMessage, priorMessages, tools, executor, maxLoops, signal, callbacks = {}, failover, summarizer } = opts;
+    const { modelConfig, system, initialMessage, priorMessages, tools, executor, maxLoops, signal, callbacks = {}, failover, summarizer, steering } = opts;
     // Recreated on substitution when the loop owns it: failing over from a 200k-context
     // model to an 8k local one with the original budget would overflow the window on the
     // next turn, which looks like a model failure rather than a routing consequence.
@@ -103,6 +122,30 @@ export async function runAgentLoop(opts: {
         turns = i + 1;
         callbacks.onTurn?.(turns, currentMaxLoops);
         callbacks.onReasoningStart?.();
+
+        /*
+         * Steering (Phase 7, M39), drained before anything else this turn.
+         *
+         * Here rather than after the model call, because the point of steering is to change
+         * what the agent does *next* — applying it after the turn it was meant to influence
+         * would make a correction land one turn late, which reads as the feature being
+         * unreliable rather than delayed.
+         *
+         * `applySteering` may decline (the last message is an assistant turn with unanswered
+         * tool calls), and when it does the notes stay queued for the following turn. That is
+         * a deliberate one-turn delay in the one case where injecting would break the request
+         * outright — see core/steering.ts.
+         */
+        if (steering?.pending) {
+            const pending = steering.drain();
+            const outcome = applySteering(messages, pending);
+            if (outcome.applied.length) {
+                messages.length = 0;
+                messages.push(...outcome.messages);
+                callbacks.onSteering?.(outcome.applied);
+            }
+            for (const note of outcome.deferred) steering.requeue(note);
+        }
 
         /*
          * Summarize before fitting, not instead of it.

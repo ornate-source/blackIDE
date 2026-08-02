@@ -2,9 +2,9 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 8 (2026-08-02)** — **phases 0–6 delivered**; **37 of 71 gaps
-addressed — 36 complete and one partial (M37, whose ranking has no test evidence to rank on
-yet)**. The no-partials run ended here, and it is recorded rather than rounded off. The only work left in a started phase is the **model tier**
+**Status:** **In progress · rev 9 (2026-08-02)** — **phases 0–7 delivered**; **40 of 71 gaps
+addressed — 38 complete and two partial (M38's review panel and M40's pipeline/visual halves)**.
+Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
@@ -17,7 +17,8 @@ yet)**. The no-partials run ended here, and it is recorded rather than rounded o
 | 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **16 providers** (Bedrock/Vertex deferred with a reason) · zero-config local first run. |
 | 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
 | 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
-| 7–12 | — | M38–M71 | Not started. |
+| 7 — Artifacts, steering & verification | 🟡 | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction. **Outstanding:** the artifact *review panel* is not rendered, and verification runs for task agents but not yet for pipeline runs or visual evidence. |
+| 8–12 | — | M41–M71 | Not started. |
 
 **Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
 suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
@@ -126,6 +127,25 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 9 (2026-08-02).** Delivery: **Phase 7 (M38–M40)** — one complete, two
+> partial — plus the closure of Phase 6's partial, M37. Mid-run steering, the verify contract, and
+> typed artifacts. Tally **40 of 71**.
+>
+> **This is the first phase to close with real work outstanding, and it is graded that way.** M39 is
+> complete. M38 ships the typed model, the store and the comment plumbing but **not the review
+> panel**. M40 ships the contract, the four-outcome judgement and the report, wired into the
+> task-agent lane — but not into pipeline runs, not into chat tasks, and with no visual capture, so
+> two of the phase's four gate rows read *not met* rather than met-with-caveats.
+>
+> **M37 closed as a side effect, which the roadmap implied and never said:** a race ranks on test
+> evidence, and until M40 produced evidence there was nothing to rank on. That dependency was the
+> real reason M37 shipped partial in Phase 6.
+>
+> **Two long-standing defects surfaced.** `ArtifactManager` has accepted an artifact type, dropped
+> it, and reported every artifact as `report` since Feature 18 — invisible because nothing rendered
+> the type. And two test suites shell out to `tsc`/`stylelint`, so running the build and the tests in
+> one command makes them contend and fail intermittently; separately, 920/920 is stable.
+>
 > **What changed in rev 8 (2026-08-02).** Delivery: **Phase 6 (M31–M37)** — six complete, one
 > partial — taking the tally to **37 of 71** and clearing the last P1 items in the Manager lane.
 > Task agents, one governor across both lanes, the agent inbox, per-root profiles, the multi-model
@@ -313,7 +333,7 @@ the argument for the eval tier, restated with each finding.
 | A6 | **Agent Manager: N independent user-launched agents, each own worktree + own model** | 🟢 | ✅ | *Corrected 2026-07-27:* `webview/src/ManagerPanel.tsx` **already exists** — `RunSummary` carries `modelId`, `status: awaiting_approval`, `currentPhase`, and `ParallelSubagents.tsx` renders subagents. **Shipped (Phase 6, M31/M32).** The missing unit — the independent, non-pipeline task agent — now exists: own worktree, mode, model and workspace root, listed beside pipeline runs. Isolation is structural (the executor is rooted in the worktree, not the repo) and the live workspace is untouched until an explicit apply. At Antigravity Manager's and Cursor's bar on parallelism; ahead on the apply gate, which neither makes explicit. |
 | A7 | Request classification / auto-plan / auto-orchestrate | 🟡 | ✅ | Keyword heuristics in `planning-engine.ts`; not learned, not model-assisted. |
 | A8 | Parallel wave execution | ⬜ | ❌ | **Deleted in Phase 6 (M35)** rather than graduated. Default-off and unverified for six phases; the role E18 reserved for it — E3's execution engine — is filled by task agents, where the isolation is asserted. Concurrency now lives in the Agent Manager, not in the pipeline. |
-| A9 | Mid-run steering (correct an agent without restarting the task) | ⬜ | ❌ | Antigravity's comment-on-artifact loop. We can only cancel + rerun. → **E4** |
+| A9 | Mid-run steering (correct an agent without restarting the task) | 🟢 | ✅ | **Shipped (Phase 7, M39).** `core/steering.ts` — a correction is queued per agent and drained at the top of the next turn, keeping every file the run has read and every conclusion it reached. Never lands between a `tool_use` and its `tool_result`, and never produces two consecutive user turns; both are provider rejections rather than degraded answers. At Antigravity's steering bar; the comment-*on-artifact-region* surface is plumbed but not yet rendered (M38). |
 | A10 | Background / cloud agents (off-machine execution) | ⬜ | ❌ | Cursor Background Agent, Antigravity async tasks. → **E14** |
 
 ### 1.2 The fleet (agents & modes)
@@ -366,7 +386,7 @@ the argument for the eval tier, restated with each finding.
 | E_2 | Exact SEARCH/REPLACE edit contract | 🟢 | ✅ | `core/tools.ts:76` — same discipline A-Coder calls out as its precision feature. At bar. |
 | E_3 | Checkpoints & rollback (reverse hunks, per-message undo) | 🟢 | ✅ | `core/checkpoint-manager.ts`. **Ahead of CortexIDE's "checkpoint and visualize".** |
 | E_4 | Browser automation (Playwright, gated, per-task session) | 🟡 | ✅ | `tools/browser-tool.ts` + `browser-capability.ts` allowlist. |
-| E_5 | **Visual verification loop (screenshot/recording as reviewable evidence)** | 🔴 | ❌ | Antigravity: browser recordings + screenshots as first-class artifacts, agent self-verifies UI work. We can drive a browser but produce no evidence trail. → **E5** |
+| E_5 | **Visual verification loop (screenshot/recording as reviewable evidence)** | 🟡 | 🟡 | **Phase 7, M40 (partial).** The contract exists: `planVerification` requires a screenshot when a UI file changes, `evaluateVerification` reports it missing, and a `test-report` artifact is written on every path — so an unverified run is now distinguishable from a clean one, which it was not. **Still missing:** nothing captures the screenshot, so UI work lands as `incomplete` by design; and verification runs for task agents only, not pipeline or chat runs. Behind Antigravity. |
 | E_6 | MCP client | 🟡 | ✅ | `tools/mcp-client.ts:51` — **stdio only**, Agent-mode only, refused in pipeline runs. Antigravity ships Chrome + Web MCP servers; remote/streamable HTTP is table stakes now. → **E12** |
 | E_7 | Vision / image input | 🟢 | ✅ | `core/llm-client.ts:334-370` — images on user turns *and* tool results, OpenAI + Anthropic shapes. At A-Coder's bar. |
 | E_8 | Agent hooks (`beforeToolCall`/`afterToolCall`/`beforeResponse`/`onError`) | 🟡 | ✅ | `agent/hooks.ts:8`. Present but under-documented and unused by first-party features. |
@@ -883,10 +903,10 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M34 | Agent inbox + notifications for blocked runs | P1 | E28 | 6 ✅ | `core/agent-inbox.ts` — blocked / parked / failed / **review**, badge counts, notified once per (item, reason); polled at 3 s against a 5 s gate |
 | M35 | Parallel wave execution graduated or removed | P1 | E18 | 6 ✅ | **removed.** Unverified for six phases, and the role E18 reserved for it is now filled by the task-agent lane, where the isolation is asserted. Deletion asserted rather than assumed — including the stale compiled artifact |
 | M36 | Multi-root / multi-workspace correctness | P1 | E30 | 6 ✅ | `core/workspace-roots.ts` (longest-prefix attribution, boundary-aware) + `core/project-profile-cache.ts` (per-root profiles); worktree ops take the root they act on |
-| M37 | Multi-model race (N models, compare, pick) | P2 | E27 | 6 🟡 | `core/model-race.ts` — lexicographic ranking (a failing candidate never outranks a passing one), capped field, refuses to name a winner without evidence. **The test-result half is not wired**: `raceOutcome` reports `testsRan: false`, so ranking falls to diff size — see the delivery note |
-| M38 | Typed artifacts + review panel | P1 | E4 | 7 |
-| M39 | Mid-run steering (comment-on-artifact → inject) | P1 | E4 | 7 |
-| M40 | Verification loop with evidence (tests + screenshots + recordings) | P1 | E5 | 7 |
+| M37 | Multi-model race (N models, compare, pick) | P2 | E27 | 6 ✅ | `core/model-race.ts` — lexicographic ranking (a failing candidate never outranks a passing one), capped field, refuses to name a winner without evidence. **Closed by Phase 7 (M40)**: each candidate now carries a real verification result, so the ranking uses test evidence as designed |
+| M38 | Typed artifacts + review panel | P1 | E4 | 7 🟡 | `core/artifacts.ts` + `agent/artifact-store.ts` — seven types incl. binary, run association, comments, and an index that **rebuilds from filenames** when lost. **Partial:** the review panel itself is not rendered; artifacts are stored and typed but not yet browsable |
+| M39 | Mid-run steering (comment-on-artifact → inject) | P1 | E4 | 7 ✅ | `core/steering.ts` + a drain at the top of every loop turn; a per-agent queue so a correction meant for one of four runs cannot reach the other three. Never lands between a `tool_use` and its `tool_result`, never produces two consecutive user turns |
+| M40 | Verification loop with evidence (tests + screenshots + recordings) | P1 | E5 | 7 🟡 | `core/verification.ts` + `agent/verify-runner.ts` — four outcomes (an unrunnable suite is **not** a pass), one bounded self-correction, a `test-report` artifact on every path. **Partial:** wired for task agents only; pipeline runs and visual capture are not |
 | M41 | Automatic memory extraction | P1 | E7 | 8 |
 | M42 | Contradiction detection on memory write | P2 | E7 | 8 |
 | M43 | Memory decay / archive | P2 | E7 | 8 |
@@ -926,7 +946,7 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–6): 37 of 71 — 36 complete, one partial** (2026-08-02). The four
+**Delivered so far (Phases 0–7): 40 of 71 — 38 complete, two partial** (2026-08-02). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
@@ -2164,6 +2184,93 @@ and survive a window reload.
 **Gate:** a comment changes executor behaviour within one turn without losing accumulated context;
 100% of pipeline runs emit a test-report artifact; ≥80% of chat build tasks emit verification
 evidence; a deliberately broken change is caught by verify, not by the user.
+
+
+> ### 🟡 Delivered 2026-08-02 — M39 complete, M38 and M40 partial
+> `core/steering.ts` · `core/verification.ts` · `core/artifacts.ts` · `agent/artifact-store.ts` ·
+> `agent/verify-runner.ts` · a steering drain in `agent/agent-loop.ts` · per-agent steering queues
+> in the task lane · a Steer control and a verification badge in the Manager panel.
+> vitest **920/920 / 44 suites** (was 841/41) · harness **418/418** · eval green, no regression ·
+> `tsc -b` clean · webview builds · `extension.ts` **697 LOC**.
+>
+> **Gate status.** One of four clauses is met, one is not applicable yet, and two are outstanding —
+> stated plainly because this is the first phase since rev 4 to close with real work left in it.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | A comment changes executor behaviour within one turn without losing context | **met** | `__tests__/steering.test.ts` — injected on the next turn, every earlier turn preserved, caller's array never mutated |
+> | 100% of pipeline runs emit a test-report artifact | **not met** | verification is wired into the *task-agent* lane; the pipeline still finishes without one |
+> | ≥80% of chat build tasks emit verification evidence | **not met** | same — chat tasks do not verify yet |
+> | A deliberately broken change is caught by verify, not by the user | **met for task agents** | a red suite yields `failed` + one bounded correction; asserted pure, exercised end-to-end only in the task lane |
+>
+> **M39 — the placement is the feature.** Mid-run, the message list is a protocol rather than a
+> transcript, and two placements produce a hard provider rejection rather than a worse answer: a
+> steering note between a `tool_use` and its `tool_result` is an unanswered tool call, and a note
+> appended after the tool-results message is two `user` turns in a row, which Anthropic refuses. So
+> `applySteering` folds the text into the trailing user turn when there is one — the same solution
+> `ContextManager.withSummary` reached for the same reason — and **declines** when the last message
+> has unanswered tool calls, holding the note for one turn. Declining is the right behaviour there:
+> the alternative is breaking the run in order to be prompt.
+>
+> Deferred notes are **unshifted** back, not pushed. A note held for a turn while the user typed
+> another would otherwise become the *last* instruction the model reads, silently reversing the order
+> they were written in — which is the kind of bug that presents as "the agent ignored my first
+> comment".
+>
+> Queues are per agent. With four concurrent runs (Phase 6), a single shared queue would deliver a
+> correction meant for one of them to all four, and three agents would act on an instruction about
+> somebody else's work.
+>
+> **M40 — four outcomes, and the fourth is the point.** `verified` / `failed` / `unverifiable` /
+> `incomplete`. The tempting simplification is three, treating an unrunnable suite as a pass because
+> it makes the happy path uniform — and that is the same error M37's ranking refuses to make: it
+> converts *we do not know* into *it is fine*, which is precisely what this phase exists to stop
+> being claimed. `incomplete` (tests green, required screenshot missing) is separate for the same
+> reason: quietly upgrading it to `verified` is how an evidence requirement decays into an optional
+> extra over two revisions.
+>
+> **Exactly one self-correction, and only for `failed`.** A loop that keeps correcting against a red
+> suite spends an afternoon and a budget converging on nothing. `unverifiable` gets none at all — no
+> edit fixes a missing test runner, so spending an attempt on it is spending it on the wrong problem.
+> The correction prompt explicitly forbids deleting, renaming, skipping or weakening a test, because
+> those are the first things a model optimising for "make the tests pass" finds, and all of them make
+> the report green and the change wrong.
+>
+> **The report is written on every path, including the one where nothing ran.** A run with no
+> artifact and a run that verified clean are indistinguishable from the outside, so "unverifiable"
+> has to produce a document that says so. That is what makes "100% of runs emit evidence" a
+> measurable claim rather than a wish — and it is why that row can now be reported as *not met*
+> rather than assumed.
+>
+> **M38 — the old store had been lying about types since Feature 18.** `ArtifactManager.save()`
+> accepts a `type`, writes it nowhere, and `list()` then hardcodes `type: 'report'` for every entry.
+> So the type was accepted, discarded and misreported for three phases, and nothing noticed because
+> nothing rendered it. The new store carries the type in the record **and** in the filename, so the
+> directory stays legible even if the index is lost — and `rebuildFromDisk` reconstructs the index
+> from those filenames, because an index that cannot be rebuilt is a single file whose corruption
+> silently empties a review surface.
+>
+> **What M38 does not have is the review panel**, and that is the milestone's other half. Artifacts
+> are typed, stored, grouped by run and commentable through the API; nothing browses them yet. The
+> steering path reaches the agent through a Steer control on the agent card rather than through a
+> comment on an artifact region, so the plumbing for region comments exists and is tested while the
+> surface that would produce them does not.
+>
+> **Phase 6's M37 is closed here**, which is the sequencing the roadmap implied and did not state:
+> the race ranks on test evidence, and until M40 there was no test evidence to rank on. Each
+> candidate now carries a real verification result, so the lexicographic comparison uses its first
+> term instead of falling through to diff size.
+>
+> **A test-infrastructure flake worth naming.** Two suites (`source-hygiene`, `css-quality`) shell
+> out to `tsc -b` and `stylelint`. Running `npx tsc -b && npx vitest run` in one command makes them
+> contend with the build that just started, and one fails intermittently. Run separately, 920/920 is
+> stable. Not fixed in this phase — recorded so the next person does not chase it as a real failure.
+>
+> **What is left in Phase 7, named rather than implied:** the artifact review panel (M38), the
+> pipeline and chat verify wiring (M40's first two gate rows), and visual capture — `planVerification`
+> *requires* a screenshot when a UI file changes and `evaluateVerification` reports it missing, but
+> nothing captures one yet, so UI work currently lands as `incomplete` by design rather than as
+> verified.
 
 ### Phase 8 — Memory v2
 *Covers M41–M46. Depends on Phase 3 (embeddings/rerank).*

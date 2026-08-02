@@ -1,4 +1,5 @@
 import { AgentGovernor } from '../core/agent-governor';
+import { SteeringNote, SteeringQueue } from '../core/steering';
 import {
     TaskAgentDiff, TaskAgentSummary, activeAgents, branchNameFor, canApply, canCancel,
     canDiscard, holdsWorktree, isTerminalStatus, newAgentId, reconcileInterruptedAgents,
@@ -52,6 +53,10 @@ export interface TaskRunParams {
     signal: AbortSignal;
     emit(event: any): void;
     onUsage?(tokens: number, costUsd: number): void;
+    /** The verify step's finding (Phase 7, M40), recorded on the agent summary. */
+    onVerified?(verification: TaskAgentSummary['verification']): void;
+    /** The user's mid-run corrections for this agent (Phase 7, M39). */
+    steering: SteeringQueue;
 }
 
 export interface TaskAgentDeps {
@@ -78,7 +83,14 @@ const MAX_HISTORY = 50;
 
 export class TaskAgentRegistry {
     /** Live agents, including their non-serializable handles. */
-    private readonly live = new Map<string, { summary: TaskAgentSummary; abort: AbortController; release: () => void }>();
+    private readonly live = new Map<string, {
+        summary: TaskAgentSummary;
+        abort: AbortController;
+        release: () => void;
+        /** Mid-run corrections for this agent (M39). Per-agent: a correction meant for one
+         *  of four concurrent runs must not reach the other three. */
+        steering: SteeringQueue;
+    }>();
     /** Everything else, including this session's finished agents. */
     private history: TaskAgentSummary[];
 
@@ -121,7 +133,7 @@ export class TaskAgentRegistry {
             raceId: request.raceId,
         };
 
-        this.live.set(id, { summary, abort: new AbortController(), release: admission.release });
+        this.live.set(id, { summary, abort: new AbortController(), release: admission.release, steering: new SteeringQueue() });
         this.emitChanged();
 
         // Fire and forget: the caller is a webview message handler and must not block on
@@ -203,6 +215,27 @@ export class TaskAgentRegistry {
         return { ok: true };
     }
 
+    /**
+     * Send the user's correction to a running agent (M39).
+     *
+     * Only a *live* agent can be steered: a finished run has no next turn to inject into,
+     * and silently accepting a comment that will never be delivered is worse than refusing
+     * it — the user would believe the agent had been told.
+     */
+    steer(id: string, text: string, options: { artifactPath?: string; region?: string } = {}): { ok: true } | { error: string } {
+        const entry = this.live.get(id);
+        if (!entry) return { error: 'That agent has finished — there is no turn left to steer.' };
+        if (isTerminalStatus(entry.summary.status)) return { error: `That agent is ${entry.summary.status}.` };
+        const note = entry.steering.add(text, options);
+        if (!note) return { error: 'The comment was empty.' };
+        return { ok: true };
+    }
+
+    /** How many corrections are queued for an agent, for the panel. */
+    pendingSteering(id: string): number {
+        return this.live.get(id)?.steering.pending ?? 0;
+    }
+
     list(): TaskAgentSummary[] {
         const live = Array.from(this.live.values()).map(e => e.summary);
         const byId = new Map<string, TaskAgentSummary>();
@@ -255,6 +288,8 @@ export class TaskAgentRegistry {
                 rootPath: summary.rootPath,
                 signal: abort.signal,
                 emit: (event) => this.onEvent(id, event),
+                steering: entry.steering,
+                onVerified: (verification) => this.update(id, { verification }),
                 onUsage: (tokens, cost) => {
                     this.d.governor.charge(tokens, cost);
                     const current = this.find(id);

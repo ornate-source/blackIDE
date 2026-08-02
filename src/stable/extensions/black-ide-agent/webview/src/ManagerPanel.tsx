@@ -57,6 +57,13 @@ interface TaskAgentSummary {
   appliedAt?: number;
   discardedAt?: number;
   raceId?: string;
+  verification?: {
+    outcome: 'verified' | 'failed' | 'unverifiable' | 'incomplete';
+    testsRan: boolean;
+    passed?: number;
+    failed?: number;
+    reportPath?: string;
+  };
 }
 
 interface InboxItem {
@@ -371,6 +378,16 @@ export default function ManagerPanel() {
                     <span>{agent.mode}</span>
                     <span>{describeDiff(agent.diff)}</span>
                     {agent.currentAction && <span className="text-accentBlue">{agent.currentAction}…</span>}
+                    {/* Verification (M40) — evidence, not an assertion that it worked. */}
+                    {agent.verification && (
+                      <span className={
+                        agent.verification.outcome === 'verified' ? 'text-green-400'
+                          : agent.verification.outcome === 'failed' ? 'text-red-400' : 'text-yellow-400'
+                      }>
+                        {agent.verification.outcome}
+                        {agent.verification.failed ? ` (${agent.verification.failed} failing)` : ''}
+                      </span>
+                    )}
                     {agent.raceId && <span className="text-purple-400">race</span>}
                   </div>
                   {/* The branch is the recovery instruction, so it is always visible —
@@ -380,12 +397,28 @@ export default function ManagerPanel() {
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
                   {(agent.status === 'running' || agent.status === 'queued') && (
-                    <button
-                      onClick={() => vscode.postMessage({ type: 'cancelTaskAgent', value: { agentId: agent.id } })}
-                      className="text-[10.5px] py-1 px-2 rounded bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
+                    <>
+                      {/*
+                        Mid-run steering (M39). Only offered while the agent is live: a
+                        finished run has no next turn to inject into, and a comment the
+                        user believes was delivered is worse than one that was refused.
+                      */}
+                      <button
+                        onClick={() => {
+                          const text = window.prompt('Correct this agent — it reaches the model on its next turn:');
+                          if (text?.trim()) vscode.postMessage({ type: 'steerAgent', value: { agentId: agent.id, text } });
+                        }}
+                        className="text-[10.5px] py-1 px-2 rounded bg-accentBlue/20 hover:bg-accentBlue/40 text-accentBlue border border-accentBlue/30 cursor-pointer"
+                      >
+                        Steer
+                      </button>
+                      <button
+                        onClick={() => vscode.postMessage({ type: 'cancelTaskAgent', value: { agentId: agent.id } })}
+                        className="text-[10.5px] py-1 px-2 rounded bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </>
                   )}
                   {canApply && (
                     <button

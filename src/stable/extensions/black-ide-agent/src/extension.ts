@@ -9,6 +9,7 @@ import { AgentMode, ToolCall } from './core/types';
 import { registerEditorFeatures } from './core/editor-features';
 import { compactSession } from './core/compact-session';
 import { TaskAgentLane } from './agent/task-agent-lane';
+import { ArtifactStore } from './agent/artifact-store';
 import { CheckpointManager, diffStat } from './core/checkpoint-manager';
 import { CodebaseIndex } from './core/codebase-index';
 import { EventBus } from './core/event-bus';
@@ -118,6 +119,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     /** Task agents, the governor, the inbox and the race (Phase 6). See task-agent-lane.ts. */
     private _taskAgents!: TaskAgentLane;
 
+    /** Typed artifacts and their review comments (Phase 7, M38). */
+    private readonly _artifacts: ArtifactStore;
+
     /**
      * `@`-mention providers (Phase 3, M19). Assembled in the constructor rather than
      * here because it needs `_historyStore`, which arrives as a constructor
@@ -155,6 +159,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         _context.subscriptions.push(this._rulesLoader);
         _context.subscriptions.push(this._promptLibrary);
 
+        this._artifacts = new ArtifactStore(_context);
         this._sessions = new SessionManager(this._bus);
         this._checkpoints = new CheckpointManager(storageDir);
         this._index = new CodebaseIndex(storageDir);
@@ -193,6 +198,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         this._taskAgents = new TaskAgentLane({
             context: _context, secretManager: _secretManager,
             codebaseIndex: this._index, modeLoader: this._modeLoader,
+            artifacts: this._artifacts,
             getProjectProfile: () => this._getProjectProfile(),
             log: (m) => console.log(m),
             listPipelineRuns: () => this._managedRuns.list(),
@@ -346,6 +352,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
     /** The Phase 6 lane: task agents, governor, inbox, race. */
     public get taskAgents(): TaskAgentLane { return this._taskAgents; }
+
+    /** Typed artifacts, for the review surface (Phase 7, M38). */
+    public get artifacts(): ArtifactStore { return this._artifacts; }
 
     /** `/compact`'s palette twin (Phase 5, M30) — same path as the slash command. */
     public compactConversation() {

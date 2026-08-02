@@ -30,6 +30,7 @@ export interface ManagerPanelHost {
         discard(id: string): Promise<{ ok: true } | { error: string }>;
         list(): TaskAgentSummary[];
         startRace(prompt: string, modelIds: string[], rootPath: string): { raceId: string } | { error: string };
+        steer(id: string, text: string, options?: { artifactPath?: string; region?: string }): { ok: true } | { error: string };
         raceOutcome(raceId: string): unknown;
         inbox(): unknown[];
         configureFromSettings(): Promise<void>;
@@ -141,6 +142,17 @@ export class ManagerPanel {
                     const result = this._host.taskAgents.startRace(data.value?.prompt || '', data.value?.modelIds || [], root);
                     if ('error' in result) vscode.window.showWarningMessage(result.error);
                     this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
+                    break;
+                }
+                // ── Mid-run steering (Phase 7, M39) ─────────────────────────
+                case 'steerAgent': {
+                    const result = this._host.taskAgents.steer(
+                        data.value?.agentId || '',
+                        data.value?.text || '',
+                        { artifactPath: data.value?.artifactPath, region: data.value?.region },
+                    );
+                    if ('error' in result) vscode.window.showWarningMessage(result.error);
+                    else vscode.window.setStatusBarMessage('Correction queued — it reaches the agent on its next turn.', 4000);
                     break;
                 }
                 case 'raceOutcome':

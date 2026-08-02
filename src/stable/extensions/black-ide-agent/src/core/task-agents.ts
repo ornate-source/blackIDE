@@ -68,6 +68,21 @@ export interface TaskAgentSummary {
     baselineSha?: string;
     resultSha?: string;
     /**
+     * What the verify step found (Phase 7, M40).
+     *
+     * Stored on the agent rather than looked up from the artifact store at read time,
+     * because the race (M37) ranks on it and a ranking that depends on a second lookup
+     * silently degrades to "no evidence" the moment that lookup fails — which is exactly
+     * how M37 shipped partial in Phase 6.
+     */
+    verification?: {
+        outcome: 'verified' | 'failed' | 'unverifiable' | 'incomplete';
+        testsRan: boolean;
+        passed?: number;
+        failed?: number;
+        reportPath?: string;
+    };
+    /**
      * True when this agent is one candidate of a multi-model race (M37). Losing
      * candidates are discarded wholesale, so they must be distinguishable from agents the
      * user launched individually.

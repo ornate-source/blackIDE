@@ -20,6 +20,9 @@ import { BrowserTool } from '../tools/browser-tool';
 import { MCPClient } from '../tools/mcp-client';
 import { ArtifactManager } from './artifact-manager';
 import { KnowledgeStore } from '../memory/knowledge-store';
+import { ArtifactStore } from './artifact-store';
+import { runVerification } from './verify-runner';
+import { describeSteering } from '../core/steering';
 
 // ─── Running one task agent (Phase 6, M31) ──────────────────────────────────
 //
@@ -36,6 +39,8 @@ import { KnowledgeStore } from '../memory/knowledge-store';
 
 export interface TaskAgentEntryDeps {
     context: vscode.ExtensionContext;
+    /** Where the verify step writes its `test-report` (Phase 7, M40). */
+    artifacts: ArtifactStore;
     secretManager: SecretManager;
     codebaseIndex: CodebaseIndex;
     modeLoader: ModeLoader;
@@ -71,6 +76,10 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
         // reasoning gave pipeline runs their own checkpoint store (see pipeline-entry.ts):
         // concurrent runs sweeping each other's pending snapshots is the bug that made it
         // necessary there, and there are four times as many agents here.
+        // What the agent wrote, for `planVerification`'s "did a user-visible surface
+        // change" question. Collected from the executor's own notifications rather than
+        // from git, because the question is about the files this agent touched.
+        const touched = new Set<string>();
         const checkpoints = new CheckpointManager();
         const tokenTracker = new TokenTracker();
         const browserTool = new BrowserTool();
@@ -99,6 +108,7 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
             onPlan: () => {},
             onArtifact: () => {},
             onTerminalChunk: () => {},
+            onFileChanged: (file) => { touched.add(file); },
             getProjectProfile: () => deps.getProjectProfile(params.rootPath),
         };
 
@@ -121,8 +131,14 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
                 health: providerHealth,
                 onSubstitution: (s) => deps.log(`[${params.agentId}] ${s.from.name} failed — continuing on ${s.to.name}.`),
             },
+            // Mid-run steering (M39). The loop drains this at the top of each turn.
+            steering: params.steering,
             callbacks: {
                 onToolCall: (tc) => params.emit({ type: 'ToolCallStarted', name: tc.name }),
+                onSteering: (notes) => {
+                    for (const note of notes) deps.log(`[${params.agentId}] ${describeSteering(note)}`);
+                    params.emit({ type: 'SteeringApplied', count: notes.length });
+                },
                 onUsage: (promptChars, response) => {
                     const entry = tokenTracker.track(modelConfig.model || '', 'x'.repeat(promptChars), response);
                     params.onUsage?.(entry.inputTokens + entry.outputTokens, entry.estimatedCost);
@@ -130,9 +146,44 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
             },
         });
 
+        /*
+         * Verify before reporting done (Phase 7, M40).
+         *
+         * Inside the agent's *worktree*, which is the whole reason this is cheap to do
+         * here: the suite runs against the change in isolation, so a red result is
+         * attributable to this agent and to nothing else running at the same time.
+         *
+         * A failure to verify never fails the run. The agent did its work; the report
+         * says whether it can be trusted, and burying real edits because the test command
+         * was missing would be a worse outcome than an honest "unverifiable".
+         */
+        let verification: Parameters<NonNullable<TaskRunParams['onVerified']>>[0];
+        try {
+            const outcome = await runVerification({
+                runId: params.agentId,
+                cwd: params.cwd,
+                profile: await deps.getProjectProfile(params.rootPath),
+                changedFiles: [...touched],
+                artifacts: deps.artifacts,
+                signal: params.signal,
+                log: deps.log,
+            });
+            verification = {
+                outcome: outcome.result.outcome,
+                testsRan: !!outcome.evidence.tests,
+                passed: outcome.evidence.tests?.passed,
+                failed: outcome.evidence.tests?.failed,
+                reportPath: outcome.reportPath,
+            };
+        } catch (err: any) {
+            deps.log(`[${params.agentId}] verification could not run: ${err?.message || err}`);
+        }
+
+        params.onVerified?.(verification);
         params.emit({ type: 'TaskCompleted', text: result.finalText });
     };
 }
+
 
 /**
  * The registry's git operations, bound to the real `WorktreeManager`.

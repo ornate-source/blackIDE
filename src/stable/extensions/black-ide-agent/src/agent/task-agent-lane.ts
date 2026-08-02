@@ -85,6 +85,11 @@ export class TaskAgentLane implements vscode.Disposable {
     }
 
     cancel(id: string): void { this.registry.cancel(id); }
+
+    /** A review comment becomes a correction on the running agent's next turn (M39). */
+    steer(id: string, text: string, options: { artifactPath?: string; region?: string } = {}) {
+        return this.registry.steer(id, text, options);
+    }
     apply(id: string) { return this.registry.apply(id); }
     discard(id: string) { return this.registry.discard(id); }
     list(): TaskAgentSummary[] { return this.registry.list(); }
@@ -122,7 +127,17 @@ export class TaskAgentLane implements vscode.Disposable {
             modelId: agent.modelId,
             status: agent.status,
             diff: agent.diff,
-            evidence: { testsRan: false },
+            // M37's missing half, closed in Phase 7: the verify step (M40) records what
+            // the suite did, so the race ranks on test results rather than falling
+            // through to diff size — the fourth tiebreak doing the first one's job.
+            evidence: agent.verification
+                ? {
+                    testsRan: agent.verification.testsRan,
+                    passed: agent.verification.passed,
+                    failed: agent.verification.failed,
+                    durationMs: agent.endedAt && agent.startedAt ? agent.endedAt - agent.startedAt : undefined,
+                }
+                : { testsRan: false },
         }));
         return pickWinner(candidates);
     }
