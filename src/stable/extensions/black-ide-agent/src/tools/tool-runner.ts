@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { CommandResult, GrepResult } from '../core/types';
+import { asAgentEdit, markAgentWrite } from '../core/edit-origin';
 
 // Local File System & Terminal Tool Runners
 // Enhanced with: terminal output capture (Feature 1), grep search (Feature 3), list directory (Feature 4)
@@ -38,8 +39,14 @@ export class ToolRunner {
             fs.mkdirSync(parentDir, { recursive: true });
         }
 
-        fs.writeFileSync(absolutePath, content, 'utf8');
-        return `Successfully wrote file to ${filePath}`;
+        // Marked as an agent edit so the next-edit predictor stands down (Phase 5, M28).
+        // Without this the agent writing eleven files looks identical to a developer
+        // typing, and each write buys a model call to predict what they will do next.
+        return asAgentEdit(async () => {
+            fs.writeFileSync(absolutePath, content, 'utf8');
+            markAgentWrite();
+            return `Successfully wrote file to ${filePath}`;
+        });
     }
 
     // ─── Terminal Execution — Feature 1: Output Capture ─────────────────

@@ -18,6 +18,7 @@ import { loadModelRouter, providerHealth } from '../core/model-router-loader';
 import { noModelGuidance, probeLocalRuntimes } from '../core/local-models';
 import { buildReranker } from '../core/rerank-setup';
 import { buildFastApply } from '../core/fast-apply-setup';
+import { createSummarizer } from '../core/summarizer';
 import { pickSearchSettings } from '../tools/search-providers';
 import { ChatSession } from '../core/chat-session';
 import { Rule, selectRules, renderRules, renderRequestableRules } from '../core/rules';
@@ -552,11 +553,23 @@ These tools degrade to a text search when no language server is available for a 
         // the timeline is the duration the user actually waited (approval included).
         const toolStartedAt = new Map<string, number>();
 
+        const contextManager = new ContextManager(modelLimit);
+
         const result = await runAgentLoop({
             modelConfig, system, initialMessage,
             priorMessages: deps.session.conversation,
             tools, executor, maxLoops, signal,
-            context: new ContextManager(modelLimit),
+            context: contextManager,
+            // Rolling summarization (M30). It refuses while an approval gate is open, so
+            // the session's live gate state is read at call time rather than captured.
+            summarizer: createSummarizer({
+                router,
+                health: providerHealth,
+                maxTokens: modelLimit,
+                estimate: (m) => contextManager.estimateMessageTokens(m),
+                pendingApproval: () => deps.session.hasPendingApproval,
+                signal,
+            }),
             // Cross-provider failover (M24). The substitution is announced, never silent:
             // a run that quietly finishes on a different model produces output the user
             // cannot account for, and the model is part of what makes a result reproducible.
@@ -632,6 +645,8 @@ These tools degrade to a text search when no language server is available for a 
                 },
                 onCompaction: (dropped, total) =>
                     log(`[Context] Window filled — compacted ${dropped} older messages (now ~${total} tokens).`),
+                onSummarized: (folded) =>
+                    log(`[Context] Summarized ${folded} earlier messages into the task so their reasoning survives.`),
                 onUsage: (promptChars, response) => {
                     const u = trackAndEmitUsage(tokenTracker, modelConfig.model || '', promptChars, response, emit);
                     // Chat-only: the status-bar token/cost readout (the pipeline surfaces

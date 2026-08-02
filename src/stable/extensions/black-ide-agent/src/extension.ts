@@ -6,7 +6,8 @@ import * as os from 'os';
 // ─── Module Imports ─────────────────────────────────────────────────────────
 import { SecretManager } from './core/secret-manager';
 import { AgentMode, ToolCall } from './core/types';
-import { BlackIdeInlineCompletionProvider } from './core/inline-completion';
+import { registerEditorFeatures } from './core/editor-features';
+import { compactSession } from './core/compact-session';
 import { CheckpointManager, diffStat } from './core/checkpoint-manager';
 import { CodebaseIndex } from './core/codebase-index';
 import { EventBus } from './core/event-bus';
@@ -67,12 +68,8 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    context.subscriptions.push(
-        vscode.languages.registerInlineCompletionItemProvider(
-            { pattern: '**' },
-            new BlackIdeInlineCompletionProvider(secretManager)
-        )
-    );
+    // Inline completion + next-edit prediction (Phase 5, M28) — see core/editor-features.ts.
+    registerEditorFeatures(context, secretManager, { codeGraph: () => provider.codeGraph });
 
     registerCommands(context, secretManager, provider, {
         openSettingsPanel: () => settingsPanel!.open(),
@@ -341,6 +338,31 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
      */
     /** The `@docs` store, shared with the `black-ide.addDocs` command (Phase 3, M20). */
     public get docsStore(): DocsStore { return this._docsStore; }
+
+    /**
+     * Detected stacks for the commands that key off them.
+     *
+     * `CommandHost.detectedStacks` has been declared optional and never implemented since
+     * Phase 3, so `black-ide.addDocs` has always called it, always got `undefined`, and
+     * always offered zero suggestions — M20's "suggest doc sets from the detected stack"
+     * was wired to a method nobody wrote. Phase 5's terminal Cmd+K became the second
+     * caller, which is what surfaced it.
+     */
+    public async detectedStacks(): Promise<string[]> {
+        return (await this._getProjectProfile()).stacks;
+    }
+
+    /** `/compact`'s palette twin (Phase 5, M30) — same path as the slash command. */
+    public compactConversation() {
+        return compactSession({ session: this._session, secretManager: this._secretManager, historyStore: this._historyStore, webview: this.activeWebview });
+    }
+
+    /**
+     * Phase 3's code graph, for next-edit's one-hop neighbourhood (Phase 5, M28). Exposed
+     * rather than handed a second index: two indexes over the same repo disagree the
+     * moment one rebuilds, and prediction must see the edges `impact_analysis` sees.
+     */
+    public get codeGraph() { return this._index.graph; }
 
     private _ruleSummaries() {
         return this._rulesLoader.getRules().map(r => ({

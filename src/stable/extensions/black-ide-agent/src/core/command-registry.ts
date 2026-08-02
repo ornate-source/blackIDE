@@ -6,6 +6,10 @@ import { browserRuntimeAvailable } from '../tools/browser-capability';
 import { installBrowserSupport } from '../tools/browser-install';
 import { installSkillPacks, listBundledPacks } from '../tools/skill-install';
 import { CRAWL_DEFAULTS, DocsStore, crawlDocs, suggestDocSets } from './docs-index';
+import { CommandPolicy } from './command-policy';
+import { LLMClient } from './llm-client';
+import { loadModelRouter } from './model-router-loader';
+import { buildTerminalPrompt, isSafeToInsert, judgeCommand, sanitizeCommand } from './terminal-command';
 
 /**
  * Registration of every `black-ide.*` command contributed by the extension.
@@ -25,6 +29,8 @@ export interface CommandHost {
     exportDiagnostics(): Promise<void>;
     /** Detected stacks, for suggesting doc sets to crawl (Phase 3, M20). */
     detectedStacks?(): Promise<string[]>;
+    /** `/compact`'s palette twin (Phase 5, M30). */
+    compactConversation?(): Promise<{ folded: number; reason?: string }>;
 }
 
 export interface CommandPanels {
@@ -71,6 +77,23 @@ export function registerCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('black-ide.inlineEdit', async () => {
             await InlineChatController.start(context, secretManager);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.terminalCommand', async () => {
+            await runTerminalCommandPrompt(secretManager, host);
+        })
+    );
+
+    // The palette twin of `/compact` (Phase 5, M30). Same code path — a second
+    // implementation of "which turns may be folded away" is a second set of safety rules.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.compactConversation', async () => {
+            const outcome = await host.compactConversation?.();
+            if (!outcome) return;
+            if (outcome.folded) vscode.window.showInformationMessage(`Compacted ${outcome.folded} earlier messages into a summary.`);
+            else if (outcome.reason) vscode.window.showWarningMessage(outcome.reason);
         })
     );
 
@@ -232,6 +255,117 @@ export function registerCommands(
             }
         }),
     );
+}
+
+/**
+ * Terminal Cmd+K (Phase 5, M29): natural language at the shell prompt.
+ *
+ * The shape of this function is the safety argument. Generate, sanitise to one line,
+ * judge against the command policy, **show the exact text**, and insert without
+ * executing. There is no branch anywhere in it that reaches the terminal without passing
+ * all five, and the insertion itself asserts one last time that what it holds has no
+ * newline in it — because `sendText(text, false)` suppresses one trailing newline and
+ * runs every other line it is given.
+ */
+async function runTerminalCommandPrompt(secretManager: SecretManager, host: CommandHost): Promise<void> {
+    const terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+        vscode.window.showErrorMessage('Open a terminal first — the generated command is typed into the active one.');
+        return;
+    }
+
+    const request = await vscode.window.showInputBox({
+        prompt: 'Describe the command you want',
+        placeHolder: 'e.g. undo the last commit but keep my changes',
+        ignoreFocusOut: true,
+    });
+    if (!request?.trim()) return;
+
+    let settings: any = {};
+    try {
+        const raw = await secretManager.getKey('general-settings');
+        if (raw) settings = JSON.parse(raw);
+    } catch {}
+
+    // The `edit` role: a short, exact, single-purpose generation. It falls back to the
+    // chat model when unset, unlike `apply` — a Cmd+K that silently does nothing because
+    // no cheap model is configured would read as the keybinding being broken.
+    const { router } = await loadModelRouter(secretManager);
+    const model = router.resolve('edit')?.config;
+    if (!model) {
+        vscode.window.showErrorMessage('No model is configured. Add one in Black IDE Settings.');
+        return;
+    }
+
+    const prompt = buildTerminalPrompt(request, {
+        shell: vscode.env.shell,
+        platform: process.platform,
+        cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+        stacks: await host.detectedStacks?.().catch(() => []) ?? [],
+    });
+
+    const response = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: 'Generating command…', cancellable: true },
+        async (_progress, token) => {
+            const abort = new AbortController();
+            token.onCancellationRequested(() => abort.abort());
+            let text = '';
+            try {
+                await LLMClient.streamCompletion(model, prompt, (t) => { text += t; }, undefined, abort.signal);
+            } catch {
+                return '';
+            }
+            return text;
+        },
+    );
+
+    const sanitized = sanitizeCommand(response);
+    if (!sanitized) {
+        vscode.window.showWarningMessage('No single shell command could be produced for that request.');
+        return;
+    }
+
+    const policy = new CommandPolicy({
+        allow: settings.commandAllowList,
+        deny: settings.commandDenyList,
+        // Never `autoApprove`, whatever the setting says. That setting governs whether the
+        // *agent* may run a command unattended; this is a keystroke away from a human's
+        // Enter key, and "auto-approve" here would mean auto-typing a destructive command
+        // into a terminal the user is looking at.
+        autoApprove: false,
+    });
+    const verdict = judgeCommand(sanitized.command, policy);
+    if (!verdict.insertable) {
+        vscode.window.showErrorMessage(`Refused: ${verdict.reason || 'the command policy denies this command.'} (${sanitized.command})`);
+        return;
+    }
+
+    const detail = [
+        sanitized.joined ? `Chained from ${sanitized.lines} lines the model returned.` : '',
+        verdict.decision === 'ask' ? 'Not on your allow list — it will be typed, not run.' : 'Will be typed, not run.',
+    ].filter(Boolean).join(' ');
+
+    const choice = await vscode.window.showQuickPick(
+        [
+            { label: '$(terminal) Insert', description: 'Type it at the prompt — you press Enter', action: 'insert' },
+            { label: '$(clippy) Copy', description: 'Copy to the clipboard instead', action: 'copy' },
+            { label: '$(x) Cancel', action: 'cancel' },
+        ],
+        { title: sanitized.command, placeHolder: detail, ignoreFocusOut: true },
+    );
+
+    if (!choice || choice.action === 'cancel') return;
+    if (choice.action === 'copy') {
+        await vscode.env.clipboard.writeText(sanitized.command);
+        return;
+    }
+
+    if (!isSafeToInsert(sanitized.command)) {
+        vscode.window.showErrorMessage('Refused: the generated command spans multiple lines and would have run on insertion.');
+        return;
+    }
+    terminal.show();
+    terminal.sendText(sanitized.command, false);
 }
 
 /** `https://docs.djangoproject.com/en/stable/` → `docs-djangoproject-com`. */

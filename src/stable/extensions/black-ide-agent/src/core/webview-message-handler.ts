@@ -15,6 +15,7 @@ import { parseSlashInvocation, expandPrompt, resolveWorkflow } from './prompt-li
 import { Rule } from './rules';
 import { ContextProviderRegistry } from './context-providers';
 import { advertisedTools, applyToggle, toolPanelEntries } from './tool-toggles';
+import { compactSession } from './compact-session';
 
 /**
  * Router for messages arriving from the chat webview.
@@ -185,6 +186,22 @@ export async function handleWebviewMessage(
             } else if (modifiedPrompt.startsWith('/plan')) {
                 modifiedPrompt = modifiedPrompt.replace('/plan', '').trim();
                 // Planning mode will be auto-detected by PlanningEngine
+            } else if (/^\/compact\b/.test(modifiedPrompt)) {
+                // M30's manual override. Handled here and returned rather than falling
+                // through, because the alternative — which is what shipped until now — is
+                // that the literal string "/compact" is sent to the model as a task.
+                const outcome = await compactSession({
+                    session: host.session,
+                    secretManager: host.secretManager,
+                    historyStore: host.historyStore,
+                    webview,
+                });
+                if (outcome.folded) {
+                    vscode.window.showInformationMessage(`Compacted ${outcome.folded} earlier messages into a summary.`);
+                } else if (outcome.reason) {
+                    vscode.window.showWarningMessage(outcome.reason);
+                }
+                return;
             } else {
                 // User-defined prompts (Phase 2, M12). Checked *after* every built-in, and
                 // reserved names are refused at load time, so a user file can never shadow

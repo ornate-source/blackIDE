@@ -64,6 +64,28 @@
         "command": "black-ide.manageDocs",
         "title": "✦ Black IDE: Manage Docs",
         "icon": "$(library)"
+      },
+      {
+        "command": "black-ide.nextEdit.jump",
+        "title": "✦ Black IDE: Jump to Next Edit",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "black-ide.nextEdit.dismiss",
+        "title": "✦ Black IDE: Dismiss Next Edit"
+      },
+      {
+        "command": "black-ide.nextEdit.showStats",
+        "title": "✦ Black IDE: Next-Edit Statistics"
+      },
+      {
+        "command": "black-ide.terminalCommand",
+        "title": "✦ Black IDE: Generate Terminal Command",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "black-ide.compactConversation",
+        "title": "✦ Black IDE: Compact Conversation"
       }
     ],
     "keybindings": [
@@ -72,6 +94,23 @@
         "key": "ctrl+i",
         "mac": "cmd+i",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "black-ide.nextEdit.jump",
+        "key": "alt+]",
+        "mac": "alt+]",
+        "when": "editorTextFocus && blackIde.nextEditAvailable"
+      },
+      {
+        "command": "black-ide.nextEdit.dismiss",
+        "key": "escape",
+        "when": "editorTextFocus && blackIde.nextEditAvailable && !suggestWidgetVisible && !inlineSuggestionVisible && !renameInputVisible && !findWidgetVisible"
+      },
+      {
+        "command": "black-ide.terminalCommand",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "terminalFocus"
       }
     ],
     "menus": {

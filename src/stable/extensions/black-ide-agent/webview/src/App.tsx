@@ -120,6 +120,10 @@ interface BlackIDESettings {
   enableAutocomplete: boolean;
   autocompleteModelId?: string;
   autocompleteDebounce?: number;
+  // Next-edit prediction (Phase 5, M28). Opt-in: it spends a model call per typing pause.
+  enableNextEdit?: boolean;
+  nextEditIdleMs?: number;
+  nextEditBudgetMs?: number;
   allowAnonymousTelemetry?: boolean;
   // Providers list
   providers?: Record<string, ProviderSetting>;
@@ -180,6 +184,9 @@ const DEFAULT_SETTINGS: BlackIDESettings = {
   enableAutocomplete: true,
   autocompleteModelId: '',
   autocompleteDebounce: 250,
+  enableNextEdit: false,
+  nextEditIdleMs: 600,
+  nextEditBudgetMs: 1500,
   allowAnonymousTelemetry: true,
   providers: DEFAULT_PROVIDERS,
 };
@@ -2784,6 +2791,57 @@ export default function App() {
                         className="w-20 bg-[rgba(255,255,255,0.04)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-3 py-2 text-[12.5px] focus:outline-none focus:border-[var(--vscode-focusBorder,#007fd4)] text-center font-medium transition-all duration-200"
                       />
                       <span className="text-[10px] text-muted/30 font-medium">ms</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+                {/*
+                  Next-edit prediction (Phase 5, M28). Off by default and shown here rather
+                  than left to a settings file, because it spends a model call every time
+                  typing pauses — a cost the person paying for the key should switch on
+                  deliberately, not discover on an invoice.
+                */}
+                <CheckboxRow
+                  id="enableNextEdit"
+                  title="Predict Next Edit"
+                  description="After an edit, predict the next change it implies — including in another file — and offer to jump to it (Alt+])."
+                  checked={!!settings.enableNextEdit}
+                  onToggle={() => updateSetting('enableNextEdit', !settings.enableNextEdit)}
+                  icon={<svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>}
+                />
+
+                <div className={`flex flex-col gap-8 transition-opacity duration-300 ${!settings.enableNextEdit ? 'opacity-20 pointer-events-none' : ''}`}>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-muted/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <span className="text-[12px] font-medium text-foreground block">Idle Delay &amp; Latency Budget</span>
+                    </div>
+                    <span className="text-[11px] text-muted/50 leading-relaxed block -mt-1">How long typing must pause before a prediction is requested, and the hard ceiling on that request. A prediction that arrives after you have moved on is discarded, so a generous budget buys nothing.</span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={100}
+                          max={5000}
+                          value={settings.nextEditIdleMs !== undefined ? settings.nextEditIdleMs : 600}
+                          onChange={(e) => updateSetting('nextEditIdleMs', Math.min(5000, Math.max(100, parseInt(e.target.value) || 600)))}
+                          className="w-20 bg-[rgba(255,255,255,0.04)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-3 py-2 text-[12.5px] focus:outline-none focus:border-[var(--vscode-focusBorder,#007fd4)] text-center font-medium transition-all duration-200"
+                        />
+                        <span className="text-[10px] text-muted/30 font-medium">ms idle</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={250}
+                          max={10000}
+                          value={settings.nextEditBudgetMs !== undefined ? settings.nextEditBudgetMs : 1500}
+                          onChange={(e) => updateSetting('nextEditBudgetMs', Math.min(10000, Math.max(250, parseInt(e.target.value) || 1500)))}
+                          className="w-20 bg-[rgba(255,255,255,0.04)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-3 py-2 text-[12.5px] focus:outline-none focus:border-[var(--vscode-focusBorder,#007fd4)] text-center font-medium transition-all duration-200"
+                        />
+                        <span className="text-[10px] text-muted/30 font-medium">ms budget</span>
+                      </div>
                     </div>
                   </div>
                 </div>

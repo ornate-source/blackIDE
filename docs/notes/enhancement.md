@@ -2,7 +2,7 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 6 (2026-08-01)** — **phases 0–4 delivered**; **27 of 71 gaps
+**Status:** **In progress · rev 7 (2026-08-02)** — **phases 0–5 delivered**; **30 of 71 gaps
 addressed, all complete (no partials)**. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
@@ -14,13 +14,17 @@ addressed, all complete (no partials)**. The only work left in a started phase i
 | 2 — Rules, prompts & modes | ✅ | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel with **rule *and* tool toggles** — the tool half enforced at the executor, not advertised. M9's stronger reading closed as won't-do. |
 | 3 — Retrieval substrate | ✅ | M14–M22 | **All nine milestones.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction 37.5% at realistic path depth · git history tools · **index build 5 000 files in 1 247 ms** against a ≤2 s gate · 11 `@`-mention providers incl. `@symbol`, `@docs`, `@web`. |
 | 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **16 providers** (Bedrock/Vertex deferred with a reason) · zero-config local first run. |
-| 5–12 | — | M28–M71 | Not started. |
+| 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
+| 6–12 | — | M31–M71 | Not started. |
 
-**Re-verified 2026-08-01 by running everything:** harness **426/426** · vitest **582/582 / 32
-suites** · **19** real-host integration tests · eval gate green (stack detection 100% 13/13 · skill
-exact-match 100% · fail-safe 1/1 · **wrong-idiom 0% of 33 guarded tasks** · **recall@5 91.2% · @10
-97.2% · @20 100%** · compaction 37.5% · *no regression vs `eval/baseline.json`*) · `tsc -b` clean ·
-webview builds · `extension.ts` **671 LOC**.
+**Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
+suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
+**wrong-idiom 0% of 33 guarded tasks** · **recall@5 91.2% · @10 97.2% · @20 100%** · compaction
+37.4% · *no regression vs `eval/baseline.json`*) · `tsc -b` clean · webview builds · `extension.ts`
+**693 LOC**. The **19 real-host integration tests did not run** on 2026-08-02:
+`@vscode/test-electron` spawns `Contents/MacOS/Electron` and the VS Code build it downloads (1.131.0)
+ships `Contents/MacOS/Code`. A tooling mismatch that predates this phase — recorded rather than
+rounded up to "everything green".
 
 ## ⇢ Pending tasks — phases 0–4 (re-audited against the code 2026-08-01)
 
@@ -120,6 +124,40 @@ the argument for the eval tier, restated with each finding.
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
+> **What changed in rev 7 (2026-08-02).** Delivery: **Phase 5 (M28–M30)**, taking the tally to
+> **30 of 71, still with no partials**, and clearing the eleventh of thirteen P0 items. Next-edit
+> prediction, terminal `Cmd+K`, and rolling summarization; full note under Phase 5 in §4.
+>
+> **Two of the phase's four gate clauses are asserted and two are not**, and the split is the same
+> one every phase since rev 4 has hit. "Zero completions after the buffer changed" and "never drops a
+> pending approval or tool result" are invariants, so they are gated. "p50 ≤250 ms" and "≥40% of
+> accepted suggestions multi-line or cross-file" are ratios over predictions a model produced, so
+> they are §4.6 rows. What shipped for those two is the **instrument** — `NextEditStats` computes all
+> three ratios and `black-ide.nextEdit.showStats` reads them — because a gate with nothing behind it
+> is an assertion, and this document has spent four revisions establishing what those are worth.
+>
+> **Four defects found by the work, all by a test or a measurement.** A churn bound inherited from
+> fast-apply that refused *every* edit to *every* small file (33% of a three-line module is one line);
+> deleted text being unrecoverable after the change event fires, which silently reduced the edit
+> history to insertions and hid the rename case it exists for; an OS-keychain read on the typing path;
+> and — the one that only appears on a bill — next-edit firing after every file the *agent* wrote,
+> because `onDidChangeTextDocument` reports that a document changed and never who changed it.
+>
+> **Two things that were already broken, found by becoming their second caller.** `/compact` has been
+> in the webview's slash-command list since Phase 2 with no handler anywhere, so typing it sent the
+> literal string to the model as a task — which is why M30's wording is "*keep* `/compact` as the
+> manual override". And `CommandHost.detectedStacks` has been declared optional and never implemented
+> since Phase 3, so M20's stack-based doc suggestions have always been computed from an empty list.
+> Both fixed. Both type-checked perfectly while doing nothing.
+>
+> **The ≤700-line gate fired again, on the same kind of change, and this time the test caught it.**
+> Wiring next-edit into `activate()` took `extension.ts` to 705. In rev 6 the equivalent was caught by
+> reading a line count by hand; the test added then did its job here.
+>
+> **One tier did not run and is not being rounded up:** the 19 real-host integration tests.
+> `@vscode/test-electron` spawns `Contents/MacOS/Electron`; VS Code 1.131.0 ships
+> `Contents/MacOS/Code`. Tooling mismatch, predates this phase, no Phase 5 code is covered there.
+>
 > **What changed in rev 6 (2026-08-01).** Delivery: **12 of the 14 open items in phases 0–4 closed**,
 > which completes phases 2, 3 and 4 and takes the tally to **27 of 71, with no partials**. Phase 2's
 > tool toggles (M10), Phase 3's `@symbol` + `@docs` + keyed search (M19–M21) and cross-encoder rerank
@@ -279,7 +317,7 @@ the argument for the eval tier, restated with each finding.
 | D2 | **Chunking strategy** | 🔴 | 🟡 | `chunkFile()` at `codebase-index.ts:420` is a **fixed line-window with overlap** — no symbol awareness at all. Our docs claim "AST-aware chunking"; that is not what the code does. OPIDE: tree-sitter, 13+ languages. → **E2** |
 | D3 | Code graph: call graph, type hierarchy, impact analysis | ⬜ | ❌ | OPIDE ships this; Cursor uses it for multi-file edits. Highest-leverage retrieval gap. → **E2** |
 | D4 | Reranker stage | 🟢 | ✅ | **Shipped (Phase 3 M17, completed Phase 4).** `core/reranker.ts` — tuned `LexicalReranker` (the default, and what runs with no rerank model) plus `ModelReranker` on the `rerank` role, scoring the whole candidate set in one call. Recall@10 95.8 → **97.2**. At Continue's bar. |
-| D5 | Context manager / token budgeting / compaction | 🟢 | ✅ | `core/context-manager.ts`, `core/prompt-builder.ts`. |
+| D5 | Context manager / token budgeting / compaction | 🟢 | ✅ | `core/context-manager.ts`, `core/prompt-builder.ts`, and **rolling summarization as of Phase 5 (M30)**: `core/rolling-summary.ts` folds the older middle into prose at a threshold, layered *above* `fit` rather than replacing it — `fit` stays the deterministic floor that still holds the window when the summarizer's provider is down. Refuses outright while an approval gate is open, never orphans a tool result, never folds an unresolved call. `/compact` is the same path with the threshold removed. |
 | D6 | **Structured tool-output compression** | 🔴 | 🟡 | `core/text-cap.ts` truncates raw text. A-Coder claims 30–70% token reduction via TOON encoding of tool output. → **E11** |
 | D7 | External docs indexing (`@docs`-class provider) | 🟢 | ✅ | **Shipped (Phase 3, M20).** `core/docs-index.ts` — bounded same-origin crawl scoped to the root *path* (so a version-pinned URL cannot drift into another version), passage-level search, stack-based suggestions, `black-ide.addDocs`. At Continue's `@docs` bar. |
 | D9 | **Context providers / `@`-mentions** | 🟢 | ✅ | **Shipped (Phase 3, M19–M21).** `core/context-providers.ts` — a `ContextProvider` API with budgets and visible truncation, and **11 providers**: `@file`, `@folder`, `@symbol`, `@problems`, `@terminal`, `@git`, `@rules`, `@skills`, `@past-chats`, `@docs`, `@web`. Mentions are resolved server-side into the prompt rather than left as text. **At Cursor's and Continue's bar.** |
@@ -311,7 +349,7 @@ the argument for the eval tier, restated with each finding.
 | # | Capability | Level | Status | Parity bar / gap |
 |---|---|:--:|:--:|---|
 | F1 | Inline completion (FIM-aware) | 🟡 | ✅ | `core/inline-completion.ts` (80 LOC) — single model, single file, no edit history. |
-| F2 | **Next-edit prediction (multi-file, edit-history-aware, jump-to-next-edit)** | ⬜ | ❌ | Cursor Tab v2 + Composer-1/Sonic low-latency models; Continue next-edit. This is *the* daily-driver feature we lack. → **E1** |
+| F2 | **Next-edit prediction (multi-file, edit-history-aware, jump-to-next-edit)** | 🟢 | ✅ | **Shipped (Phase 5, M28).** `core/next-edit.ts` + `core/next-edit-controller.ts` — a coalescing edit-history buffer and the M15 graph produce a SEARCH/REPLACE-anchored prediction that is verified against the live file and discarded if any document it was computed from has moved. Cross-file is the normal case, reached by a jump affordance rather than ghost text, because the stable inline-completion API cannot render away from the cursor. Off by default: it spends a model call per typing pause. Behind Cursor Tab v2 on the model (they train one for it; we route the `autocomplete` role at whatever the user configured) — at bar on the capability. |
 | F3 | Inline chat (`Cmd+I`) | 🟡 | ✅ | `core/inline-chat-controller.ts` — selection-scoped. |
 | F4 | Commit-message generation | 🟡 | ✅ | Diff-size handling is naive. |
 | F5 | Multi-provider LLM (OpenAI/Anthropic/Google/OpenRouter/Ollama/LM Studio) | 🟢 | ✅ | `core/llm-client.ts` (478 LOC). NeuralInverse claims 20 providers; 6 well-tested beats 20 shallow. |
@@ -321,7 +359,7 @@ the argument for the eval tier, restated with each finding.
 | F9 | Output modes (`apply` / `pr`) | 🟢 | ✅ | `core/git-pr.ts`. Ahead of most. |
 | F10 | Headless CLI / SDK surface | ⬜ | ❌ | Antigravity ships desktop + CLI + SDK + IDE. Blocks CI use and background agents. → **E14** |
 | F11 | Skill/rule distribution (registry or hub) | ⬜ | ❌ | Continue Hub blocks. `plan.md` marked this out of scope; competitors have made it table stakes. → **E9** |
-| F12 | **Terminal `Cmd+K`** (natural language → shell command) | ⬜ | ❌ | Cursor ships it. We have inline chat for editors only (`inline-chat-controller.ts`). → **E25** |
+| F12 | **Terminal `Cmd+K`** (natural language → shell command) | 🟢 | ✅ | **Shipped (Phase 5, M29).** `core/terminal-command.ts` — single-line by construction, because `sendText(text, false)` suppresses one *trailing* newline and executes every embedded one; judged by the same `CommandPolicy` as the agent's `run_command`, so this surface cannot be more permissive than that one; mandatory preview, and inserted with `shouldExecute: false` even for allow-listed commands. **At Cursor's bar, with a stricter never-run posture.** |
 | F13 | **Provider breadth** | 🟢 | ✅ | **6 → 16 (Phase 4, M26).** Added DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI — one dispatch, one preset table, so the streaming and tool-call parsing cannot drift per provider. **Bedrock and Vertex remain absent by decision:** SigV4 signing and a Google OAuth exchange are auth implementations, not base URLs. |
 | F14 | Zero-config first run (works before a key is added) | 🟢 | ✅ | **Shipped (Phase 4, M27), local-first by design.** Probes Ollama / LM Studio / llama.cpp on a 1.2 s timeout and *offers* what it finds; never auto-enables, ignores a runtime with no models pulled, and types the result `local` so tool calls go through the protocol that works on every local model. We still do not operate a hosted free tier (§4.5). |
 | F15 | **Multi-model race** (same prompt, N models, compare & pick) | ⬜ | ❌ | Cursor 2.0. `ManagerPanel` already tracks `modelId` per run, so the substrate is closer than it looks. → **E27** |
@@ -362,7 +400,7 @@ the argument for the eval tier, restated with each finding.
 | **Test integration** | 🟢 | A-Coder | **At/above bar.** Failures-only reporting from the detected stack. |
 | Retrieval & code graph | 🟢 | OPIDE, Cursor | **At bar as of Phase 3.** Symbol chunking, a code graph with impact analysis, rerank, 11 context providers, `@docs`. recall@5 84.7→91.2 · @10 93.1→97.2 · @20 100. |
 | Memory | 🔴 | Cursor, OPIDE | **We are behind.** Durable markdown store, but nothing extracts, ages, dedups or contradicts. → Phase 8 |
-| Daily-driver autocomplete | 🟡 | Cursor | **We are far behind.** No next-edit. |
+| Daily-driver autocomplete | 🟢 | Cursor | **At bar on capability as of Phase 5** — next-edit with cross-file jump, terminal `Cmd+K`. Still behind on the *model*: Cursor trains one for this and we route a role. |
 | Parallel task agents & steering | 🔴 | Antigravity, Cursor | **We are behind.** |
 | Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
 | Model routing | 🟢 | Continue, OPIDE | **At bar as of Phase 4.** Seven roles, health-aware cross-provider failover, fast-apply, 16 providers, zero-config local first run. |
@@ -804,9 +842,9 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M25 | Fast-apply path | P1 | E10 | 4 ✅ | `edit_file`'s `intent` → apply-role model → verified with the real applier; malformed, missing-anchor, ambiguous, no-change and oversized results all escalate to the strong model |
 | M26 | Provider breadth (6 → ~18) | P2 | E26 | 4 ✅ | **6 → 16.** DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI. Bedrock/Vertex deliberately not shipped — request signing, not config |
 | M27 | Zero-config first run (local model, no key) | P2 | E26 | 4 ✅ | probes Ollama / LM Studio / llama.cpp on a short timeout and **offers** what it finds; never auto-enables |
-| M28 | Next-edit prediction (multi-file, edit-history, jump-to) | P0 | E1 | 5 |
-| M29 | Terminal `Cmd+K` | P2 | E25 | 5 |
-| M30 | Automatic rolling summarization (beyond manual `/compact`) | P2 | E11 | 5 |
+| M28 | Next-edit prediction (multi-file, edit-history, jump-to) | P0 | E1 | 5 ✅ | coalescing edit-history ring buffer + M15 graph neighbourhood → a SEARCH/REPLACE-anchored prediction, verified against the live file and discarded if any document moved; cross-file is a first-class outcome via a jump affordance, not a special case |
+| M29 | Terminal `Cmd+K` | P2 | E25 | 5 ✅ | `core/terminal-command.ts` — single-line by construction (an embedded newline in `sendText` executes), judged by the same `CommandPolicy` as the agent, mandatory preview, inserted with `shouldExecute: false` **always** |
+| M30 | Automatic rolling summarization (beyond manual `/compact`) | P2 | E11 | 5 ✅ | threshold-triggered fold of the older middle into prose, layered *above* `ContextManager.fit` rather than replacing it; refuses outright while an approval is open, and `/compact` — a suggestion that did nothing since Phase 2 — now runs the same path |
 | M31 | Independent parallel task agents (non-pipeline) in Manager | P1 | E3 | 6 |
 | M32 | Per-agent model assignment for task agents | P1 | E3 | 6 |
 | M33 | Global concurrency + token governor | P1 | E3 | 6 |
@@ -856,16 +894,19 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–4): 27 of 71 — all complete, no partials** (2026-08-01). The four
-milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, and M20–M27 landed with them.
+**Delivered so far (Phases 0–5): 30 of 71 — all complete, no partials** (2026-08-02). The four
+milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
+M28–M30 closed Phase 5.
 
-That clears **10 of the 13 P0 items.** The three still open are **M28** (next-edit prediction,
-Phase 5) and **M54/M56** (secret redaction and the untrusted-content posture, Phase 9). M23 — the P0
-that rev 5 named first — closed with Phase 4, which is also what unblocked M17.
+That clears **11 of the 13 P0 items.** The two still open are **M54/M56** — secret redaction and the
+untrusted-content posture, both Phase 9. M28, the P0 rev 6 named as outstanding, closed with Phase 5;
+it depended on Phase 3's graph for its neighbourhood and Phase 4's `autocomplete` role for its model,
+which is why it could not have gone earlier.
 
 What is left in the started phases is **two rows of the table at the top, and they are the same
 blocker twice**: the opt-in model tier (§4.6) that Phase 1's LSP-over-grep gate and four of §4.2's
-metric rows both need. Nothing in phases 0–4 is waiting on effort or sequencing any more.
+metric rows both need — now five, since M28's latency and acceptance-ratio clauses need it too.
+Nothing in phases 0–5 is waiting on effort or sequencing.
 
 ---
 
@@ -1797,6 +1838,141 @@ completes an agent task end to end.
 cross-file; zero completions emitted after the buffer changed; auto-summarization never drops a
 pending approval or tool result.
 
+> ### ✅ Delivered 2026-08-02 — all three milestones
+> `core/edit-history.ts` · `core/next-edit.ts` · `core/next-edit-controller.ts` ·
+> `core/edit-origin.ts` · `core/editor-features.ts` · `core/terminal-command.ts` ·
+> `core/rolling-summary.ts` · `core/summarizer.ts` · `core/compact-session.ts` · summarizer seam in
+> `agent/agent-loop.ts`, wired in `agent/chat-task.ts` · five commands and four keybindings.
+> vitest **693/693 / 36 suites** (was 582/32) · harness 426/426 · eval green, no regression ·
+> `tsc -b` clean · webview builds · `extension.ts` **693 LOC**.
+>
+> **Gate status.** Two of the four clauses are deterministic and asserted; two are ratios that need
+> real model calls and are §4.6 rows, not phase work:
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | Zero completions emitted after the buffer changed | **met** | `__tests__/next-edit.test.ts` — five staleness cases, incl. the *target* file moving while the active one did not |
+> | Auto-summarization never drops a pending approval or tool result | **met** | `__tests__/rolling-summary.test.ts` — the orphan-result invariant asserted at *every* recency window, not one |
+> | next-edit p50 ≤250 ms on the fast role | **not asserted** | needs the model tier; the instrument exists (`NextEditStats`) |
+> | ≥40% of accepted suggestions multi-line or cross-file | **not asserted** | same; `crossFile`/`multiLine` are computed and counted, so the number is producible the day the tier lands |
+>
+> **M28 — the prediction is a claim about a file, so it is checked against the file.** The design
+> decision that carries the correctness is refusing JSON as the carrier. A prediction has to name a
+> file, the text it replaces and the replacement; the payload is source code, so in JSON every
+> newline, quote and backslash becomes an escaping decision the model must get right, and one bad
+> escape turns a good prediction into a parse error. The SEARCH/REPLACE contract at `core/tools.ts:76`
+> has no escaping, the models are already prompted with it here, and — the part that matters — it
+> makes the anchor **verifiable**: a prediction whose ORIGINAL text is not in the file, or is in it
+> twice, is detectably wrong before a human ever sees it. Seven refusal classes, all tested.
+>
+> **Why it is not an `InlineCompletionItemProvider`.** Ghost text renders where the cursor is, and
+> the whole premise of next-edit is that the next change usually is not — two functions down, or in
+> the file that imports this one. The stable API cannot render there, so the affordance is a jump:
+> the status bar names the target, `Alt+]` goes to it, and the same key applies it once you are
+> there. That is also what makes the cross-file case a first-class outcome rather than a special case
+> bolted onto a same-file feature.
+>
+> **Tab was available and was not taken.** Cursor binds jump-to-next-edit to Tab and it is the better
+> ergonomic. It is also one leaked context key away from a developer losing indentation and
+> completion-accept in every editor, which is a worse failure than an unfamiliar shortcut is an
+> inconvenience. `Alt+]` plus a status-bar item that says what is waiting; `__tests__/command-surface.test.ts`
+> asserts the binding is gated on `blackIde.nextEditAvailable` and that it is *not* Tab.
+>
+> **Three defects found by building it, each by a test rather than by reading.**
+> - **A churn bound that refused every small file.** The prediction validator inherited fast-apply's
+>   percentage cap and tightened it to 25%. Renaming one call in a three-line module changes 33% of
+>   it — so the bound rejected every edit to every small file, and small files are most of a repo.
+>   Fixed by requiring *both* a large proportion and a large absolute change (>12 lines), because the
+>   defect the bound exists to catch — a model returning the whole file as one block — is inherently
+>   large. Found by the first test run of `validateProposal`.
+> - **Deleted text was unrecoverable.** `onDidChangeTextDocument` fires *after* the document holds
+>   the new text, and the change describes its range in pre-change coordinates — so by the time the
+>   handler runs, the removed text is gone from the only place it lived. The first implementation
+>   recorded `(12 characters replaced)`. That silently reduces the history to insertions only, which
+>   makes the single most valuable entry it can hold — `- reserve` / `+ reserveStock` — invisible: a
+>   rename is exactly the case where the half that was typed tells you nothing. Fixed with a bounded
+>   shadow copy of each open document.
+> - **A keychain read on the typing path.** Settings live in `SecretStorage`, which on macOS and
+>   Windows is the OS keychain. Reading it once per idle pause is a round trip every 600 ms of typing,
+>   all day, and it would not have shown up in a profile of this feature — it would have shown up in
+>   the editor. Cached for 5 s.
+>
+> **And one cost bug that only shows up on somebody's bill.** `onDidChangeTextDocument` reports
+> *that* a document changed and never *who* changed it — there is no API for it. So the agent writing
+> eleven files during a run looks exactly like a developer typing, and next-edit would have fired a
+> prediction after each one: eleven model calls guessing what the developer will do next, while the
+> developer is watching an agent work. `core/edit-origin.ts` has the writer say so — a counter, not a
+> boolean, because pipeline phases write concurrently and a boolean is cleared by whichever write
+> finishes first, plus a short grace window because the change event arrives after the write returns.
+> It uses `finally`, so a throwing write cannot leave the counter stuck above zero and silently
+> disable the feature for the rest of the session.
+>
+> **M29 — the milestone is one sentence in the VS Code docs being narrower than it reads.**
+> `Terminal.sendText(text, false)` suppresses **one trailing newline**; a newline *inside* `text` is
+> an ordinary keypress. So a model that helpfully answers
+>
+> ```
+> rm -rf build
+> npm run build
+> ```
+>
+> executes `rm -rf build` the instant it is inserted — no preview, no Enter, nothing to undo. Every
+> path out of `terminal-command.ts` therefore returns a single line by construction, multi-line
+> answers are chained explicitly and the chaining is *reported* in the preview rather than done
+> quietly, and `isSafeToInsert` asserts it once more at the call site. Comment lines are dropped
+> rather than chained, because a `#` inside an `&&` sequence comments out everything after it.
+>
+> The policy question is separate and answered separately: the generated command is judged by the
+> **same `CommandPolicy` the agent's `run_command` uses**, because a natural-language shell that is
+> more permissive than the agent is a hole straight through G1's deny list. `autoApprove` is passed
+> `false` unconditionally whatever the user's setting says — that setting governs the agent running
+> commands unattended, and reusing it here would mean auto-typing a destructive command into a
+> terminal the user is looking at. An allow-listed `npm test` is still typed, never run.
+>
+> **M30 — summarization sits above `fit`, not in place of it.** `ContextManager.fit` already bounds
+> the window by dropping the oldest turns and folding a bullet list into the task. That is the right
+> *floor* — deterministic, free, cannot fail — and it is what still holds the window when the
+> summarizer's provider is down. What it cannot do is keep the reasoning: twelve turns in, the agent
+> knows it read a file and not what it concluded. So summarization runs first, at a threshold rather
+> than at the ceiling, and the two compose — with the summarizer absent or declining, behaviour is
+> exactly what it was before this phase.
+>
+> The gate is three structural rules rather than three runtime checks. **A pending approval stops
+> summarization entirely**, because the plan a user is about to approve is live state and a summary
+> of it is not something they can approve. **The kept window never begins with tool results**, since
+> a `tool_result` whose `tool_use` was folded away is not degraded context but a hard provider
+> rejection — the run dies at the next request. **An unresolved tool call is never folded**, because
+> the results it is waiting for are about to arrive. `/compact` runs the identical path with only the
+> *threshold* removed: a manual override overrides the policy, never the correctness rules.
+>
+> **`/compact` had been in the UI since Phase 2 and did nothing.** It was in the webview's slash
+> suggestions and `planning-engine.ts` knew to skip planning for it — and no code ever handled it, so
+> typing it sent the literal string `/compact` to the model as a task. That is why the phase wording
+> is "*keep* `/compact` as the manual override": the thing being kept did not exist.
+>
+> **A second gate the code caught, in the same phase, for the same reason.** Wiring next-edit into
+> `activate()` took `extension.ts` from 693 to **705 lines**, past the ≤700 gate — this time caught by
+> the test Phase 4 added rather than by hand, which is the entire point of having added it. The editor
+> surface moved to `core/editor-features.ts` and the file is back to **693**.
+>
+> **A dead method found by becoming its second caller.** `CommandHost.detectedStacks` has been
+> declared optional and never implemented since Phase 3, so `black-ide.addDocs` has always called it,
+> always received `undefined`, and always offered zero suggestions — M20's "stack-based doc
+> suggestions" was wired to a method nobody wrote, and it type-checked because the member is optional.
+> Terminal Cmd+K wanting the same stacks is what surfaced it. Implemented (three lines); M20's
+> suggestions work for the first time.
+>
+> **Not run in this environment:** the real-host integration tier. `@vscode/test-electron` downloaded
+> VS Code 1.131.0 and failed to launch it — it spawns `Contents/MacOS/Electron` and that build ships
+> `Contents/MacOS/Code`. A tooling version mismatch, unrelated to this phase's code and reproducible
+> before it; none of Phase 5's three milestones has an existing test in that tier.
+>
+> **Deliberately not done: next-edit is off by default.** It spends a model call every time typing
+> pauses, on the user's key. It is exposed in Settings beside autocomplete with its idle delay and
+> latency budget, rather than left to a settings file — a default-off feature nobody can find is the
+> maintenance liability E18 exists to complain about, and the answer to that is discoverability, not
+> switching it on for people who did not ask.
+
 ### Phase 6 — Agent Manager & parallel execution
 *Covers M31–M37. Extends the existing `ManagerPanel.tsx`.*
 
@@ -1985,7 +2161,11 @@ eval-set debt, because the eval set is not what is missing.
 | Stack detection accuracy | **recorded: 100% (13/13)**, gated | hold | 0, 3 |
 | Skill exact-match / any-hit rate | **recorded: 100% / 100%**, gated | hold while breadth grows | 0, 10 |
 | Fail-safe: no stack → no skill injection | **recorded: 1/1**, gated | hold | 0 |
-| Next-edit acceptance rate | 0 (absent) | ≥25% of shown | 5 |
+| Next-edit acceptance rate | ⚠ unrecorded — needs the model tier (§4.6); **the instrument shipped 2026-08-02** (`NextEditStats`, `black-ide.nextEdit.showStats`) | ≥25% of shown | 5 |
+| Next-edit p50 latency | ⚠ unrecorded — needs the model tier; budget enforced at 1.5 s and a late prediction is discarded rather than shown | ≤250 ms | 5 |
+| Next-edit: share of accepted that is multi-line or cross-file | ⚠ unrecorded — needs the model tier; `crossFile`/`multiLine` are computed per prediction and counted | ≥40% | 5 |
+| Predictions surviving a buffer change | **recorded: 0 by construction** — version-stamped at request, re-checked before showing and again before applying; gated | **0** (hard gate) | 5 |
+| Summarization dropping a pending approval or tool result | **recorded: 0 by construction** — refuses while an approval is open; orphan-result invariant asserted at every recency window | **0** (hard gate) | 5 |
 | Wrong-idiom rate — *skill injection* half | **recorded 2026-08-01: 0 leaks / 33 guarded tasks**, gated as a ceiling | hold at 0 | 0, 10 |
 | Wrong-idiom rate — *model behaviour* half (raw SQL where the ORM is idiomatic) | ⚠ unrecorded — needs the model tier (§4.6) | −50% | 10 |
 | Reviewer precision | n/a | ≤1 FP per 10 findings | 9 |
@@ -2012,6 +2192,7 @@ non-deterministic runner.
 | Tokens per completed task (−40%) | There are no tokens without a model. |
 | Symbol-question accuracy (LSP vs grep, +30%) | Same as the gate above, measured rather than asserted. |
 | Wrong-idiom rate, *model-behaviour* half | The injection half is now measured deterministically (0/33); whether the agent then writes raw SQL where the ORM is idiomatic is a model behaviour. |
+| Next-edit p50 latency, acceptance rate, and multi-line/cross-file share (added 2026-08-02, Phase 5) | All three are properties of predictions a model produced. The engine's refusals are deterministic and gated; whether a *shown* prediction is any good, and how fast it arrived, is not. `NextEditStats` computes all three — it has no samples to compute them from without the tier. |
 
 **What it needs, concretely.** A `--models` flag on `eval/run-eval.js` that is **off by default and
 never runs in CI on a fork**; a key source that is explicitly not the user's own configured key (a
