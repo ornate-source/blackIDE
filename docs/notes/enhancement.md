@@ -1040,8 +1040,8 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M57 | Sandboxed execution tiers (restricted / contained) | P1 | E23 | 9 ❌ | not started |
 | M58 | Optional at-rest encryption for `.blackIDE/` | P3 | E15 | 9 ❌ | not started |
 | M59 | Skill library Wave 2 (16 → full catalog) | P1 | E9 | 10 ✅ | **16 → 47.** Frameworks, testing and the cross-cutting packs, each with ≥1 golden task; the eval corpus grew 74 → 112 tasks and 13 → 21 fixtures to hold that property |
-| M60 | Skill/rule registry + `addSkillFrom` + checksums | P2 | E9 | 10 🟡 | `core/skill-registry.ts` — pinned refs (a moving ref is **refused**, since it makes the checksum meaningless), SHA-256 verification before content is examined, and a forbidden-key deny list so a pack cannot declare `tools`/`autoApprove`/`policy`. **Partial:** the `black-ide.addSkillFrom` command that fetches over the network is not wired |
-| M61 | Notebook (`.ipynb`) read/edit/checkpoint | P2 | E21 | 10 🟡 | `core/notebook.ts` — byte-stable round-trip, per-cell edit preserving the `source` array shape Jupyter writes, outputs excluded from prompts by default, cell-granular snapshot/restore. **Partial:** the `edit_notebook_cell` tool is not registered in the executor |
+| M60 | Skill/rule registry + `addSkillFrom` + checksums | P2 | E9 | 10 ✅ | `core/skill-registry.ts` — pinned refs (a moving ref is **refused**, since it makes the checksum meaningless), SHA-256 verification before content is examined, and a forbidden-key deny list so a pack cannot declare `tools`/`autoApprove`/`policy`. `tools/skill-fetch.ts` + the command wired 2026-08-03, with an https-only transport check that runs **before** git sees the URL — `ext::` executes a shell command, and no checksum undoes code that already ran |
+| M61 | Notebook (`.ipynb`) read/edit/checkpoint | P2 | E21 | 10 ✅ | `core/notebook.ts` — byte-stable round-trip, per-cell edit preserving the `source` array shape Jupyter writes, outputs excluded from prompts by default, cell-granular snapshot/restore. `read_notebook`/`edit_notebook_cell` registered 2026-08-03 across twelve mode allowlists — and `read_file`/`edit_file` now **refuse** a `.ipynb`, which is where the real defect was |
 | M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 🟡 | boundary declared (`src/agent-core/index.ts`) and **transitively enforced** by `__tests__/agent-core-boundary.test.ts`; four dependency edges cut to make it hold. **Partial:** the modules are named, not yet physically moved into a package |
 | M63 | Headless CLI | P1 | E14 | 11 🟡 | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. **Partial:** the `bin` entry that wires them to a real run is not shipped |
 | M64 | SDK entry point | P2 | E14 | 11 ✅ | the barrel *is* the SDK surface: `AgentHost` plus the loop, router, retrieval, memory and safety exports, with `silentNotifier`/`denyingApproval` baselines for embedding |
@@ -2693,6 +2693,56 @@ individually revertible.
 > **What is left in Phase 10, named:** the `black-ide.addSkillFrom`/`updateSkillPacks` commands that
 > actually fetch (M60), and registering `edit_notebook_cell` in the executor's tool surface (M61).
 > Both are wiring over cores that are built and tested; neither is blocked.
+
+> ### ✅ Closed 2026-08-03 — M60 and M61 wired; Phase 10 complete
+> `tools/skill-fetch.ts` · `read_notebook`/`edit_notebook_cell` in `core/tools.ts` and
+> `agent/tool-executor.ts` · `NOTEBOOK_READ_TOOLS`/`NOTEBOOK_EDIT_TOOLS` across twelve mode
+> allowlists · `black-ide.addSkillFrom` in `core/command-registry.ts` · two new egress register
+> entries · `__tests__/notebook-tools.test.ts` · `__tests__/skill-fetch.test.ts`.
+> vitest **1 535/1 535 / 58 suites** (was 1 488/56) · harness **418/418** · eval green, no
+> regression · `tsc -b` clean.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | A remote pack installs and verifies its checksum, shadowable by a local pack | **met** | `__tests__/skill-fetch.test.ts` — checksum-first admission, install path under `.blackide/skills/`, an edited pack never overwritten |
+>
+> **M61's wiring turned out to contain the defect, not the feature.** Registering two tools is the
+> boring half. The half that mattered is that `read_file` and `edit_file` were *already* reachable for
+> a `.ipynb` and are both actively wrong on one. Reading a notebook through the generic tool spends
+> most of its tokens on base64 image output; editing one with a SEARCH/REPLACE block either fails to
+> match (the good outcome — the model wrote the block against the code it read, not against
+> JSON-escaped `source` array elements) or matches something short enough to hit inside the JSON and
+> writes a file that is no longer a notebook. Both now refuse and name the notebook tool. So the
+> milestone's real content is that `core/notebook.ts` stopped being unreachable **and** the path that
+> was reaching notebooks incorrectly stopped doing so.
+>
+> **Reading one cell renumbers it.** `renderNotebook` labels cells by position in the array it is
+> given; handing it a one-element slice labels cell 7 as cell 0, and the model then edits index 0.
+> A one-line fix for a bug that would have presented as "the agent edited the wrong cell".
+>
+> **M60's transport check is a new clause, not a restatement.** `validateEntry` asks whether an entry
+> is *meaningful* — pinned, checksummed, named. It never asked whether the source was safe to hand to
+> `git`, because until this pass nothing handed anything to git. **Git's `ext::` transport executes a
+> shell command:** `ext::sh -c 'curl … | sh'` is remote code execution triggered by a string that
+> looks like a URL, and every other gate in the module runs *after* the fetch. A checksum cannot
+> protect content that was never the payload. So `validateSource` allowlists exactly one scheme
+> rather than denying the bad ones — a deny list here has to enumerate `ext::`, `file://`, `ssh://`,
+> `git://`, the scp-like `host:path` form and whatever git adds next, and missing one is the whole
+> bug. The fetch also runs with `HOME` and `XDG_CONFIG_HOME` pointed at the temp dir, because an
+> `insteadOf` rewrite in the user's own git config could redirect an https URL onto a transport this
+> check just refused, which would make the scheme check advisory.
+>
+> **A Phase 12 gap this work found, and closed.** The egress register claims "the only egress is this
+> list", enforced by a source walk for `fetch`, `https.request` and `WebSocket`. It therefore could
+> only ever find egress that goes through Node — and `agent/pipeline-entry.ts` has been running
+> `git push -u origin` and `gh pr create` since Phase 6. Real egress, to a real remote, invisible to
+> the accounting. Both are legitimate (the user's own remote, their own credentials, only in `pr`
+> output mode) and both are now registered, and `phase12-gate.test.ts` has a **second walk** that
+> looks for network-capable subprocesses. The command list is deliberately short and specific —
+> `git log` and `git blame` are local and must not appear, or the check becomes noise, acquires an
+> exemption list, and stops holding. The register's own claim was the thing at risk here: a register
+> whose enforcement only covers the shapes it already knows about documents its test rather than the
+> code.
 
 ### Phase 11 — Headless core, CLI & SDK *(largest structural phase)*
 *Covers M62–M65. Do not start before Phase 0's split is merged.*

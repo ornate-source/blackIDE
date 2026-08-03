@@ -114,6 +114,28 @@ export const EGRESS_REGISTER: EgressPoint[] = [
             + 'is registered so the accounting stays complete rather than nearly complete.',
     },
     {
+        id: 'git-publish',
+        destination: 'the repository\'s own git remote',
+        trigger: 'user-action',
+        module: 'agent/pipeline-entry.ts',
+        why: '`git push -u origin <branch>` and `gh pr create`, when a pipeline run is configured to '
+            + 'output a PR rather than a working-tree change. Found undeclared on 2026-08-03 while '
+            + 'adding the skill fetch: it is a subprocess, so the source walk never saw it. The '
+            + 'destination is the remote the user\'s own repository already points at, with their own '
+            + 'credentials, and only when they chose the PR output mode.',
+        disabledBy: 'the run\'s output mode being `apply` (the default) rather than `pr`',
+    },
+    {
+        id: 'skill-pack-fetch',
+        destination: 'user-supplied https git URL',
+        trigger: 'user-action',
+        module: 'tools/skill-fetch.ts',
+        why: 'Fetching a third-party skill pack, only from the explicit `black-ide.addSkillFrom` '
+            + 'command, at a ref the user pinned. It is a git subprocess rather than an in-process '
+            + 'HTTP request, so the second accounting walk is the one that enforces this entry — a '
+            + 'register that only lists the egress its first test can see documents the test.',
+    },
+    {
         id: 'mcp-remote',
         destination: 'user-configured MCP server',
         trigger: 'agent-run',

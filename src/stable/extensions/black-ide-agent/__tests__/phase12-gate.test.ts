@@ -178,6 +178,49 @@ describe('clause 1: the default build phones home to nobody', () => {
         walk(src);
         expect(offenders, `undeclared egress in: ${offenders.join(', ')}`).toEqual([]);
     });
+
+    it('every module that reaches the network through a subprocess is registered too', () => {
+        /*
+         * The gap the register had until 2026-08-03, and the reason this clause is a
+         * second test rather than a wider regex in the first.
+         *
+         * The walk above looks for `fetch`, `https.request` and `WebSocket`, so it can
+         * only ever find egress that goes through Node. `agent/pipeline-entry.ts` has
+         * been running `git push -u origin` and `gh pr create` since Phase 6 — real
+         * egress, to a real remote, invisible to the accounting that claims "the only
+         * egress is this list". A register whose enforcement only covers the shapes it
+         * already knows about documents its own test rather than the code.
+         *
+         * The command list is deliberately short and specific. `git log` and `git blame`
+         * (M22) are local and must not appear here, or the check becomes noise and gets
+         * an exemption list, which is how it stops holding.
+         */
+        const src = path.join(__dirname, '..', 'src');
+        const declared = new Set(EGRESS_REGISTER.map(p => p.module));
+        const offenders: string[] = [];
+        const networkCommands = /\b(?:git\s+(?:push|pull|clone|fetch|ls-remote)|gh\s+(?:pr|repo|api|issue)|npm\s+(?:install|i|publish)|npx\s|curl\s|wget\s|scp\s)/;
+
+        const walk = (dir: string) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) { walk(full); continue; }
+                if (!entry.name.endsWith('.ts')) continue;
+                const rel = path.relative(src, full).replace(/\\/g, '/');
+                if (declared.has(rel)) continue;
+                // Comments discussing a command are fine; a string literal holding one,
+                // in a file that also spawns processes, is not.
+                const text = fs.readFileSync(full, 'utf8')
+                    .replace(/^\s*(?:\/\/|\*).*$/gm, '')
+                    .replace(/\/\*[\s\S]*?\*\//g, '');
+                if (!/execFile\s*\(|\bspawn\s*\(|\bexec\s*\(|executeCommand\s*\(/.test(text)) continue;
+                for (const literal of text.match(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g) || []) {
+                    if (networkCommands.test(literal)) { offenders.push(`${rel} — ${literal.slice(0, 60)}`); break; }
+                }
+            }
+        };
+        walk(src);
+        expect(offenders, `undeclared subprocess egress in: ${offenders.join(', ')}`).toEqual([]);
+    });
 });
 
 describe('clause 4: disabling the sink removes all egress', () => {

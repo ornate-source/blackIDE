@@ -28,6 +28,22 @@ export const CODE_INTEL_READ_TOOLS = [
     'impact_analysis', 'search_history', 'blame', 'why_was_this_changed', 'expand_output',
 ] as const;
 
+/**
+ * Notebook tools (Phase 10, M61).
+ *
+ * Two groups rather than one, because they land in different allowlists: reading a
+ * notebook is `safe` and belongs everywhere `read_file` does, including Ask and Plan;
+ * editing a cell is a write and belongs only where `edit_file` does. Folding them into
+ * one constant would put a write tool into read-only modes at the one place nobody
+ * looks — the spread at the end of a long array.
+ *
+ * Grouped for the reason `CODE_INTEL_READ_TOOLS` is grouped: a tool missing from one of
+ * thirteen hand-written allowlists is silently never offered, and that failure is
+ * invisible because the tool still exists and still passes its own tests.
+ */
+export const NOTEBOOK_READ_TOOLS = ['read_notebook'] as const;
+export const NOTEBOOK_EDIT_TOOLS = ['edit_notebook_cell'] as const;
+
 /** @public — required by the test harness (test/harness.js). */
 export const BASE_TOOLS: ToolDefinition[] = [
     {
@@ -485,6 +501,41 @@ export const BASE_TOOLS: ToolDefinition[] = [
                 scope: s('Optional path or test filter to narrow the run, e.g. "tests/test_api.py"'),
             },
             required: [],
+        },
+    },
+    // ─── Notebooks (Phase 10, M61) ───────────────────────────────────────────
+    // A `.ipynb` is JSON, so the generic file tools are actively wrong on one: reading
+    // one spends thousands of tokens on base64 image outputs, and a SEARCH/REPLACE
+    // against a `source` array either fails to match or matches and writes invalid
+    // JSON. Both generic tools now refuse a notebook and name these instead.
+    {
+        name: 'read_notebook',
+        description: 'Read a Jupyter notebook (.ipynb) as cells rather than as JSON. Cell outputs are excluded by default because they are usually large and rarely what you are changing; ask for them per cell when a failure or a result is what you need to see.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative path to the .ipynb file'),
+                cell: { type: 'number', description: 'Optional 0-based cell index. Omit to read the whole notebook.' },
+                include_outputs: { type: 'boolean', description: 'Include cell outputs (default false). Images are named, not inlined.' },
+            },
+            required: ['path'],
+        },
+    },
+    {
+        name: 'edit_notebook_cell',
+        description: 'Replace, insert or delete one cell in a Jupyter notebook, preserving the rest of the file byte-for-byte. Use this instead of edit_file for any .ipynb — it keeps the source array shape Jupyter writes, so the change does not show up as a whole-file rewrite in the user\'s diff. Requires approval.',
+        risk: 'edit',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: s('Workspace-relative path to the .ipynb file'),
+                operation: { type: 'string', description: 'What to do (default replace)', enum: ['replace', 'insert', 'delete'] },
+                index: { type: 'number', description: '0-based cell index. Required for replace and delete; for insert it is the index the new cell will occupy (omit to append).' },
+                text: s('The cell source. Required for replace and insert.'),
+                cell_type: { type: 'string', description: 'Cell type for insert (default code)', enum: ['code', 'markdown', 'raw'] },
+            },
+            required: ['path'],
         },
     },
     {

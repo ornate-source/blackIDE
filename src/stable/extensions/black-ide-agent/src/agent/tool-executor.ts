@@ -20,6 +20,7 @@ import * as LspTools from '../tools/lsp-tools';
 import { analyseImpact, formatImpact } from '../tools/graph-tools';
 import { compactGrep, RawOutputStore, withRawPointer } from '../core/output-compact';
 import { searchHistory, blame, whyWasThisChanged } from '../tools/git-history';
+import * as Notebook from '../core/notebook';
 
 export interface ApprovalRequest {
     kind: 'edit' | 'create' | 'exec' | 'mcp';
@@ -176,8 +177,45 @@ export class AgentToolExecutor {
 
             switch (tc.name) {
                 case 'read_file': {
+                    /*
+                     * A notebook read through the generic tool is JSON — and the single
+                     * biggest line item in that JSON is base64 image output, which is
+                     * thousands of tokens saying nothing the model can act on. Redirect
+                     * rather than render: `start_line`/`end_line` have no meaning against
+                     * a cell listing, so silently answering a different question than the
+                     * one asked would make the two tools' contracts diverge invisibly.
+                     */
+                    if (Notebook.isNotebookPath(a.path)) {
+                        return this.err(tc, `${a.path} is a Jupyter notebook. Use read_notebook — reading the raw JSON spends most of its tokens on encoded outputs.`);
+                    }
                     const result = await ToolRunner.readFile(a.path, a.start_line, a.end_line);
                     return this.ok(tc, result);
+                }
+                case 'read_notebook': {
+                    const parsed = Notebook.parseNotebook(await ToolRunner.readFile(a.path));
+                    const cells = parsed.notebook.cells || [];
+                    if (!cells.length) return this.ok(tc, `${a.path} has no cells.`);
+
+                    if (a.cell !== undefined && a.cell !== null) {
+                        const index = Number(a.cell);
+                        if (!Number.isInteger(index) || index < 0 || index >= cells.length) {
+                            return this.err(tc, `Cell ${a.cell} does not exist — ${a.path} has ${cells.length} cells (0–${cells.length - 1}).`);
+                        }
+                        const one: Notebook.Notebook = { ...parsed.notebook, cells: [cells[index]] };
+                        const body = Notebook.renderNotebook(one, { includeOutputs: !!a.include_outputs });
+                        // Renumbered, because renderNotebook labels by position in the
+                        // array it was given and this array has one element: a cell
+                        // labelled 0 that is really cell 7 is an index the model will
+                        // then edit.
+                        return this.ok(tc, body.replace(/^--- cell 0 /gm, `--- cell ${index} `));
+                    }
+
+                    const listing = Notebook.summarizeCells(parsed.notebook)
+                        .map(c => `${c.index}. ${c.type}${c.hasOutput ? ' (has output)' : ''} — ${c.preview || '(empty)'}`)
+                        .join('\n');
+                    const body = Notebook.renderNotebook(parsed.notebook, { includeOutputs: !!a.include_outputs });
+                    const hint = a.include_outputs ? '' : '\n\nOutputs are not shown. Call read_notebook with cell and include_outputs to see one cell\'s output.';
+                    return this.ok(tc, `${a.path} — ${cells.length} cells\n${listing}\n\n${body}${hint}`);
                 }
                 case 'grep_search': {
                     const results = await ToolRunner.grepSearch(a.query, a.path, { isRegex: a.is_regex, caseInsensitive: a.case_insensitive });
@@ -202,6 +240,21 @@ export class AgentToolExecutor {
                     return this.ok(tc, await ToolRunner.listDirectory(a.path));
                 }
                 case 'edit_file': {
+                    /*
+                     * The corruption case, refused rather than attempted.
+                     *
+                     * A `.ipynb` stores each cell's source as an array of lines, each
+                     * with its own trailing newline and JSON escaping. A SEARCH/REPLACE
+                     * block written against the code the model *read* therefore matches
+                     * nothing — that is the good outcome. The bad one is a block short
+                     * enough to match inside the JSON, which writes a file that is no
+                     * longer valid JSON, or valid JSON whose `source` shape Jupyter
+                     * rewrites wholesale on next save. Either way the user's next diff is
+                     * the entire notebook.
+                     */
+                    if (Notebook.isNotebookPath(a.path)) {
+                        return this.err(tc, `${a.path} is a Jupyter notebook and cannot be edited with edit_file — its source is JSON-escaped per line, so search/replace blocks do not match the code you read. Use edit_notebook_cell.`);
+                    }
                     const absPath = this.abs(a.path);
                     const current = await ToolRunner.readFile(a.path);
 
@@ -238,6 +291,48 @@ export class AgentToolExecutor {
                     this.d.onFileChanged?.(absPath, 'modified');
                     const diagnostics = await ToolRunner.collectDiagnostics(a.path);
                     return this.ok(tc, `Applied edit to ${a.path}.${diagnostics ? diagnostics + '\nFix any errors above.' : ' No lint/compile errors detected.'}`);
+                }
+                case 'edit_notebook_cell': {
+                    if (!Notebook.isNotebookPath(a.path)) {
+                        return this.err(tc, `${a.path} is not a .ipynb file. Use edit_file for ordinary source files.`);
+                    }
+                    const absPath = this.abs(a.path);
+                    const current = await ToolRunner.readFile(a.path);
+                    const parsed = Notebook.parseNotebook(current);
+
+                    const operation = String(a.operation || 'replace');
+                    const index = a.index === undefined || a.index === null ? undefined : Number(a.index);
+
+                    let result: Notebook.EditResult;
+                    if (operation === 'delete') {
+                        if (index === undefined) return this.err(tc, 'delete needs an index.');
+                        result = Notebook.deleteCell(parsed.notebook, index);
+                    } else if (operation === 'insert') {
+                        if (typeof a.text !== 'string') return this.err(tc, 'insert needs text.');
+                        result = Notebook.insertCell(parsed.notebook, (a.cell_type || 'code') as Notebook.CellType, a.text, index);
+                    } else if (operation === 'replace') {
+                        if (index === undefined) return this.err(tc, 'replace needs an index.');
+                        if (typeof a.text !== 'string') return this.err(tc, 'replace needs text.');
+                        result = Notebook.editCell(parsed.notebook, index, a.text);
+                    } else {
+                        return this.err(tc, `Unknown operation "${operation}". Use replace, insert or delete.`);
+                    }
+                    if (!result.ok) return this.err(tc, result.error);
+
+                    const updated = Notebook.serializeNotebook({ ...parsed, notebook: result.notebook });
+
+                    // Same approval and checkpoint path as edit_file, with the real file
+                    // content on both sides. The serializer is byte-stable, so what the
+                    // user reviews is a diff of the one cell that changed — which is the
+                    // whole reason this tool exists rather than a write_file of the JSON.
+                    const approved = await this.d.approve({ kind: 'edit', path: a.path, originalContent: current, updatedContent: updated });
+                    if (!approved) return this.ok(tc, `User rejected the ${operation} on cell ${result.index} of ${a.path}.`);
+                    this.d.checkpoint.snapshot(absPath);
+                    await ToolRunner.writeFile(a.path, updated);
+                    this.d.onFileChanged?.(absPath, 'modified');
+
+                    const remaining = (result.notebook.cells || []).length;
+                    return this.ok(tc, `${operation === 'delete' ? 'Deleted' : operation === 'insert' ? 'Inserted' : 'Replaced'} cell ${result.index} in ${a.path}. The notebook now has ${remaining} cells.`);
                 }
                 case 'write_file': {
                     const absPath = this.abs(a.path);

