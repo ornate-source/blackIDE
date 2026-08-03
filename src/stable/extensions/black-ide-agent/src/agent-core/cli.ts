@@ -38,6 +38,16 @@ export interface CliOptions {
     /** Print what would run and exit. */
     dryRun: boolean;
     model?: string;
+    /**
+     * The command that decides whether this run verified.
+     *
+     * An override rather than a preference. Detection reads the manifest and is right for
+     * most repos, but a CI job already knows its own command — including the cases
+     * detection cannot see: a monorepo package, a make target, a suite that needs a flag.
+     * Without this, "no framework detected" makes every headless run on such a repo exit 5,
+     * and the response to a gate that is always red is to stop reading it.
+     */
+    testCommand?: string;
 }
 
 export type ParseResult =
@@ -56,6 +66,7 @@ Options
                        What the agent may do unattended (default: deny — CI-safe)
   --max-turns <n>      Tool iterations before stopping (default: 25)
   --root <path>        Repository root (default: cwd)
+  --test-command <cmd> The command that decides verification (default: detected from the repo)
   --json               One JSON event per line on stdout (default when not a TTY)
   --dry-run            Print the resolved plan and exit
   -h, --help           This text
@@ -88,6 +99,7 @@ export function parseArgs(argv: string[]): ParseResult {
         switch (arg) {
             case '--mode': options.mode = value() || options.mode; break;
             case '--model': options.model = value(); break;
+            case '--test-command': options.testCommand = value(); break;
             case '--root': options.root = value() || options.root; break;
             case '--json': options.json = true; break;
             case '--dry-run': options.dryRun = true; break;

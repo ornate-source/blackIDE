@@ -126,6 +126,17 @@ export const EGRESS_REGISTER: EgressPoint[] = [
         disabledBy: 'the run\'s output mode being `apply` (the default) rather than `pr`',
     },
     {
+        id: 'cli-git-publish',
+        destination: 'the repository\'s own git remote',
+        trigger: 'user-action',
+        module: 'agent-core/headless-run.ts',
+        why: 'The same push-and-open-a-PR sequence as `git-publish`, from the headless CLI, and only '
+            + 'under `--output pr`. Listed separately because it is a second caller rather than the '
+            + 'same one: the register names modules, and a module that pushes is egress whether or '
+            + 'not another module already does the same thing.',
+        disabledBy: '`--output apply`, which is the default',
+    },
+    {
         id: 'skill-pack-fetch',
         destination: 'user-supplied https git URL',
         trigger: 'user-action',

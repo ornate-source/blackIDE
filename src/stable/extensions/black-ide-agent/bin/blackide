@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+// The `blackide` binary. A three-line shim over `dist/agent-core/main.js` so that the
+// compiled entry point stays an ordinary module the tests can import and call, rather
+// than a file that runs work as a side effect of being loaded.
+require('../dist/agent-core/main.js').main(process.argv.slice(2)).then(
+    (code) => process.exit(code),
+    (err) => { process.stderr.write(`${(err && err.stack) || err}\n`); process.exit(1); },
+);

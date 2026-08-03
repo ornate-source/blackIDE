@@ -18,6 +18,9 @@
     "onView:black-ide-chat-view"
   ],
   "main": "./dist/extension.js",
+  "bin": {
+    "blackide": "./bin/blackide"
+  },
   "contributes": {
     "commands": [
       {

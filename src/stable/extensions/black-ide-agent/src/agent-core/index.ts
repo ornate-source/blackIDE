@@ -28,6 +28,19 @@
 
 // ── The host seam ───────────────────────────────────────────────────────────
 export * from './host';
+export { createNodeHost } from './node-host';
+export type { NodeHostOptions } from './node-host';
+
+// ── Running headlessly (M63) ────────────────────────────────────────────────
+// Exported because they are the SDK's entry point as much as the CLI's: embedding the
+// loop means embedding these, and a caller who has to reach past the barrel into
+// `agent-core/headless-run` is a caller the barrel is not serving.
+export { createHostExecutor, headlessTools } from './host-executor';
+export type { HostExecutor, HostExecutorDeps } from './host-executor';
+export { runHeadless, modelFromEnv } from './headless-run';
+export type { HeadlessDeps, HeadlessResult } from './headless-run';
+export { EXIT, parseArgs, exitCodeFor, renderEvent, renderHuman } from './cli';
+export type { CliEvent, CliExit, CliOptions } from './cli';
 
 // ── The loop and its context ────────────────────────────────────────────────
 export { runAgentLoop } from '../agent/agent-loop';

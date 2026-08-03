@@ -212,7 +212,12 @@ describe('clause 1: the default build phones home to nobody', () => {
                 const text = fs.readFileSync(full, 'utf8')
                     .replace(/^\s*(?:\/\/|\*).*$/gm, '')
                     .replace(/\/\*[\s\S]*?\*\//g, '');
-                if (!/execFile\s*\(|\bspawn\s*\(|\bexec\s*\(|executeCommand\s*\(/.test(text)) continue;
+                // `process.run(` is the host seam (M62). A module that reaches the network
+                // through it is as much egress as one that spawns directly, and leaving it
+                // out would mean the register's coverage shrinks every time a caller moves
+                // onto the host — which is the direction the whole codebase is going. This
+                // clause was added after the walker missed the CLI's own `git push`.
+                if (!/execFile\s*\(|\bspawn\s*\(|\bexec\s*\(|executeCommand\s*\(|process\.run\s*\(/.test(text)) continue;
                 for (const literal of text.match(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g) || []) {
                     if (networkCommands.test(literal)) { offenders.push(`${rel} — ${literal.slice(0, 60)}`); break; }
                 }
@@ -220,6 +225,36 @@ describe('clause 1: the default build phones home to nobody', () => {
         };
         walk(src);
         expect(offenders, `undeclared subprocess egress in: ${offenders.join(', ')}`).toEqual([]);
+    });
+
+    it('every module that runs the publish sequence is registered, wherever the literal lives', () => {
+        /*
+         * The weakness the walk above has, closed by naming it.
+         *
+         * `core/git-pr.ts` *builds* `git push` and `gh pr create` and spawns nothing;
+         * `pipeline-entry.ts` and `agent-core/headless-run.ts` spawn them and contain
+         * neither literal. So a scan for command strings in files that spawn finds the
+         * first caller (which happens to inline its own push) and misses the second — the
+         * CLI's push went undetected on the run that added it, and was registered because
+         * it was noticed by hand, which is exactly the failure mode a register exists to
+         * remove. Importing the builder is the honest signal.
+         */
+        const src = path.join(__dirname, '..', 'src');
+        const declared = new Set(EGRESS_REGISTER.map(p => p.module));
+        const offenders: string[] = [];
+
+        const walk = (dir: string) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) { walk(full); continue; }
+                if (!entry.name.endsWith('.ts')) continue;
+                const rel = path.relative(src, full).replace(/\\/g, '/');
+                if (declared.has(rel) || rel === 'core/git-pr.ts') continue;
+                if (/\bbuildPrCommands\b/.test(fs.readFileSync(full, 'utf8'))) offenders.push(rel);
+            }
+        };
+        walk(src);
+        expect(offenders, `unregistered publish callers: ${offenders.join(', ')}`).toEqual([]);
     });
 });
 

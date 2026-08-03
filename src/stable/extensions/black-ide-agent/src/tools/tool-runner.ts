@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { CommandResult, GrepResult } from '../core/types';
 import { asAgentEdit, markAgentWrite } from '../core/edit-origin';
+import { applySearchReplace } from '../core/search-replace';
 
 // Local File System & Terminal Tool Runners
 // Enhanced with: terminal output capture (Feature 1), grep search (Feature 3), list directory (Feature 4)
@@ -253,55 +254,13 @@ export class ToolRunner {
 
     // ─── Search/Replace Edit Engine ─────────────────────────────────────
 
+    /**
+     * Delegates to `core/search-replace.ts`, which is the same code moved to the
+     * vscode-free side so the headless executor (M63) can share it rather than
+     * grow a second implementation that drifts.
+     */
     public static applySearchReplace(fileContent: string, blocksStr: string): string {
-        const ORIGINAL_MARKER = '<<<<<<< ORIGINAL';
-        const DIVIDER_MARKER = '=======';
-        const UPDATED_MARKER = '>>>>>>> UPDATED';
-
-        let content = fileContent;
-        let startIndex = 0;
-        let blockCount = 0;
-
-        while (true) {
-            const origStart = blocksStr.indexOf(ORIGINAL_MARKER, startIndex);
-            if (origStart === -1) break;
-
-            const origEnd = blocksStr.indexOf(DIVIDER_MARKER, origStart);
-            if (origEnd === -1) {
-                throw new Error('Malformed search/replace block: Missing ======= divider');
-            }
-
-            const updatedEnd = blocksStr.indexOf(UPDATED_MARKER, origEnd);
-            if (updatedEnd === -1) {
-                throw new Error('Malformed search/replace block: Missing >>>>>>> UPDATED marker');
-            }
-
-            blockCount++;
-
-            const originalCode = blocksStr.substring(origStart + ORIGINAL_MARKER.length, origEnd).replace(/^\r?\n|\r?\n$/g, '');
-            const updatedCode = blocksStr.substring(origEnd + DIVIDER_MARKER.length, updatedEnd).replace(/^\r?\n|\r?\n$/g, '');
-
-            // Apply the edit
-            const matchIndex = content.indexOf(originalCode);
-            if (matchIndex === -1) {
-                throw new Error(`Original code block not found in the file:\n${originalCode}`);
-            }
-
-            const lastMatchIndex = content.lastIndexOf(originalCode);
-            if (lastMatchIndex !== matchIndex) {
-                throw new Error(`Original code block is not unique; it appears multiple times in the file:\n${originalCode}`);
-            }
-
-            content = content.substring(0, matchIndex) + updatedCode + content.substring(matchIndex + originalCode.length);
-
-            startIndex = updatedEnd + UPDATED_MARKER.length;
-        }
-
-        if (blockCount === 0) {
-            throw new Error('No valid search/replace blocks found in tool input. Format blocks as:\n<<<<<<< ORIGINAL\n...\n=======\n...\n>>>>>>> UPDATED');
-        }
-
-        return content;
+        return applySearchReplace(fileContent, blocksStr);
     }
 
     // ─── Feature 6: Diagnostic Collection ───────────────────────────────

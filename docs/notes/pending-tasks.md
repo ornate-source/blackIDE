@@ -123,6 +123,7 @@ deliberate position; §4.5 is where it belongs.
 | 2026-08-03 | A | **T1 (M61)** — `read_notebook`/`edit_notebook_cell` registered; `read_file`/`edit_file` now refuse a `.ipynb` | vitest 1 511/57 · harness 418/418 · eval green |
 | 2026-08-03 | A | **T2 (M60)** — `tools/skill-fetch.ts` + `black-ide.addSkillFrom`, https-only transport check | vitest 1 535/58 · harness 418/418 · eval green |
 | 2026-08-03 | A | **T0** — Phase 10 → ✅; M60/M61 inventory rows corrected | §3 and the summary table now agree |
+| 2026-08-03 | A | **T3 (M63)** — `host-executor.ts` + `headless-run.ts` + `bin/blackide`; the CLI runs a real task | vitest 1 562/59 · harness 418/418 · eval green · fixture-repo run branches, commits, verifies |
 
 **Found while doing Wave A, and fixed here rather than filed:**
 
@@ -136,3 +137,14 @@ deliberate position; §4.5 is where it belongs.
    network-capable subprocesses so the gap cannot reopen.
 3. **`validateEntry` never checked the transport**, because nothing had ever fetched. `ext::` is RCE.
    `validateSource` now allowlists https alone, and is applied on the registry path too.
+4. **`--output pr` exited 0 after a failed push.** Found by running the binary, not by reading it.
+   The publish sequence returned a branch name and the exit code came from the agent's verdict alone.
+   Now exit 1 — "leave me a PR" is not satisfied by a commit on a local branch.
+5. **The egress walker added in (2) did not cover its own next case.** `core/git-pr.ts` builds the
+   push and spawns nothing; the two modules that spawn it contain no literal. A third clause now
+   asserts every importer of `buildPrCommands` is registered. Twice in one day the accounting was
+   found not to cover a shape it claimed to — both times the fix widened the enforcement, not the
+   prose.
+6. **`applySearchReplace` existed only inside a vscode-bound class.** Extracted to
+   `core/search-replace.ts` so both executors share one implementation; two copies of the code that
+   decides where an edit lands would drift silently.

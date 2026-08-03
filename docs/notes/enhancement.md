@@ -1043,7 +1043,7 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M60 | Skill/rule registry + `addSkillFrom` + checksums | P2 | E9 | 10 ✅ | `core/skill-registry.ts` — pinned refs (a moving ref is **refused**, since it makes the checksum meaningless), SHA-256 verification before content is examined, and a forbidden-key deny list so a pack cannot declare `tools`/`autoApprove`/`policy`. `tools/skill-fetch.ts` + the command wired 2026-08-03, with an https-only transport check that runs **before** git sees the URL — `ext::` executes a shell command, and no checksum undoes code that already ran |
 | M61 | Notebook (`.ipynb`) read/edit/checkpoint | P2 | E21 | 10 ✅ | `core/notebook.ts` — byte-stable round-trip, per-cell edit preserving the `source` array shape Jupyter writes, outputs excluded from prompts by default, cell-granular snapshot/restore. `read_notebook`/`edit_notebook_cell` registered 2026-08-03 across twelve mode allowlists — and `read_file`/`edit_file` now **refuse** a `.ipynb`, which is where the real defect was |
 | M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 🟡 | boundary declared (`src/agent-core/index.ts`) and **transitively enforced** by `__tests__/agent-core-boundary.test.ts`; four dependency edges cut to make it hold. **Partial:** the modules are named, not yet physically moved into a package |
-| M63 | Headless CLI | P1 | E14 | 11 🟡 | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. **Partial:** the `bin` entry that wires them to a real run is not shipped |
+| M63 | Headless CLI | P1 | E14 | 11 ✅ | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. `agent-core/host-executor.ts` (the second implementation of the executor shape, on `AgentHost`) + `headless-run.ts` + `bin/blackide` 2026-08-03; a fixture-repo run branches, commits and verifies, and `--output pr` that cannot push exits 1 rather than 0 |
 | M64 | SDK entry point | P2 | E14 | 11 ✅ | the barrel *is* the SDK surface: `AgentHost` plus the loop, router, retrieval, memory and safety exports, with `silentNotifier`/`denyingApproval` baselines for embedding |
 | M65 | Background (local daemon) agents | P2 | E14 | 11 ❌ | not started |
 | M66 | Remote/cloud agent execution | P3 | E14 | 12 ❌ | not started; unblocked by Phase 11's host seam but depends on the runner that phase did not finish |
@@ -2839,6 +2839,59 @@ on the full harness; a daemon run's results appear in the inbox.
 > known to hold); refactoring `tool-executor`, `codebase-index` and `artifact-manager` onto the host
 > interface so they can cross it; the `bin` entry that turns the CLI surface into a runnable binary;
 > and the local daemon (M65).
+
+> ### ✅ Closed 2026-08-03 — M63 complete; the CLI runs a real task
+> `agent-core/host-executor.ts` (tool execution against `AgentHost`) · `agent-core/headless-run.ts` ·
+> `agent-core/main.ts` · `bin/blackide` + the `bin` entry · `core/search-replace.ts` (extracted) ·
+> `__tests__/headless-run.test.ts`.
+> vitest **1 562/1 562 / 59 suites** (was 1 535/58) · harness **418/418** · eval green, no
+> regression · `tsc -b` clean.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | `blackide "…" --output pr` completes on a fixture repo with no editor | **met** | `__tests__/headless-run.test.ts` — real host, real executor, real files on a temp git repo; branch, commit and PR sequence asserted. The **model** is scripted, for §4.6's reason |
+>
+> **The blocker was never the `bin` entry.** It was that there was nothing for it to call: the loop
+> takes an executor, and the only executor was `agent/tool-executor.ts`, which is 500 lines of editor
+> — `WorkspaceEdit`, dirty-document saves, vision attachments, Playwright. M62 had already made the
+> loop's import of it *type-only*, which is the whole point: the loop needs a shape. So this is the
+> second implementation of that shape, and the second implementation is what proves the first was an
+> interface rather than a description of one caller. Threading a host through the editor executor
+> would instead have left every editor path in a class the CLI loads, and the boundary test would
+> then be satisfied by a module that is mostly unreachable code.
+>
+> **Absence is answered, not silent.** A headless run has no language server, no index, no browser,
+> no MCP. Each of those tools returns an explicit refusal naming the alternative, because an agent
+> told "`go_to_definition` is unavailable; use `grep_search`" adapts in one turn while an agent handed
+> an empty result concludes the symbol does not exist. They are also filtered out of the advertised
+> list, so the refusal is the second line of defence rather than the first.
+>
+> **One algorithm, not two.** `applySearchReplace` moved to `core/search-replace.ts` and
+> `ToolRunner` now delegates to it. Two copies of the code that decides where an agent's edit lands
+> is the worst thing in this codebase to duplicate: they drift, and the drift is silent — a CI run
+> writing something a local run would have refused is a difference nobody sees until it matters.
+>
+> **`--test-command`, added because the gate demanded a guess otherwise.** Verification decides the
+> exit code, and detection reads the manifest. A monorepo package, a make target or a suite that
+> needs a flag all detect as "no framework", which would make every headless run on such a repo exit
+> 5 — and a gate that is always red is one people stop reading. An explicit command from the caller
+> beats detection, because a CI job is an authority on its own suite.
+>
+> **A defect found by running the binary rather than by reading it.** `--output pr` against a repo
+> with no `origin` wrote the commit, failed the push, printed the error — and **exited 0**. The
+> publish sequence returned a branch name and let the exit code be computed from the agent's own
+> verdict alone. That is precisely the failure `cli.ts` opens by warning about: a CLI that exits 0
+> when it did not do what it was asked turns a red build green. `--output pr` means "leave me a PR";
+> without one the run did not complete, whatever the agent thinks. Now exit 1, asserted.
+>
+> **And a second egress hole, in the check added six hours earlier.** The subprocess walk added with
+> M60 looks for command literals in files that spawn — but `core/git-pr.ts` *builds* `git push` and
+> spawns nothing, while `pipeline-entry.ts` and `headless-run.ts` spawn it and contain no literal.
+> The first caller was caught only because it inlines its own push; the CLI's was registered because
+> a human noticed, which is the failure mode a register exists to remove. There is now a third clause
+> asserting that every importer of `buildPrCommands` is registered. Worth stating plainly: this is
+> the second time in one day that the egress accounting was found not to cover a shape it claimed to,
+> and both times the fix was to widen the enforcement rather than the prose.
 
 ### Phase 12 — Remote execution, integrations, analytics & long tail
 *Covers M66–M71. Everything here depends on Phase 11.*
