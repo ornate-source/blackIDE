@@ -21,6 +21,8 @@ import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterTo
 import { MCPClient } from '../tools/mcp-client';
 import { KnowledgeStore } from '../memory/knowledge-store';
 import { PlanningEngine } from './planning-engine';
+import { ArtifactStore } from './artifact-store';
+import { runVerification } from './verify-runner';
 import { SkillsManager } from './skills-manager';
 import { resolveSkills, renderSkills, roleForMode, skillsFiredEvent } from './skill-resolver';
 import { ProjectProfile } from '../core/project-profiler';
@@ -58,6 +60,15 @@ export interface PipelineCoreDeps {
     bundledSkillsDir: string;
     getProjectProfile(): Promise<ProjectProfile>;
     syncStackToMindmap(profile: ProjectProfile, rootPath: string): void;
+    /**
+     * Where the run's `test-report` artifact lands (Phase 7, M40).
+     *
+     * The task lane has had this since Phase 7 and the pipeline did not, which is why the
+     * gate clause "100% of pipeline runs emit a test-report artifact" read **not met** —
+     * not because verification was hard here, but because nothing carried the store into
+     * this lane.
+     */
+    artifacts: ArtifactStore;
 }
 
 export function trackAndEmitUsage(
@@ -330,6 +341,33 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
                 },
                 getFilesForPhase: (modeId) =>
                     Array.from(filesByPhase.get(modeId) || []).map(([p, kind]) => ({ path: p, kind })),
+                /*
+                 * Verification (Phase 7, M40). The orchestrator decides *when*; this
+                 * supplies the runner, because running a test command needs `ToolRunner`
+                 * and the orchestrator is deliberately free of it.
+                 *
+                 * The same `runVerification` the task lane uses, so the four outcomes and
+                 * the write-on-every-path rule are one implementation rather than two that
+                 * agree today.
+                 */
+                verifyRun: async ({ runId, cwd, changedFiles }) => {
+                    const outcome = await runVerification({
+                        runId,
+                        cwd,
+                        profile: pipelineProfile,
+                        changedFiles,
+                        artifacts: deps.artifacts,
+                        signal: budgetController.signal,
+                        log,
+                    });
+                    emit({
+                        type: 'PipelineVerified',
+                        outcome: outcome.result.outcome,
+                        summary: outcome.result.summary,
+                        reportPath: outcome.reportPath,
+                        ts: Date.now(),
+                    });
+                },
                 // Per-phase agent-loop instrumentation. Was never provided before, so a
                 // 7-agent run showed no tool activity and reported zero token cost — the
                 // most expensive operation in the product was invisible.

@@ -124,6 +124,7 @@ deliberate position; §4.5 is where it belongs.
 | 2026-08-03 | A | **T2 (M60)** — `tools/skill-fetch.ts` + `black-ide.addSkillFrom`, https-only transport check | vitest 1 535/58 · harness 418/418 · eval green |
 | 2026-08-03 | A | **T0** — Phase 10 → ✅; M60/M61 inventory rows corrected | §3 and the summary table now agree |
 | 2026-08-03 | A | **T3 (M63)** — `host-executor.ts` + `headless-run.ts` + `bin/blackide`; the CLI runs a real task | vitest 1 562/59 · harness 418/418 · eval green · fixture-repo run branches, commits, verifies |
+| 2026-08-03 | B | **T4 + T5 (M40)** — verification wired into the pipeline and chat lanes; two Phase 7 gate clauses met | vitest 1 577/60 · harness 418/418 · eval green |
 
 **Found while doing Wave A, and fixed here rather than filed:**
 

@@ -41,6 +41,8 @@ import { AgentScheduler } from './scheduler';
 import { AgentHooks } from './hooks';
 import { AgentToolExecutor, ExecutorDeps, readAttachments } from './tool-executor';
 import { runAgentLoop } from './agent-loop';
+import { ArtifactStore } from './artifact-store';
+import { runVerification } from './verify-runner';
 import { worktreeManager } from './worktree-manager';
 import { buildApprovalGate, trackAndEmitUsage } from './pipeline-entry';
 
@@ -83,6 +85,14 @@ export interface ChatTaskDeps {
     generateConversationTitle(userPrompt: string, modelConfig: LLMConfigEntry): Promise<void>;
     /** Re-entrant: a scheduled task calls back into a new chat task. */
     scheduleAgentTask(tc: ToolCall, modelId: string, webview: vscode.Webview, mode: AgentMode): void;
+    /**
+     * Where a chat build task's `test-report` artifact lands (Phase 7, M40).
+     *
+     * Optional so a caller that has not wired it degrades to the pre-M40 behaviour rather
+     * than throwing — but the extension always supplies it, and `verification-wiring`
+     * asserts that.
+     */
+    artifacts?: ArtifactStore;
 }
 
 /**
@@ -714,6 +724,49 @@ These tools degrade to a text search when no language server is available for a 
                     })),
                 },
             });
+        }
+
+        /*
+         * Verify a chat *build* task (Phase 7, M40's second gate clause).
+         *
+         * "Build task" is defined as **the run changed a file**, and the definition is the
+         * design decision. The alternative — classifying the user's prompt as a build
+         * request — is a guess that is wrong in both directions: "explain this and fix the
+         * typo" would not verify, "how do I add a test" would spend a suite run on a
+         * question. What a run *did* is observable; what it was for is not.
+         *
+         * The changed set comes from the checkpoint commit rather than a second tally.
+         * Checkpointing already has to know exactly which files moved, and a parallel
+         * counter is a second answer to the same question that drifts from the first.
+         *
+         * Never blocks and never fails the turn: the agent's work stands either way, and
+         * the report says whether it can be trusted.
+         */
+        const changedForVerification = committed?.files.map(f => f.relPath) ?? [];
+        if (deps.artifacts && changedForVerification.length && !result.aborted && effectiveMode === 'agent') {
+            try {
+                const outcome = await runVerification({
+                    runId: messageId,
+                    cwd: rootPath,
+                    profile: await deps.getProjectProfile(),
+                    changedFiles: changedForVerification,
+                    artifacts: deps.artifacts,
+                    signal,
+                    log,
+                });
+                emit({ type: 'VerificationCompleted', outcome: outcome.result.outcome, summary: outcome.result.summary, reportPath: outcome.reportPath });
+                webview.postMessage({
+                    type: 'verificationResult',
+                    value: {
+                        outcome: outcome.result.outcome,
+                        summary: outcome.result.summary,
+                        reportPath: outcome.reportPath,
+                        missing: outcome.result.missing,
+                    },
+                });
+            } catch (verifyErr: any) {
+                log(`[Verify] could not run: ${verifyErr?.message || verifyErr}`);
+            }
         }
 
         // ── Plan Detection: Antigravity Two-Phase Gate ──────────────────────

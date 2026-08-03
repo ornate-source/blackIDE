@@ -41,7 +41,12 @@ export type AgentEvent =
     // Which skill packs were injected for a turn. `bundled` names the first-party packs
     // (a closed, shipped set); user-authored packs are counted only, because their names
     // can encode project detail — see the privacy note in telemetry-sink.ts.
-    | { type: 'SkillsFired'; mode: string; total: number; bundled: string[]; userCount: number };
+    | { type: 'SkillsFired'; mode: string; total: number; bundled: string[]; userCount: number }
+    // Verification of a run that changed files (Phase 7, M40). Emitted by every lane —
+    // chat, pipeline and task agents — so "which runs produced evidence" is one query
+    // against the bus rather than three per-lane conventions.
+    | { type: 'VerificationCompleted'; outcome: string; summary: string; reportPath: string }
+    | { type: 'PipelineVerified'; outcome: string; summary: string; reportPath: string; ts: number };
 
 /** An event as it travels the bus: the payload plus its correlation envelope. */
 export type Envelope<E extends AgentEvent = AgentEvent> = E & EventMeta;

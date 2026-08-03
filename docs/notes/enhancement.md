@@ -2385,6 +2385,45 @@ evidence; a deliberately broken change is caught by verify, not by the user.
 > nothing captures one yet, so UI work currently lands as `incomplete` by design rather than as
 > verified.
 
+> ### 🟡 Advanced 2026-08-03 — M40's first two gate clauses met; M38 and visual capture still open
+> `verifyRun` on `PipelineCallbacks` · the call in `pipeline-orchestrator.ts` · the runner in
+> `pipeline-entry.ts` · the chat-lane call in `chat-task.ts` · two bus events ·
+> `__tests__/verification-wiring.test.ts`.
+> vitest **1 577/1 577 / 60 suites** (was 1 562/59) · harness **418/418** · eval green, no
+> regression · `tsc -b` clean.
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | 100% of pipeline runs emit a test-report artifact | **met** | the orchestrator calls `verifyRun` after the last execution phase; `runVerification` writes on every path including `unverifiable` |
+> | ≥80% of chat build tasks emit verification evidence | **met** | every chat run that changed a file in `agent` mode verifies |
+>
+> **Neither was hard, and that is the finding.** Phase 7 read as though the pipeline and chat lanes
+> needed verification *built*; what they needed was the artifact store threaded into their deps. It
+> had been carried into the task lane in Phase 6 and nowhere else, so two gate clauses sat open for a
+> revision over a missing constructor argument. Worth recording because the phase note described the
+> gap in terms of the feature rather than the wiring, which is what made it look larger than it was.
+>
+> **The pipeline verifies in the worktree, before `applyDelta`.** After the delta lands, a red suite
+> could equally be the user's own uncommitted work; before it, a red suite is this run's doing.
+> Attributability is the entire value of running the suite at all, and the ordering is asserted
+> rather than commented.
+>
+> **"Build task" is defined by what the run did, not by what the prompt looked like.** A chat run
+> verifies when it changed a file. Classifying the *prompt* as a build request is a guess that is
+> wrong in both directions — "explain this and fix the typo" would skip verification, "how do I add a
+> test" would spend a suite run on a question. What a run did is observable; what it was for is not.
+> The changed set comes from the checkpoint commit, which already has to know exactly which files
+> moved: a parallel tally is a second answer to the same question, and it drifts.
+>
+> **A failed verification never fails a run, in either lane.** The agent did the work; the report
+> says whether it can be trusted. Discarding real edits because a test command was missing is a worse
+> outcome than an honest `unverifiable` — and it is `unverifiable` producing a *document* that makes
+> "100% of runs emit evidence" measurable rather than aspirational.
+>
+> **Still open in Phase 7:** the artifact review panel (M38) and visual capture. `planVerification`
+> requires a screenshot when a UI file changes and `evaluateVerification` reports it missing, so UI
+> work still lands as `incomplete` by design rather than as verified.
+
 ### Phase 8 — Memory v2
 *Covers M41–M46. Depends on Phase 3 (embeddings/rerank).*
 

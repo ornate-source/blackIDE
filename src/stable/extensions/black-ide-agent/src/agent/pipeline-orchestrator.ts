@@ -196,6 +196,18 @@ export interface PipelineCallbacks {
      * agent never calls the update_mindmap tool itself.
      */
     getFilesForPhase?: (modeId: string) => TouchedFile[];
+    /**
+     * Verify the finished work and emit a `test-report` artifact (Phase 7, M40).
+     *
+     * A callback for the same reason `onPipelinePullRequest` is one: the orchestrator is
+     * deliberately free of `ToolRunner`/`vscode`, and running a test command is exactly the
+     * kind of thing that would drag both back in. The host supplies the runner.
+     *
+     * Called with the **worktree** as its cwd, which is what makes the result attributable:
+     * the suite runs against this run's change in isolation, not against whatever the user
+     * happens to have uncommitted in the live tree at the same moment.
+     */
+    verifyRun?: (info: { runId: string; cwd: string; changedFiles: string[] }) => Promise<void>;
     loopCallbacks?: LoopCallbacks;
 }
 
@@ -428,6 +440,30 @@ export class PipelineOrchestrator {
                 // Nothing in the live workspace was ever touched — safe to discard everything.
                 await worktreeManager.removeWorktree(branchName).catch(() => {});
                 throw err;
+            }
+
+            /*
+             * Verify before reconciling (Phase 7, M40's first gate clause).
+             *
+             * Here rather than after `applyDelta`, because here the change is still isolated:
+             * a red suite in the worktree is this run's doing, while a red suite after the
+             * delta lands could equally be the user's uncommitted work. Attributability is
+             * the entire value of running it at all.
+             *
+             * **A failed verification never fails the run**, exactly as in the task lane. The
+             * agent did the work; the report says whether it can be trusted. Discarding real
+             * edits because a test command was missing is a worse outcome than an honest
+             * `unverifiable` — and `unverifiable` is a document that gets written, which is
+             * what makes "100% of pipeline runs emit evidence" a measurable claim rather than
+             * a wish.
+             */
+            if (this.callbacks.verifyRun) {
+                const changedFiles = [...new Set(this.phaseLog.flatMap(entry => entry.files.map(f => f.path)))];
+                try {
+                    await this.callbacks.verifyRun({ runId: branchName, cwd: worktreeDir, changedFiles });
+                } catch (verifyErr: any) {
+                    this.callbacks.onPhaseError('Verification', verifyErr?.message || String(verifyErr));
+                }
             }
 
             try {

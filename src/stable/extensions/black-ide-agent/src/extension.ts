@@ -543,6 +543,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             bundledSkillsDir: this._bundledSkillsDir,
             getProjectProfile: () => this._getProjectProfile(),
             syncStackToMindmap: (profile, rootPath) => this._syncStackToMindmap(profile, rootPath),
+            artifacts: this._artifacts,
         };
     }
 
@@ -623,6 +624,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             generateConversationTitle: (p, m) => generateConversationTitle(
                 { historyStore: this._historyStore, activeThreadId: this._session.activeThreadId, view: this._view }, p, m),
             scheduleAgentTask: (tc, id, wv, m) => this._scheduleAgentTask(tc, id, wv, m),
+            artifacts: this._artifacts,
         }, userPrompt, modelId, attachments, mode);
     }
 
