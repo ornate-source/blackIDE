@@ -1,0 +1,64 @@
+diff --git a/build/lib/extensions.ts b/build/lib/extensions.ts
+index 920a44e..0176af9 100644
+--- a/build/lib/extensions.ts
++++ b/build/lib/extensions.ts
+@@ -128,2 +128,31 @@ export function typeCheckExtensionStream(extensionPath: string, forWeb: boolean)
+ 
++/**
++ * A dependency that is a symlink to a local workspace package (`packages/*` linked into
++ * `node_modules` by npm workspaces) is listed by vsce as a single entry that resolves to a
++ * directory. Reading it as a file fails with EISDIR, so expand it into the files it links to.
++ */
++function expandLinkedDirectories(extensionPath: string, fileNames: string[]): string[] {
++	return fileNames.flatMap(fileName => {
++		const filePath = path.join(extensionPath, fileName);
++
++		if (!fs.statSync(filePath).isDirectory()) {
++			return [fileName];
++		}
++
++		return glob.sync('**', { cwd: filePath, nodir: true, dot: true })
++			.map(linkedFileName => path.join(fileName, linkedFileName));
++	});
++}
++
++function toVinylFiles(extensionPath: string, fileNames: string[]): File[] {
++	return expandLinkedDirectories(extensionPath, fileNames)
++		.map(fileName => path.join(extensionPath, fileName))
++		.map(filePath => new File({
++			path: filePath,
++			stat: fs.statSync(filePath),
++			base: extensionPath,
++			contents: fs.createReadStream(filePath)
++		}));
++}
++
+ function fromLocalNormal(extensionPath: string): Stream {
+@@ -134,12 +163,3 @@ function fromLocalNormal(extensionPath: string): Stream {
+ 		.then(fileNames => {
+-			const files = fileNames
+-				.map(fileName => path.join(extensionPath, fileName))
+-				.map(filePath => new File({
+-					path: filePath,
+-					stat: fs.statSync(filePath),
+-					base: extensionPath,
+-					contents: fs.createReadStream(filePath)
+-				}));
+-
+-			es.readArray(files).pipe(result);
++			es.readArray(toVinylFiles(extensionPath, fileNames)).pipe(result);
+ 		})
+@@ -205,12 +225,3 @@ function fromLocalEsbuild(extensionPath: string, esbuildConfigFileName: string):
+ 
+-		const files = fileNames
+-			.map(fileName => path.join(extensionPath, fileName))
+-			.map(filePath => new File({
+-				path: filePath,
+-				stat: fs.statSync(filePath),
+-				base: extensionPath,
+-				contents: fs.createReadStream(filePath)
+-			}));
+-
+-		es.readArray(files).pipe(result);
++		es.readArray(toVinylFiles(extensionPath, fileNames)).pipe(result);
+ 	}).catch(err => {

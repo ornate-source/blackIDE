@@ -1,0 +1,33 @@
+# What ships is the compiled extension (dist), its resources, the CLI shim and the
+# production node_modules. Everything below is source, tooling or test scratch that the
+# packaged built-in extension never reads — and packaging it all blew past the build's
+# open-file limit.
+
+.gitignore
+.npm-cache/**
+.stylelintrc.json
+.vscode-test/**
+__tests__/**
+compare.js
+eval/**
+harness_temp.js
+knip.json
+package-lock.json
+test/**
+test_*.js
+vitest.config.ts
+
+# TypeScript sources and build state; the compiled output in dist/ is what runs.
+src/**
+tsconfig.json
+tsconfig.tsbuildinfo
+
+# The agent-core workspace package: its compiled output stays, because bin/blackide
+# requires it by path, but its sources and build state do not.
+packages/*/src/**
+packages/*/tsconfig.json
+packages/*/tsconfig.tsbuildinfo
+packages/*/.gitignore
+
+# Webview sources and their toolchain; the built assets live in dist/webview.
+webview/**
