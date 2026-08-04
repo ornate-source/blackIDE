@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SecretManager } from './secret-manager';
@@ -97,6 +96,54 @@ const GRAPH_EXPANSION_SEEDS = 5;
 const MAX_FILE_BYTES = 512 * 1024;
 const TEXT_EXTS = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|c|h|cpp|hpp|cs|rb|php|swift|scala|sh|json|yaml|yml|toml|md|html|css|scss|vue|svelte|sql|graphql)$/i;
 
+/**
+ * Where the index gets its files.
+ *
+ * Two methods, both of which an editor, a CLI and a remote runner can genuinely answer.
+ * Deliberately not `AgentHost` itself: the index needs a file list and a relativiser, and
+ * taking the whole host would let a future edit reach for `process` or `approval` from
+ * inside a retrieval loop — which is how a narrow dependency becomes a wide one without
+ * anybody deciding to widen it.
+ */
+export interface IndexFileSource {
+    /** Absolute paths, bounded. Excludes are the source's business, not the index's. */
+    find(limit: number): Promise<string[]>;
+    /** Workspace-relative path, which is the key everything downstream is stored under. */
+    relative(absolutePath: string): string;
+}
+
+/**
+ * A plain directory walk, for callers with no editor: the CLI, the eval harness, tests.
+ *
+ * Excludes mirror the glob the editor adapter passes, so the two sources index the same
+ * set on the same repository. They will drift eventually — the editor's version also
+ * honours the user's `files.exclude` — and that is the correct asymmetry rather than a
+ * bug: a headless run has no user settings to honour.
+ */
+export function directoryFileSource(root: string): IndexFileSource {
+    const EXCLUDE = /(^|\/)(node_modules|\.git|dist|out|build|\.next|coverage|vendor)(\/|$)/;
+    return {
+        async find(limit: number): Promise<string[]> {
+            const out: string[] = [];
+            const walk = async (dir: string): Promise<void> => {
+                if (out.length >= limit) return;
+                let entries: import('fs').Dirent[];
+                try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+                for (const entry of entries) {
+                    if (out.length >= limit) return;
+                    const full = path.join(dir, entry.name);
+                    if (EXCLUDE.test(path.relative(root, full).replace(/\\/g, '/'))) continue;
+                    if (entry.isDirectory()) await walk(full);
+                    else out.push(full);
+                }
+            };
+            await walk(root);
+            return out;
+        },
+        relative: absolute => path.relative(root, absolute).replace(/\\/g, '/'),
+    };
+}
+
 export class CodebaseIndex {
     private files = new Map<string, { mtimeMs: number; size: number; chunks: Chunk[] }>();
     private df = new Map<string, number>();
@@ -119,8 +166,20 @@ export class CodebaseIndex {
      */
     reranker: Reranker = new LexicalReranker();
 
-    /** `storageDir` omitted → in-memory only. */
-    constructor(private readonly storageDir?: string) {}
+    /**
+     * Where the files to index come from (Phase 11, M62 · P11-1).
+     *
+     * Injected rather than reached for. This class used `vscode.workspace.findFiles` and
+     * `asRelativePath` — two calls, and enough to make the whole retrieval stack
+     * unreachable from a package that has to run in a terminal.
+     *
+     * `AgentHost.fs.find` satisfies this structurally, so a headless caller passes its
+     * host straight in. The editor passes an adapter over `vscode.workspace.findFiles`,
+     * which matters for more than the boundary: the editor's own file index already knows
+     * the user's `files.exclude` and their `.gitignore`, and a `readdir` walk here would
+     * quietly index the things they told the editor to hide.
+     */
+    constructor(private readonly storageDir?: string, private readonly source?: IndexFileSource) {}
 
     /**
      * Bring the index up to date. Unchanged files are reused from the cache, so a
@@ -135,20 +194,25 @@ export class CodebaseIndex {
             this.embeddingsConfig = await getEmbeddingsConfig(secretManager);
         }
 
-        const uris = await vscode.workspace.findFiles('**/*', '**/{node_modules,dist,out,build,.git}/**', maxFiles);
+        // No source, no index. Returning empty beats walking the filesystem from an
+        // unknown root: an index of the wrong directory is worse than no index, because
+        // every later answer is confidently about the wrong code.
+        if (!this.source) return { indexed: 0, reused: 0, removed: 0 };
+
+        const paths = await this.source.find(maxFiles);
         const seen = new Set<string>();
         let indexed = 0, reused = 0;
 
-        for (const uri of uris) {
-            if (!TEXT_EXTS.test(uri.fsPath)) continue;
+        for (const absolute of paths) {
+            if (!TEXT_EXTS.test(absolute)) continue;
 
             let stat: fs.Stats;
             try {
-                stat = await fs.promises.stat(uri.fsPath);
+                stat = await fs.promises.stat(absolute);
             } catch { continue; }
             if (stat.size > MAX_FILE_BYTES) continue;
 
-            const rel = vscode.workspace.asRelativePath(uri);
+            const rel = this.source.relative(absolute);
             seen.add(rel);
 
             const cached = this.files.get(rel);
@@ -159,7 +223,7 @@ export class CodebaseIndex {
 
             let content: string;
             try {
-                content = await fs.promises.readFile(uri.fsPath, 'utf8');
+                content = await fs.promises.readFile(absolute, 'utf8');
             } catch { continue; }
             if (content.indexOf(String.fromCharCode(0)) !== -1) continue; // binary
 

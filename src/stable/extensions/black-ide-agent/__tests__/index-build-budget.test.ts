@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { CodebaseIndex } from '../src/core/codebase-index';
+import { CodebaseIndex, directoryFileSource } from '../src/core/codebase-index';
 
 /**
  * Phase 3's index-build budget: **a full build of ≤2 s per 5 000 files.**
@@ -225,7 +225,7 @@ describe('index build budget: ≤2 s per 5 000 files', () => {
         let chunks = 0;
 
         for (let attempt = 0; attempt < 3; attempt++) {
-            const index = new CodebaseIndex(fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-budget-c-')));
+            const index = new CodebaseIndex(fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-budget-c-')), directoryFileSource(root));
             const started = Date.now();
             // No SecretManager: embeddings are a per-chunk network round trip and are not
             // what this budget is about — see the note at the top of this file.
@@ -248,7 +248,7 @@ describe('index build budget: ≤2 s per 5 000 files', () => {
     it('builds the graph over the same files, so the budget covers both', async () => {
         // M14 and M15 share one scan by construction. If the graph were built by a
         // second pass this budget would be measuring half the cost.
-        const index = new CodebaseIndex(fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-budget-g-')));
+        const index = new CodebaseIndex(fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-budget-g-')), directoryFileSource(root));
         await index.build(undefined, FILE_COUNT + 500);
         expect(index.graph.fileCount).toBeGreaterThanOrEqual(FILE_COUNT - 10);
     }, 120_000);
@@ -257,10 +257,10 @@ describe('index build budget: ≤2 s per 5 000 files', () => {
         // The number that actually governs the editor's responsiveness: every turn
         // after the first rebuilds warm.
         const warmStore = fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-budget-w-'));
-        const first = new CodebaseIndex(warmStore);
+        const first = new CodebaseIndex(warmStore, directoryFileSource(root));
         await first.build(undefined, FILE_COUNT + 500);
 
-        const second = new CodebaseIndex(warmStore);
+        const second = new CodebaseIndex(warmStore, directoryFileSource(root));
         const started = Date.now();
         const stats = await second.build(undefined, FILE_COUNT + 500);
         const elapsed = Date.now() - started;

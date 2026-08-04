@@ -179,7 +179,21 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         this._memory = buildMemoryTurn(_secretManager, m => console.log(m));
         this._sessions = new SessionManager(this._bus);
         this._checkpoints = new CheckpointManager(storageDir);
-        this._index = new CodebaseIndex(storageDir);
+        /*
+         * The editor's own file index, not a directory walk (M62 · P11-1).
+         *
+         * `CodebaseIndex` no longer reaches for `vscode` itself, but the editor still
+         * supplies `findFiles` here rather than falling back to `directoryFileSource` —
+         * and that is not just about the boundary. The editor's index already honours the
+         * user's `files.exclude` and their `.gitignore`, so a walk would quietly index
+         * the things they told the editor to hide.
+         */
+        this._index = new CodebaseIndex(storageDir, {
+            find: async (limit) => (await vscode.workspace.findFiles(
+                '**/*', '**/{node_modules,dist,out,build,.git}/**', limit,
+            )).map(u => u.fsPath),
+            relative: (absolute) => vscode.workspace.asRelativePath(absolute),
+        });
         // Doc sets live in extension storage, not the user's repo: a crawl is a cache of
         // somebody else's content (Phase 3, M20).
         this._docsStore = new DocsStore(path.join(storageDir, 'docs'));

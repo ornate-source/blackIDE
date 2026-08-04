@@ -1,9 +1,18 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
 // Artifact Manager — Feature 18
 // Manages structured output artifacts (plans, reports, analyses, walkthroughs).
+//
+// ── Crossed the agent-core boundary in Phase 11 (M62 · P11-1) ──────────────
+// This module took a `vscode.ExtensionContext` for one field — a directory — and called
+// `vscode.window.showTextDocument` in one method. Two lines of editor dependency made the
+// whole module unreachable from a package that must run in a terminal.
+//
+// Both are parameters now. The directory is a string, because that is what it always
+// was; opening a file is an injected callback, because opening a file *is* an editor
+// capability and pretending otherwise would be the mistake `host.ts` warns about — an
+// interface that assumes an editor's semantics through a differently-named door.
 
 export interface Artifact {
     name: string;
@@ -13,11 +22,25 @@ export interface Artifact {
     modified: number;
 }
 
+export interface ArtifactManagerOptions {
+    /**
+     * Show a file to the user. Absent headlessly, where there is nobody to show it to.
+     *
+     * `HostEditorCapabilities.openFile` has exactly this shape, so an `AgentHost` can be
+     * handed straight in without an adapter.
+     */
+    openFile?: (path: string) => void | Promise<void>;
+}
+
 export class ArtifactManager {
     private artifactDir: string;
 
-    constructor(context: vscode.ExtensionContext) {
-        this.artifactDir = path.join(context.globalStorageUri.fsPath, 'artifacts');
+    /**
+     * @param storageDir Where artifacts live. The editor passes
+     *                   `context.globalStorageUri.fsPath`; a CLI passes its own directory.
+     */
+    constructor(storageDir: string, private readonly options: ArtifactManagerOptions = {}) {
+        this.artifactDir = path.join(storageDir, 'artifacts');
         if (!fs.existsSync(this.artifactDir)) {
             fs.mkdirSync(this.artifactDir, { recursive: true });
         }
@@ -31,10 +54,17 @@ export class ArtifactManager {
         return filepath;
     }
 
-    /** Open artifact in VS Code editor */
-    async open(filepath: string): Promise<void> {
-        const doc = await vscode.workspace.openTextDocument(filepath);
-        await vscode.window.showTextDocument(doc, { preview: false });
+    /**
+     * Show an artifact to the user.
+     *
+     * Returns whether anything happened. A headless run has nobody to show a file to, and
+     * `false` says so — a method that silently succeeds at doing nothing is how a caller
+     * comes to believe the user has seen something they have not.
+     */
+    async open(filepath: string): Promise<boolean> {
+        if (!this.options.openFile) return false;
+        await this.options.openFile(filepath);
+        return true;
     }
 
     /** List all artifacts, sorted by most recently modified */

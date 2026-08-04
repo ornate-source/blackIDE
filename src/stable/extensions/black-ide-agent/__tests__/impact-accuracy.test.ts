@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { CodebaseIndex } from '../src/core/codebase-index';
+import { CodebaseIndex, directoryFileSource } from '../src/core/codebase-index';
 import { analyseImpact } from '../src/tools/graph-tools';
 
 /**
@@ -82,7 +82,7 @@ describe('impact_analysis accuracy on the retrieval corpus', () => {
         previousFolders = stub.workspace.workspaceFolders;
         stub.workspace.workspaceFolders = [{ uri: { fsPath: CORPUS }, name: 'corpus', index: 0 }];
         storage = fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-impact-'));
-        index = new CodebaseIndex(storage);
+        index = new CodebaseIndex(storage, directoryFileSource(CORPUS));
         await index.build(undefined, 2000);
     });
 

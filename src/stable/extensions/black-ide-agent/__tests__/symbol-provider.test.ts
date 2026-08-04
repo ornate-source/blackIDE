@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { CodebaseIndex } from '../src/core/codebase-index';
+import { CodebaseIndex, directoryFileSource } from '../src/core/codebase-index';
 import { SymbolGraph, SymbolProvider } from '../src/core/context-providers';
 import { buildContextProviders } from '../src/core/context-provider-setup';
 
@@ -64,7 +64,7 @@ describe('SymbolProvider against the retrieval corpus', () => {
         previousFolders = stub.workspace.workspaceFolders;
         stub.workspace.workspaceFolders = [{ uri: { fsPath: CORPUS }, name: 'corpus', index: 0 }];
         storage = fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-symbol-'));
-        index = new CodebaseIndex(storage);
+        index = new CodebaseIndex(storage, directoryFileSource(CORPUS));
         await index.build(undefined, 2000);
         provider = new SymbolProvider(() => index.graph);
     });

@@ -35,6 +35,26 @@ export type { NodeHostOptions } from './node-host';
 // Exported because they are the SDK's entry point as much as the CLI's: embedding the
 // loop means embedding these, and a caller who has to reach past the barrel into
 // `agent-core/headless-run` is a caller the barrel is not serving.
+/*
+ * Retrieval and artifacts, across the boundary (Phase 11, M62 · P11-1).
+ *
+ * Both took two lines of `vscode` — `findFiles`/`asRelativePath` in the index, an
+ * `ExtensionContext` and a `showTextDocument` in the artifact manager — and those four
+ * lines kept the entire retrieval stack out of a package that has to run in a terminal.
+ * Both now take what they actually needed: a file source and a directory.
+ *
+ * `tool-executor.ts` is deliberately *not* here. Its last direct `vscode` reference is
+ * gone too, but it still reaches the LSP bridge, the browser and the editor's tool runner
+ * — because it is the *editor's* executor, and `host-executor.ts` above is its
+ * boundary-crossing counterpart. Two implementations of a narrow interface is the answer
+ * M63 already gave; dragging this one across would leave the CLI loading five hundred
+ * lines of editor semantics it can never execute.
+ */
+export { CodebaseIndex, directoryFileSource } from '../core/codebase-index';
+export type { IndexFileSource } from '../core/codebase-index';
+export { ArtifactManager } from '../agent/artifact-manager';
+export type { Artifact, ArtifactManagerOptions } from '../agent/artifact-manager';
+
 export { createHostExecutor, headlessTools } from './host-executor';
 export type { HostExecutor, HostExecutorDeps } from './host-executor';
 export { runHeadless, modelFromEnv } from './headless-run';

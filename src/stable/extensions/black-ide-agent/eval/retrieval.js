@@ -40,7 +40,7 @@ function recallAtK(results, mustFind, k) {
  * @param {number[]} ks  cut-offs to report (recall@k for each)
  */
 async function measureRetrieval(vscodeStub, CodebaseIndexModule, ks = [3, 5, 10, 20]) {
-    const { CodebaseIndex } = CodebaseIndexModule;
+    const { CodebaseIndex, directoryFileSource } = CodebaseIndexModule;
 
     const previousFolders = vscodeStub.workspace.workspaceFolders;
     const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackide-eval-index-'));
@@ -48,19 +48,25 @@ async function measureRetrieval(vscodeStub, CodebaseIndexModule, ks = [3, 5, 10,
     try {
         vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: CORPUS_DIR }, name: 'corpus', index: 0 }];
 
-        const index = new CodebaseIndex(storageDir);
+        /*
+         * A real directory walk, not the vscode stub's `findFiles` (M62 · P11-1).
+         *
+         * The comment below this used to say an empty index "is almost always a broken
+         * findFiles stub, not a retrieval regression, and the two must not look the same
+         * in the gate — that confusion is what deferred this metric for three phases".
+         * The index no longer reaches for `vscode` at all, so the stub is out of the path
+         * and that confusion is gone at the source rather than guarded against.
+         */
+        const index = new CodebaseIndex(storageDir, directoryFileSource(CORPUS_DIR));
         const startedAt = Date.now();
         const built = await index.build(undefined, 2000);
         const buildMs = Date.now() - startedAt;
 
-        // Fail loudly rather than reporting 0% recall. An empty index is almost always
-        // a broken `findFiles` stub, not a retrieval regression, and the two must not
-        // look the same in the gate — that confusion is what deferred this metric for
-        // three phases in the first place.
+        // Fail loudly rather than reporting 0% recall. An empty index and a retrieval
+        // regression must not look the same in the gate.
         if (index.size === 0) {
             throw new Error(
-                `Indexed nothing from ${CORPUS_DIR} — the vscode stub's findFiles is not enumerating. ` +
-                `Recall cannot be measured against an empty index.`
+                `Indexed nothing from ${CORPUS_DIR}. Recall cannot be measured against an empty index.`
             );
         }
 

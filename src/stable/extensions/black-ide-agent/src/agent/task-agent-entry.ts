@@ -86,10 +86,26 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
         const tokenTracker = new TokenTracker();
         const browserTool = new BrowserTool();
         const mcpClient = new MCPClient();
-        const artifactManager = new ArtifactManager(deps.context);
+        const artifactManager = new ArtifactManager(deps.context.globalStorageUri.fsPath, {
+            // The editor *can* show a file, so it says so. See ArtifactManager's header.
+            openFile: async p => { await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(p), { preview: false }); },
+        });
         const knowledgeStore = new KnowledgeStore(deps.context);
 
         const executorDeps: ExecutorDeps = {
+            // The editor can apply a WorkspaceEdit and save what it touched, so it says
+            // so (M62 · P11-1). `applyEdit` leaves documents dirty; without the save the
+            // change is invisible to git, to the test runner, and to the next tool call.
+            applyWorkspaceEdit: async (edit, files) => {
+                if (!await vscode.workspace.applyEdit(edit as vscode.WorkspaceEdit)) return false;
+                for (const file of files) {
+                    try {
+                        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+                        if (doc.isDirty) await doc.save();
+                    } catch { /* a file the provider touched but we cannot reopen */ }
+                }
+                return true;
+            },
             mode: 'agent',
             allowedTools: mode?.tools?.length ? mode.tools : undefined,
             // THE isolation line. See this file's header.

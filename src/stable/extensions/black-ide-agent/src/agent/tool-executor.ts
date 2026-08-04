@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AgentMode, CommandResult, ToolCall, ToolResult, ImagePart } from '../core/types';
@@ -97,6 +96,16 @@ export interface ExecutorDeps {
     sandboxTier?: SandboxTier;
     /** Variables the user explicitly allows through a confined run's env scrub. */
     sandboxEnvAllow?: readonly string[];
+    /**
+     * Apply a language server's `WorkspaceEdit` and save what it touched (M62 · P11-1).
+     *
+     * Typed as `unknown` on purpose: the value comes from `lsp-tools.ts` and goes back to
+     * `vscode.workspace.applyEdit`, and naming the type here would put `vscode` in this
+     * file's import graph to describe something it only ever passes through.
+     *
+     * Absent where there is no editor, and `rename_symbol` then refuses with a reason.
+     */
+    applyWorkspaceEdit?: (edit: unknown, files: string[]) => Promise<boolean>;
 }
 
 /** Executes a single tool call and returns a structured result for the model. */
@@ -545,18 +554,24 @@ export class AgentToolExecutor {
                     });
                     if (!approved) return this.ok(tc, `User rejected the rename of "${a.symbol}".`);
 
-                    const applied = await vscode.workspace.applyEdit(plan.workspaceEdit);
-                    if (!applied) return this.err(tc, `The editor refused the rename edit for "${a.symbol}".`);
-
-                    // applyEdit leaves the documents dirty; without saving, the change
-                    // is invisible to git, to the test runner, and to the next tool call.
-                    for (const file of plan.files) {
-                        try {
-                            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
-                            if (doc.isDirty) await doc.save();
-                        } catch { /* a file the provider touched but we cannot reopen */ }
-                        this.d.onFileChanged?.(file, 'modified');
+                    /*
+                     * Applying a `WorkspaceEdit` is an editor capability, so it arrives as
+                     * one (M62 · P11-1).
+                     *
+                     * This was the last direct `vscode` reference in this file. Behind a
+                     * dependency it is also honest about what it is: a rename produced by
+                     * a language server, applied and saved by an editor. A caller without
+                     * one gets a refusal naming the reason rather than a silent no-op,
+                     * which is the same rule `host-executor.ts` follows for every tool it
+                     * cannot offer.
+                     */
+                    if (!this.d.applyWorkspaceEdit) {
+                        return this.err(tc, 'A scope-aware rename needs an editor to apply the workspace edit. '
+                            + 'Use grep_search and edit the files individually.');
                     }
+                    const applied = await this.d.applyWorkspaceEdit(plan.workspaceEdit, plan.files);
+                    if (!applied) return this.err(tc, `The editor refused the rename edit for "${a.symbol}".`);
+                    for (const file of plan.files) this.d.onFileChanged?.(file, 'modified');
                     return this.ok(tc, `${summary}\nApplied and saved.`);
                 }
 

@@ -158,7 +158,10 @@ export async function runAgentTask(
     const browserTool = new BrowserTool();
     const mcpClient = new MCPClient();
     const skillsManager = new SkillsManager();
-    const artifactManager = new ArtifactManager(deps.context);
+    const artifactManager = new ArtifactManager(deps.context.globalStorageUri.fsPath, {
+            // The editor *can* show a file, so it says so. See ArtifactManager's header.
+            openFile: async p => { await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(p), { preview: false }); },
+        });
     const knowledgeStore = new KnowledgeStore(deps.context);
     const hooks = new AgentHooks();
     const checkpoint = deps.checkpoints;
@@ -474,6 +477,19 @@ These tools degrade to a text search when no language server is available for a 
             mode: effectiveMode,
             rootPath, browserTool, mcpClient, artifactManager, knowledgeStore, codebaseIndex, checkpoint,
             log, approve, signal, commandTimeoutMs: 120000,
+            // The editor can apply a WorkspaceEdit and save what it touched (M62 · P11-1).
+            // `applyEdit` leaves documents dirty; without the save the change is invisible
+            // to git, to the test runner, and to the next tool call.
+            applyWorkspaceEdit: async (edit, files) => {
+                if (!await vscode.workspace.applyEdit(edit as vscode.WorkspaceEdit)) return false;
+                for (const file of files) {
+                    try {
+                        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+                        if (doc.isDirty) await doc.save();
+                    } catch { /* a file the provider touched but we cannot reopen */ }
+                }
+                return true;
+            },
             onPlan: (steps) => emit({ type: 'PlanUpdated', steps }),
             onArtifact: (artifact) => emit({ type: 'ArtifactCreated', artifact }),
             onTerminalChunk: (stream, text) => emit({ type: 'TerminalChunk', stream, text }),

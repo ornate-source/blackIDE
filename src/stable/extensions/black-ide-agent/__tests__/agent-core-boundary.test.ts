@@ -97,11 +97,15 @@ describe('the agent-core boundary', () => {
         // is what makes "zero vscode imports" a claim about the *core* rather than about a
         // stub, and shrinking it should be a deliberate act rather than a side effect.
         //
-        // 45 is the floor, not the target: the number *fell* when `agent-loop` switched to a
-        // type-only import of the executor, because that correctly stopped dragging the LSP
-        // bridge and the codebase index into everything importing the loop. A drop is
-        // sometimes right; it should just never be silent.
-        expect(reachable.size).toBeGreaterThanOrEqual(45);
+        // 60 since P11-1 (2026-08-04), up from 45: `codebase-index` and `artifact-manager`
+        // crossed the boundary, bringing the retrieval stack — the chunker, the graph, the
+        // reranker, the embeddings client — with them.
+        //
+        // The floor is a floor, not a target, and it has moved in both directions. It
+        // *fell* to 45 when `agent-loop` switched to a type-only import of the executor,
+        // which correctly stopped dragging the LSP bridge into everything importing the
+        // loop. A drop is sometimes right; it should just never be silent.
+        expect(reachable.size).toBeGreaterThanOrEqual(60);
     });
 
     it('nothing reachable from the core imports vscode', () => {
