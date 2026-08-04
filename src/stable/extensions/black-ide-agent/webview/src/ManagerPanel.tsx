@@ -2,6 +2,7 @@ import { useEffect, useReducer, useState } from 'react';
 import { agentReducer, initialAgentState, AgentState } from './agent-store';
 import { PipelineLogPanel } from './AgentPanels';
 import ArtifactReview, { ReviewGroup } from './ArtifactReview';
+import { MemoryPanel, MemoryView } from './MemoryPanel';
 import { rawVscode } from './webview-bridge';
 
 const vscode = rawVscode || {
@@ -126,18 +127,25 @@ export default function ManagerPanel() {
   const [startError, setStartError] = useState('');
   const [agents, setAgents] = useState<TaskAgentSummary[]>([]);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  const [lane, setLane] = useState<'pipeline' | 'agent' | 'review'>('pipeline');
+  const [lane, setLane] = useState<'pipeline' | 'agent' | 'review' | 'memory'>('pipeline');
   // The review surface (M38). Held here rather than in the component so one message
   // listener serves the whole panel, as it already does for runs, agents and the inbox.
   const [artifactGroups, setArtifactGroups] = useState<ReviewGroup[]>([]);
   const [artifactCounts, setArtifactCounts] = useState({ total: 0, runs: 0, byType: {} as Record<string, number> });
   const [artifactContent, setArtifactContent] = useState<{ artifactId: string; content: string; error?: string } | undefined>();
+  // Durable memory (M45). Same reasoning as the review surface above: one listener for
+  // the whole panel rather than a second one inside the component.
+  const [memory, setMemory] = useState<MemoryView>({
+    rows: [], pending: [],
+    counts: { total: 0, active: 0, demoted: 0, archived: 0, pending: 0, byType: {} },
+  });
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
     vscode.postMessage({ type: 'listPipelineRuns' });
     vscode.postMessage({ type: 'listTaskAgents' });
     vscode.postMessage({ type: 'listArtifacts' });
+    vscode.postMessage({ type: 'listMemory' });
     vscode.postMessage({ type: 'loadLlmConfig' });
 
     // Keeps elapsed-time labels on running rows live without a per-event trigger.
@@ -177,6 +185,9 @@ export default function ManagerPanel() {
           break;
         case 'artifactContentSync':
           setArtifactContent(message.value);
+          break;
+        case 'memorySync':
+          setMemory(message.value);
           break;
         case 'setLlmConfig':
           try {
@@ -242,17 +253,26 @@ export default function ManagerPanel() {
       </div>
 
       <div className="px-3 pt-2 flex gap-1 shrink-0">
-        {(['pipeline', 'agent', 'review'] as const).map(tab => (
+        {(['pipeline', 'agent', 'review', 'memory'] as const).map(tab => (
           <button
             key={tab}
-            onClick={() => { setLane(tab); if (tab === 'review') vscode.postMessage({ type: 'listArtifacts' }); }}
+            onClick={() => {
+              setLane(tab);
+              if (tab === 'review') vscode.postMessage({ type: 'listArtifacts' });
+              // Re-read on every visit rather than trusting the mount sync: memory.md is
+              // a file the user may have edited in the next tab since this panel opened.
+              if (tab === 'memory') vscode.postMessage({ type: 'listMemory' });
+            }}
             className={`px-3 py-1.5 rounded-t text-[11px] font-medium cursor-pointer transition-colors ${
               lane === tab ? 'bg-panel/50 text-foreground border-b-2 border-accentBlue'
                            : 'text-muted/60 hover:text-foreground'}`}
           >
             {tab === 'pipeline' ? `Pipelines (${runs.length})`
               : tab === 'agent' ? `Task Agents (${visibleAgents.length})`
-              : `Review (${artifactCounts.total})`}
+              : tab === 'review' ? `Review (${artifactCounts.total})`
+              // The pending count is surfaced on the tab itself: a confirm queue nobody
+              // knows about is a confirm queue nobody empties.
+              : `Memory (${memory.counts.total}${memory.counts.pending ? ` · ${memory.counts.pending} to confirm` : ''})`}
           </button>
         ))}
       </div>
@@ -460,6 +480,9 @@ export default function ManagerPanel() {
           );
         })}
       </div>
+
+      {/* ── Durable memory (Phase 8, M45) ────────────────────────────────── */}
+      {lane === 'memory' && <MemoryPanel view={memory} post={vscode.postMessage} />}
 
       {/* ── Artifact review (Phase 7, M38) ───────────────────────────────── */}
       {lane === 'review' && (

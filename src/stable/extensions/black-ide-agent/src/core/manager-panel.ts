@@ -5,6 +5,9 @@ import { PipelineRunSummary } from './pipeline-runs';
 import { TaskAgentSummary } from './task-agents';
 import { ArtifactRecord, ArtifactType } from './artifacts';
 import { buildReviewView, reviewCounts, routeComment } from './artifact-review';
+import { buildMemoryView } from './memory-view';
+import { MemoryEntry } from './memory-model';
+import { ExtractionCandidate } from './memory-lifecycle';
 
 /**
  * The ✦ Pipeline Manager webview panel — launches and monitors concurrent
@@ -39,6 +42,18 @@ export interface ManagerPanelHost {
         configureFromSettings(): Promise<void>;
         /** Ids of agents that still have a turn left to steer (Phase 7, M38/M39). */
         liveIds(): string[];
+    };
+    /**
+     * The durable-memory loop (Phase 8, M45). Structurally typed for the same reason
+     * `taskAgents` and `artifacts` are, and optional because a window with no workspace
+     * folder open has no memory file to show.
+     */
+    readonly memory?: {
+        entries(): MemoryEntry[];
+        readonly pending: ExtractionCandidate[];
+        readonly filePath: string;
+        confirm(text: string): MemoryEntry[];
+        reject(text: string): void;
     };
     /**
      * The typed artifact store (Phase 7, M38). Structurally typed rather than imported so
@@ -267,6 +282,41 @@ export class ManagerPanel {
                     this._panel.webview.postMessage({ type: 'setLlmConfig', value: config });
                     break;
                 }
+
+                // ── The memory panel (Phase 8, M45) ─────────────────────────
+                case 'listMemory':
+                    this.postMemory(data.value);
+                    break;
+                case 'confirmMemory':
+                    this._host.memory?.confirm(String(data.value?.text || ''));
+                    this.postMemory();
+                    break;
+                case 'rejectMemory':
+                    this._host.memory?.reject(String(data.value?.text || ''));
+                    this.postMemory();
+                    break;
+                case 'openMemoryFile': {
+                    /*
+                     * Opening the file is the panel's most important button, not a
+                     * convenience.
+                     *
+                     * ADR 007 makes `memory.md` a *user file* — the agent preserves
+                     * anything it did not write, and decay archives rather than deletes.
+                     * A panel that could only be read through would quietly make it an
+                     * opaque store the user is shown a rendering of, which is the
+                     * opposite of that decision. Editing the markdown is the supported
+                     * way to correct a memory, so the panel says so and opens it.
+                     */
+                    const filePath = this._host.memory?.filePath;
+                    if (!filePath) break;
+                    try {
+                        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(filePath));
+                    } catch {
+                        vscode.window.showInformationMessage(
+                            'No memories have been written yet, so there is no memory.md to open.');
+                    }
+                    break;
+                }
             }
         });
 
@@ -292,6 +342,36 @@ export class ManagerPanel {
      * where the evidence should be — which is exactly the shape of "the artifact exists but
      * nobody can see it" that this panel was built to end.
      */
+    /**
+     * Push the memory view (M45).
+     *
+     * Reads from disk on every call rather than caching. `memory.md` is a file in the
+     * user's repository that they may be editing in the next tab — the store itself
+     * re-reads before every mutation for exactly this reason — and a panel showing a
+     * cached copy would be the one surface that disagrees with the file it claims to
+     * display.
+     */
+    private postMemory(filter?: { status?: string; type?: string; query?: string }): void {
+        if (!this._panel) return;
+        const memory = this._host.memory;
+        if (!memory) {
+            this._panel.webview.postMessage({
+                type: 'memorySync',
+                value: buildMemoryView([], [], {}),
+            });
+            return;
+        }
+        this._panel.webview.postMessage({
+            type: 'memorySync',
+            value: buildMemoryView(memory.entries(), memory.pending, {
+                status: filter?.status && filter.status !== 'all' ? filter.status as any : undefined,
+                type: filter?.type && filter.type !== 'all' ? filter.type as any : undefined,
+                query: filter?.query,
+                filePath: memory.filePath,
+            }),
+        });
+    }
+
     private postArtifacts(type?: string): void {
         if (!this._panel) return;
         const records = this._host.artifacts.list();

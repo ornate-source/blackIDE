@@ -32,6 +32,9 @@ import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable, filterTo
 import { MCPClient } from '../tools/mcp-client';
 import { HistoryStore } from '../memory/history-store';
 import { KnowledgeStore } from '../memory/knowledge-store';
+import { MemoryStore } from '../memory/memory-store';
+import { MemoryTurn } from './memory-turn';
+import { ModelRole } from '../core/model-router';
 import { PlanningEngine } from './planning-engine';
 import { SkillsManager } from './skills-manager';
 import { resolveSkills, renderSkills, roleForMode, skillsFiredEvent } from './skill-resolver';
@@ -94,6 +97,21 @@ export interface ChatTaskDeps {
      * asserts that.
      */
     artifacts?: ArtifactStore;
+    /**
+     * The durable-memory loop (Phase 8, M41 · P8-1).
+     *
+     * Supplied by the provider so it outlives a turn — the confirm queue it holds is
+     * read by the memory panel (M45) between runs, and a per-turn instance would empty
+     * it every time. Optional so a caller that has not wired it still runs, with no
+     * memory rather than a crash.
+     */
+    memoryTurn?: MemoryTurn;
+    /**
+     * Resolve a model role (Phase 4, M23). Used to send extraction to `edit` rather than
+     * to the user's chat model — a background pass on an expensive model is the most
+     * surprising line on a bill.
+     */
+    resolveRole?: (role: ModelRole) => LLMConfigEntry | undefined;
 }
 
 /**
@@ -288,6 +306,29 @@ export async function runAgentTask(
         const knowledgeContext = await knowledgeStore.getRelevantContext(userPrompt);
 
         /*
+         * Phase 8's memory loop (M41 · P8-1), both ends.
+         *
+         * `inject` here; `extractInBackground` after the run finishes. The extraction
+         * model call goes through the `edit` role rather than the chat model — it is a
+         * short structured generation over a transcript, which is exactly what that role
+         * exists for, and pointing it at the user's expensive chat model would make a
+         * background nicety the most surprising line on their bill.
+         */
+        const memoryTurn = deps.memoryTurn ?? new MemoryTurn({
+            store: new MemoryStore(rootPath),
+            runId: deps.sessions.currentConversationId,
+            log,
+            complete: async (prompt) => {
+                const extractionModel = deps.resolveRole?.('edit') || modelConfig;
+                let text = '';
+                await LLMClient.streamCompletion(extractionModel, prompt, token => { text += token; });
+                return text;
+            },
+        });
+        const injectedMemory = memoryTurn.inject();
+        if (injectedMemory.ids.length) log(`[Memory] ${injectedMemory.ids.length} remembered fact(s) in context.`);
+
+        /*
          * Mindmap read-back (Phase 8, M46).
          *
          * The write half has shipped since plan.md's Phase 5 — every pipeline run syncs the
@@ -381,6 +422,13 @@ These tools degrade to a text search when no language server is available for a 
             // and skills: one merged section would have to arbitrate two unrelated ranking
             // schemes into a single allowance, and neither can starve the other this way.
             .add({ name: 'mindmap', budgetTokens: 800, content: mindmapContext })
+            // Phase 8's durable memory (M41–M44), reaching a prompt for the first time.
+            // The store, the bands, the decay and the consolidation have all existed since
+            // Phase 8 and nothing in the editor imported any of them — four correct
+            // algorithms and no loop. Small budget on purpose: memory earns its place a
+            // line at a time, and a section that can crowd out the project rules is one
+            // that will eventually be blamed for a worse answer.
+            .add({ name: 'memory', budgetTokens: 600, content: injectedMemory.text })
             .build(promptBudget);
 
         const system = built.text;
@@ -848,9 +896,24 @@ These tools degrade to a text search when no language server is available for a 
         } else {
             emit({ type: 'TaskCompleted', finalText: result.finalText, turns: result.turns, durationMs: Date.now() - startedAt });
             webview.postMessage({ type: 'finalResponse', value: result.finalText });
-            
+
             // Generate a title for the conversation asynchronously
             deps.generateConversationTitle(userPrompt, modelConfig).catch(e => log(`[Title] Failed to generate title: ${e.message}`));
+
+            /*
+             * End-of-turn extraction (M41 · P8-1). Deliberately not awaited.
+             *
+             * The user is reading a finished answer. Making them wait on a second model
+             * call to see the turn marked complete would trade the whole value of a
+             * background feature for its convenience, and a failure in it must never
+             * surface as the task having failed — `extractInBackground` returns nothing
+             * and cannot reject, so neither is possible by accident.
+             *
+             * Only on the completed path: a cancelled turn is one the user stopped, and
+             * treating what it happened to contain as durable fact is the opposite of
+             * what cancelling means.
+             */
+            memoryTurn.extractInBackground(deps.session.conversation);
         }
 
         webview.postMessage({ type: 'taskComplete' });

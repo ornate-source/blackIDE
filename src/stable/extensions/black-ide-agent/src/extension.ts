@@ -10,6 +10,8 @@ import { registerEditorFeatures } from './core/editor-features';
 import { compactSession } from './core/compact-session';
 import { TaskAgentLane } from './agent/task-agent-lane';
 import { ArtifactStore } from './agent/artifact-store';
+import { MemoryTurn } from './agent/memory-turn';
+import { buildMemoryTurn } from './core/memory-setup';
 import { CheckpointManager, diffStat } from './core/checkpoint-manager';
 import { CodebaseIndex } from './core/codebase-index';
 import { EventBus } from './core/event-bus';
@@ -133,6 +135,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     /** Typed artifacts and their review comments (Phase 7, M38). */
     private readonly _artifacts: ArtifactStore;
 
+    /** Durable memory across turns (Phase 8, M41). Absent with no workspace open. */
+    private readonly _memory: MemoryTurn | undefined;
+
     /**
      * `@`-mention providers (Phase 3, M19). Assembled in the constructor rather than
      * here because it needs `_historyStore`, which arrives as a constructor
@@ -171,6 +176,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         _context.subscriptions.push(this._promptLibrary);
 
         this._artifacts = new ArtifactStore(_context);
+        this._memory = buildMemoryTurn(_secretManager, m => console.log(m));
         this._sessions = new SessionManager(this._bus);
         this._checkpoints = new CheckpointManager(storageDir);
         this._index = new CodebaseIndex(storageDir);
@@ -594,8 +600,18 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
                 { historyStore: this._historyStore, activeThreadId: this._session.activeThreadId, view: this._view }, p, m),
             scheduleAgentTask: (tc, id, wv, m) => this._scheduleAgentTask(tc, id, wv, m),
             artifacts: this._artifacts,
+            memoryTurn: this._memory,
         }, userPrompt, modelId, attachments, mode);
     }
+
+    /**
+     * The durable-memory loop (Phase 8, M41 · P8-1), owned here rather than per turn.
+     *
+     * Its confirm queue is read by the memory panel *between* runs, so a per-turn
+     * instance would empty it every time — the candidates would be produced, banded,
+     * queued, and thrown away before anything could show them.
+     */
+    public get memory(): MemoryTurn | undefined { return this._memory; }
 
     private async _runAgentTaskExecution(
         originalPrompt: string,
