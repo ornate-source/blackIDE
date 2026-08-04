@@ -90,6 +90,8 @@ export class TaskAgentLane implements vscode.Disposable {
     steer(id: string, text: string, options: { artifactPath?: string; region?: string } = {}) {
         return this.registry.steer(id, text, options);
     }
+    /** Which agents a review comment can still reach (M38). */
+    liveIds(): string[] { return this.registry.liveIds(); }
     apply(id: string) { return this.registry.apply(id); }
     discard(id: string) { return this.registry.discard(id); }
     list(): TaskAgentSummary[] { return this.registry.list(); }

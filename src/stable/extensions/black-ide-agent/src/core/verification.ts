@@ -83,6 +83,16 @@ export interface Evidence {
     recordings?: string[];
     /** Set when the suite could not be run at all (no command, or the runner crashed). */
     testsUnavailable?: string;
+    /**
+     * Set when visual evidence was required and could not be produced — no dev server, no
+     * browser, no configured URL.
+     *
+     * A separate field from `missing` because they answer different questions: `missing`
+     * says *what* the contract did not get, and this says *why*, which is the half that
+     * tells the user whether to start a server or change a setting. `incomplete` with no
+     * "why" is the permanent warning this milestone existed to remove.
+     */
+    visualUnavailable?: string;
 }
 
 export type VerificationOutcome = 'verified' | 'failed' | 'unverifiable' | 'incomplete';
@@ -151,7 +161,9 @@ export function evaluateVerification(
             shouldSelfCorrect: false,
             escalate: true,
             missing,
-            summary: `Tests pass, but this change owes ${missing.join(' and ')} and produced none.`,
+            summary: evidence.visualUnavailable
+                ? `Tests pass, but this change owes ${missing.join(' and ')}. ${evidence.visualUnavailable}`
+                : `Tests pass, but this change owes ${missing.join(' and ')} and produced none.`,
         };
     }
 
@@ -214,6 +226,10 @@ export function renderVerificationReport(
 
     if (result.missing.length) {
         lines.push('## Missing', '', ...result.missing.map(m => `- ${m}`), '');
+        // The actionable half. Without it the section says "screenshot" and leaves the
+        // reader to work out whether that means "start your dev server" or "install
+        // Playwright" — two very different afternoons.
+        if (evidence.visualUnavailable) lines.push(evidence.visualUnavailable, '');
     }
 
     lines.push('## Why this was required', '', ...plan.because.map(b => `- ${b}`));

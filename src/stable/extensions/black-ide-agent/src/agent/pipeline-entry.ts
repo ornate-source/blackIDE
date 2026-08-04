@@ -23,6 +23,7 @@ import { KnowledgeStore } from '../memory/knowledge-store';
 import { PlanningEngine } from './planning-engine';
 import { ArtifactStore } from './artifact-store';
 import { runVerification } from './verify-runner';
+import { captureVisualEvidence } from './visual-capture';
 import { SkillsManager } from './skills-manager';
 import { resolveSkills, renderSkills, roleForMode, skillsFiredEvent } from './skill-resolver';
 import { ProjectProfile } from '../core/project-profiler';
@@ -359,6 +360,19 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
                         artifacts: deps.artifacts,
                         signal: budgetController.signal,
                         log,
+                        // Visual evidence (M40). A pipeline run is the lane most likely to
+                        // change a UI file and least likely to have anybody watching it,
+                        // which is the case the screenshot requirement was written for.
+                        captureVisual: () => captureVisualEvidence({
+                            runId,
+                            artifacts: deps.artifacts,
+                            profile: pipelineProfile,
+                            browserSettings,
+                            browserUsable,
+                            configuredUrl: generalSettings.verificationPreviewUrl,
+                            log,
+                            signal: budgetController.signal,
+                        }),
                     });
                     emit({
                         type: 'PipelineVerified',

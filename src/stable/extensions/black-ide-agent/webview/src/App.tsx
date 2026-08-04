@@ -88,6 +88,8 @@ interface BlackIDESettings {
   browserViewportHeight: number;
   browserAllowedDomains: string;
   browserScreenshotOnNav: boolean;
+  /** Where verification points a browser to capture visual evidence (Phase 7, M40). */
+  verificationPreviewUrl: string;
   // Agent behavior
   maxLoopIterations: number;
   enableReasoningDisplay: boolean;
@@ -165,6 +167,7 @@ const DEFAULT_SETTINGS: BlackIDESettings = {
   browserViewportHeight: 720,
   browserAllowedDomains: '',
   browserScreenshotOnNav: false,
+  verificationPreviewUrl: '',
   maxLoopIterations: 25,
   enableReasoningDisplay: true,
   customSystemPrompt: '',
@@ -2704,6 +2707,24 @@ export default function App() {
                       placeholder={"github.com\nstackoverflow.com"}
                       rows={2}
                       className="w-full bg-[rgba(255,255,255,0.04)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-3 py-2.5 text-[12.5px] focus:outline-none focus:border-[var(--vscode-focusBorder,#007fd4)] font-mono resize-y transition-all duration-200 placeholder:text-muted/30"
+                    />
+                  </div>
+
+                  <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+                  {/* Verification preview URL (Phase 7, M40) */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-muted/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                      <span className="text-[12px] font-medium text-foreground block">Verification Preview URL</span>
+                    </div>
+                    <span className="text-[11px] text-muted/50 leading-relaxed block -mt-1">Where a run points the browser to capture visual evidence after changing a UI file. Left empty, the dev-server address your stack implies is tried instead.</span>
+                    <input
+                      type="text"
+                      value={settings.verificationPreviewUrl}
+                      onChange={(e) => updateSetting('verificationPreviewUrl', e.target.value)}
+                      placeholder="http://localhost:5173"
+                      className="w-full bg-[rgba(255,255,255,0.04)] text-foreground border-0 border-b border-[rgba(255,255,255,0.08)] rounded-none px-3 py-2 text-[12.5px] focus:outline-none focus:border-[var(--vscode-focusBorder,#007fd4)] font-mono transition-all duration-200 placeholder:text-muted/30"
                     />
                   </div>
 

@@ -147,6 +147,19 @@ export const EGRESS_REGISTER: EgressPoint[] = [
             + 'register that only lists the egress its first test can see documents the test.',
     },
     {
+        id: 'verification-preview-probe',
+        destination: 'loopback, or the preview URL the user configured',
+        trigger: 'agent-run',
+        module: 'agent/visual-capture.ts',
+        why: 'A HEAD request asking whether a dev server is listening, before a run that changed a '
+            + 'UI file spends two seconds launching Chromium to find out the slow way. Loopback '
+            + 'unless the user set `verificationPreviewUrl` to something else, and registered '
+            + 'anyway: a request that usually goes to 127.0.0.1 is still a request, and an '
+            + 'accounting that skips the boring entries is one nobody can rely on for the '
+            + 'interesting ones.',
+        disabledBy: 'browserEnabled, and any change that touches no user-visible file',
+    },
+    {
         id: 'mcp-remote',
         destination: 'user-configured MCP server',
         trigger: 'agent-run',

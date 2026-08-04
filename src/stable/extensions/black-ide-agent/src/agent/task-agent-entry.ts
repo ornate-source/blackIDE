@@ -22,6 +22,8 @@ import { ArtifactManager } from './artifact-manager';
 import { KnowledgeStore } from '../memory/knowledge-store';
 import { ArtifactStore } from './artifact-store';
 import { runVerification } from './verify-runner';
+import { captureVisualEvidence } from './visual-capture';
+import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable } from '../tools/browser-capability';
 import { describeSteering } from '../core/steering';
 
 // ─── Running one task agent (Phase 6, M31) ──────────────────────────────────
@@ -159,14 +161,31 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
          */
         let verification: Parameters<NonNullable<TaskRunParams['onVerified']>>[0];
         try {
+            const verifyProfile = await deps.getProjectProfile(params.rootPath);
+            const generalSettings = await readGeneralSettings(deps.secretManager);
+            const browserSettings = readBrowserSettings(generalSettings);
             const outcome = await runVerification({
                 runId: params.agentId,
                 cwd: params.cwd,
-                profile: await deps.getProjectProfile(params.rootPath),
+                profile: verifyProfile,
                 changedFiles: [...touched],
                 artifacts: deps.artifacts,
                 signal: params.signal,
                 log: deps.log,
+                // Visual evidence (M40). This agent already owns a private `BrowserTool`
+                // for its own run; the capture gets a fresh one rather than reusing it,
+                // because the agent may have left a page mid-flow and a screenshot of a
+                // half-filled form it was testing is not evidence about the change.
+                captureVisual: () => captureVisualEvidence({
+                    runId: params.agentId,
+                    artifacts: deps.artifacts,
+                    profile: verifyProfile,
+                    browserSettings,
+                    browserUsable: isBrowserUsable(browserSettings, browserRuntimeAvailable()),
+                    configuredUrl: generalSettings.verificationPreviewUrl,
+                    log: deps.log,
+                    signal: params.signal,
+                }),
             });
             verification = {
                 outcome: outcome.result.outcome,
@@ -207,6 +226,22 @@ export function buildWorktreeOps(): TaskWorktreeOps {
             return parseNumstat(result.exitCode === 0 ? result.stdout : '');
         },
     };
+}
+
+/**
+ * The persisted `general-settings` blob, or an empty one.
+ *
+ * A task agent runs unattended, so a settings read that throws must degrade to defaults
+ * rather than take the run down — the blob is a preference, and losing it costs a
+ * screenshot, not the work.
+ */
+async function readGeneralSettings(secretManager: SecretManager): Promise<any> {
+    try {
+        const raw = await secretManager.getKey('general-settings');
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
 }
 
 /** Where a task agent's worktree lives, for the "open it" affordance in the panel. */

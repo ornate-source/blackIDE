@@ -29,6 +29,16 @@ export interface VerifyContext {
     log?: (message: string) => void;
     /** Screenshots/recordings already attached by the run, if any. */
     visual?: { screenshots?: string[]; recordings?: string[] };
+    /**
+     * Produce visual evidence when the plan requires it and the run supplied none.
+     *
+     * Injected rather than imported so the decision to *own a browser* stays with the
+     * caller: a task agent has its own `BrowserTool` per run (see `task-agent-entry.ts`),
+     * the pipeline shares one, and the headless CLI has none at all. A runner that reached
+     * for a browser itself would give the CLI one it cannot use and give four concurrent
+     * agents one they would fight over.
+     */
+    captureVisual?: () => Promise<{ screenshots: string[]; unavailable?: string }>;
     timeoutMs?: number;
 }
 
@@ -74,6 +84,28 @@ export async function runVerification(context: VerifyContext): Promise<VerifyOut
             // a failing suite would send the agent into a self-correction attempt against
             // a problem no edit can fix — a missing binary, a bad cwd, a killed process.
             evidence.testsUnavailable = `The test command could not be run: ${err?.message || err}`;
+        }
+    }
+
+    /*
+     * Visual evidence (Phase 7, M40's third gate clause).
+     *
+     * Only when the plan asks for it, and only when the run did not already produce one —
+     * an agent that drove the browser itself and screenshotted the thing it changed has
+     * better evidence than a capture of the app's front page, and capturing anyway would
+     * spend two seconds of Chromium to append a worse picture.
+     *
+     * Never throws outward: `captureVisual` is contracted not to, and this catches anyway,
+     * because the failure mode being designed against is "the verification step broke the
+     * run" and a contract is not an enforcement.
+     */
+    if (plan.required.includes('screenshot') && !(evidence.screenshots || []).length && context.captureVisual) {
+        try {
+            const captured = await context.captureVisual();
+            if (captured.screenshots.length) evidence.screenshots = captured.screenshots;
+            else evidence.visualUnavailable = captured.unavailable;
+        } catch (err: any) {
+            evidence.visualUnavailable = `Visual capture failed: ${err?.message || err}`;
         }
     }
 

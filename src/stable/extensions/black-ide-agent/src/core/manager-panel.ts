@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { SecretManager } from './secret-manager';
 import { PipelineRunSummary } from './pipeline-runs';
 import { TaskAgentSummary } from './task-agents';
+import { ArtifactRecord, ArtifactType } from './artifacts';
+import { buildReviewView, reviewCounts, routeComment } from './artifact-review';
 
 /**
  * The ✦ Pipeline Manager webview panel — launches and monitors concurrent
@@ -34,6 +37,19 @@ export interface ManagerPanelHost {
         raceOutcome(raceId: string): unknown;
         inbox(): unknown[];
         configureFromSettings(): Promise<void>;
+        /** Ids of agents that still have a turn left to steer (Phase 7, M38/M39). */
+        liveIds(): string[];
+    };
+    /**
+     * The typed artifact store (Phase 7, M38). Structurally typed rather than imported so
+     * this file stays free of `agent/` imports, exactly as `taskAgents` does.
+     */
+    readonly artifacts: {
+        readonly directory: string;
+        list(): ArtifactRecord[];
+        comment(artifactId: string, text: string, region?: string): ArtifactRecord | undefined;
+        markCommentsDelivered(artifactId: string, commentIds: string[]): void;
+        open(record: ArtifactRecord): Promise<void>;
     };
 }
 
@@ -75,7 +91,12 @@ export class ManagerPanel {
                 retainContextWhenHidden: true,
                 localResourceRoots: [
                     vscode.Uri.joinPath(this._context.extensionUri, 'dist'),
-                    vscode.Uri.joinPath(this._context.extensionUri, 'resources')
+                    vscode.Uri.joinPath(this._context.extensionUri, 'resources'),
+                    // The artifact directory, so the review panel can render a screenshot
+                    // inline (M38). Scoped to that one directory rather than opened to the
+                    // workspace: a review surface has no business reading the repository,
+                    // and a webview root is a read grant, not a hint.
+                    vscode.Uri.file(this._host.artifacts.directory),
                 ]
             }
         );
@@ -155,6 +176,82 @@ export class ManagerPanel {
                     else vscode.window.setStatusBarMessage('Correction queued — it reaches the agent on its next turn.', 4000);
                     break;
                 }
+                // ── The artifact review panel (Phase 7, M38) ────────────────
+                case 'listArtifacts':
+                    this.postArtifacts(data.value?.type);
+                    break;
+                case 'readArtifact': {
+                    // Text is read here rather than shipped with the listing: a run's
+                    // artifacts include diffs and plans, and pushing every body into the
+                    // webview on every sync would send megabytes to render one card.
+                    const record = this.findArtifact(data.value?.artifactId);
+                    if (!record) break;
+                    let content = '';
+                    let error: string | undefined;
+                    try {
+                        content = fs.readFileSync(record.path, 'utf8');
+                    } catch (err: any) {
+                        // The index is a cache and the file is the truth; a record whose
+                        // file is gone is a real state, and saying so beats an empty pane.
+                        error = `This artifact's file could not be read: ${err?.message || err}`;
+                    }
+                    this._panel.webview.postMessage({
+                        type: 'artifactContentSync',
+                        value: { artifactId: record.id, content, error },
+                    });
+                    break;
+                }
+                case 'openArtifact': {
+                    const record = this.findArtifact(data.value?.artifactId);
+                    if (record) await this._host.artifacts.open(record);
+                    break;
+                }
+                /*
+                 * Comment on an artifact region → the running agent (M38 → M39).
+                 *
+                 * The path this panel exists to provide. The comment is persisted on the
+                 * artifact **first**, so it survives whether or not anything is running,
+                 * and is marked delivered only once the steering queue has actually taken
+                 * it — a comment recorded as delivered that never reached an agent is the
+                 * one outcome a review surface must not produce.
+                 */
+                case 'commentArtifact': {
+                    const record = this.findArtifact(data.value?.artifactId);
+                    if (!record) break;
+
+                    const routing = routeComment({
+                        artifact: record,
+                        text: data.value?.text || '',
+                        region: data.value?.region,
+                        liveRunIds: this._host.taskAgents.liveIds(),
+                    });
+
+                    const updated = this._host.artifacts.comment(record.id, data.value?.text || '', routing.note?.region);
+                    if (!updated) {
+                        vscode.window.showWarningMessage(routing.message);
+                        break;
+                    }
+
+                    let message = routing.message;
+                    if (routing.delivery === 'steered' && routing.note) {
+                        const result = this._host.taskAgents.steer(routing.runId!, routing.note.text, {
+                            artifactPath: routing.note.artifactPath,
+                            region: routing.note.region,
+                        });
+                        if ('error' in result) {
+                            // The agent finished between the listing and the click. The
+                            // comment is still saved; only the claim about delivery changes.
+                            message = `Comment saved. ${result.error}`;
+                        } else {
+                            const latest = updated.comments?.[updated.comments.length - 1];
+                            if (latest) this._host.artifacts.markCommentsDelivered(record.id, [latest.id]);
+                        }
+                    }
+
+                    vscode.window.setStatusBarMessage(message, 5000);
+                    this.postArtifacts(data.value?.type);
+                    break;
+                }
                 case 'raceOutcome':
                     this._panel.webview.postMessage({
                         type: 'raceOutcomeSync',
@@ -173,9 +270,49 @@ export class ManagerPanel {
             }
         });
 
+        // Artifacts arrive from background lanes, so the panel is pushed a fresh listing
+        // on mount and after every comment rather than polling for one.
+        this.postArtifacts();
+
         this._panel.onDidDispose(() => {
             this._panel = undefined;
             if (ManagerPanel._live === this) ManagerPanel._live = undefined;
         }, null, this._context.subscriptions);
+    }
+
+    private findArtifact(artifactId: string): ArtifactRecord | undefined {
+        return this._host.artifacts.list().find(record => record.id === artifactId);
+    }
+
+    /**
+     * Push the review listing.
+     *
+     * Binary artifacts carry a webview URI alongside the path: a `file://` src is blocked
+     * by the webview's CSP, so a screenshot rendered from its path is a broken image icon
+     * where the evidence should be — which is exactly the shape of "the artifact exists but
+     * nobody can see it" that this panel was built to end.
+     */
+    private postArtifacts(type?: string): void {
+        if (!this._panel) return;
+        const records = this._host.artifacts.list();
+        const groups = buildReviewView(records, {
+            liveRunIds: this._host.taskAgents.liveIds(),
+            type: type && type !== 'all' ? (type as ArtifactType) : undefined,
+        });
+
+        const webview = this._panel.webview;
+        this._panel.webview.postMessage({
+            type: 'artifactListSync',
+            value: {
+                groups: groups.map(group => ({
+                    ...group,
+                    artifacts: group.artifacts.map(artifact => ({
+                        ...artifact,
+                        src: artifact.binary ? webview.asWebviewUri(vscode.Uri.file(artifact.path)).toString() : undefined,
+                    })),
+                })),
+                counts: reviewCounts(records),
+            },
+        });
     }
 }

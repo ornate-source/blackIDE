@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from 'react';
 import { agentReducer, initialAgentState, AgentState } from './agent-store';
 import { PipelineLogPanel } from './AgentPanels';
+import ArtifactReview, { ReviewGroup } from './ArtifactReview';
 import { rawVscode } from './webview-bridge';
 
 const vscode = rawVscode || {
@@ -125,12 +126,18 @@ export default function ManagerPanel() {
   const [startError, setStartError] = useState('');
   const [agents, setAgents] = useState<TaskAgentSummary[]>([]);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  const [lane, setLane] = useState<'pipeline' | 'agent'>('pipeline');
+  const [lane, setLane] = useState<'pipeline' | 'agent' | 'review'>('pipeline');
+  // The review surface (M38). Held here rather than in the component so one message
+  // listener serves the whole panel, as it already does for runs, agents and the inbox.
+  const [artifactGroups, setArtifactGroups] = useState<ReviewGroup[]>([]);
+  const [artifactCounts, setArtifactCounts] = useState({ total: 0, runs: 0, byType: {} as Record<string, number> });
+  const [artifactContent, setArtifactContent] = useState<{ artifactId: string; content: string; error?: string } | undefined>();
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
     vscode.postMessage({ type: 'listPipelineRuns' });
     vscode.postMessage({ type: 'listTaskAgents' });
+    vscode.postMessage({ type: 'listArtifacts' });
     vscode.postMessage({ type: 'loadLlmConfig' });
 
     // Keeps elapsed-time labels on running rows live without a per-event trigger.
@@ -163,6 +170,13 @@ export default function ManagerPanel() {
           break;
         case 'agentInboxSync':
           setInbox(message.value?.items || []);
+          break;
+        case 'artifactListSync':
+          setArtifactGroups(message.value?.groups || []);
+          setArtifactCounts(message.value?.counts || { total: 0, runs: 0, byType: {} });
+          break;
+        case 'artifactContentSync':
+          setArtifactContent(message.value);
           break;
         case 'setLlmConfig':
           try {
@@ -228,20 +242,24 @@ export default function ManagerPanel() {
       </div>
 
       <div className="px-3 pt-2 flex gap-1 shrink-0">
-        {(['pipeline', 'agent'] as const).map(tab => (
+        {(['pipeline', 'agent', 'review'] as const).map(tab => (
           <button
             key={tab}
-            onClick={() => setLane(tab)}
+            onClick={() => { setLane(tab); if (tab === 'review') vscode.postMessage({ type: 'listArtifacts' }); }}
             className={`px-3 py-1.5 rounded-t text-[11px] font-medium cursor-pointer transition-colors ${
               lane === tab ? 'bg-panel/50 text-foreground border-b-2 border-accentBlue'
                            : 'text-muted/60 hover:text-foreground'}`}
           >
-            {tab === 'pipeline' ? `Pipelines (${runs.length})` : `Task Agents (${visibleAgents.length})`}
+            {tab === 'pipeline' ? `Pipelines (${runs.length})`
+              : tab === 'agent' ? `Task Agents (${visibleAgents.length})`
+              : `Review (${artifactCounts.total})`}
           </button>
         ))}
       </div>
 
-      <div className="p-3 border-b border-border/40 shrink-0">
+      {/* The launcher belongs to the two lanes that launch things. Review reads what they
+          produced, and a prompt box above it would suggest it starts something. */}
+      <div className={`p-3 border-b border-border/40 shrink-0 ${lane === 'review' ? 'hidden' : ''}`}>
         <div className="flex gap-2">
           <input
             value={prompt}
@@ -270,7 +288,7 @@ export default function ManagerPanel() {
         {startError && <div className="mt-2 text-[10.5px] text-red-400">{startError}</div>}
       </div>
 
-      <div className={`flex-1 overflow-y-auto p-3 flex-col gap-2 ${lane === 'agent' ? 'hidden' : 'flex'}`}>
+      <div className={`flex-1 overflow-y-auto p-3 flex-col gap-2 ${lane === 'pipeline' ? 'flex' : 'hidden'}`}>
         {runs.length === 0 && (
           <div className="text-[11px] text-muted/50 text-center py-8">
             No pipeline runs yet. Describe a build above to start one.
@@ -442,6 +460,16 @@ export default function ManagerPanel() {
           );
         })}
       </div>
+
+      {/* ── Artifact review (Phase 7, M38) ───────────────────────────────── */}
+      {lane === 'review' && (
+        <ArtifactReview
+          groups={artifactGroups}
+          counts={artifactCounts}
+          content={artifactContent}
+          post={vscode.postMessage}
+        />
+      )}
     </div>
   );
 }

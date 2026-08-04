@@ -43,6 +43,7 @@ import { AgentToolExecutor, ExecutorDeps, readAttachments } from './tool-executo
 import { runAgentLoop } from './agent-loop';
 import { ArtifactStore } from './artifact-store';
 import { runVerification } from './verify-runner';
+import { captureVisualEvidence } from './visual-capture';
 import { worktreeManager } from './worktree-manager';
 import { buildApprovalGate, trackAndEmitUsage } from './pipeline-entry';
 
@@ -745,14 +746,30 @@ These tools degrade to a text search when no language server is available for a 
         const changedForVerification = committed?.files.map(f => f.relPath) ?? [];
         if (deps.artifacts && changedForVerification.length && !result.aborted && effectiveMode === 'agent') {
             try {
+                const verifyProfile = await deps.getProjectProfile();
+                const artifactStore = deps.artifacts;
                 const outcome = await runVerification({
                     runId: messageId,
                     cwd: rootPath,
-                    profile: await deps.getProjectProfile(),
+                    profile: verifyProfile,
                     changedFiles: changedForVerification,
-                    artifacts: deps.artifacts,
+                    artifacts: artifactStore,
                     signal,
                     log,
+                    // Visual evidence (M40). `browserSettings` is the same resolution the
+                    // browser_* tools were gated on earlier in this turn, so a user who
+                    // has the browser switched off gets the same answer here as there
+                    // rather than a second policy that happens to agree.
+                    captureVisual: () => captureVisualEvidence({
+                        runId: messageId,
+                        artifacts: artifactStore,
+                        profile: verifyProfile,
+                        browserSettings,
+                        browserUsable,
+                        configuredUrl: settings?.verificationPreviewUrl,
+                        log,
+                        signal,
+                    }),
                 });
                 emit({ type: 'VerificationCompleted', outcome: outcome.result.outcome, summary: outcome.result.summary, reportPath: outcome.reportPath });
                 webview.postMessage({

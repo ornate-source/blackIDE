@@ -2,8 +2,11 @@
 
 **Author:** Principal Engineer (IDE + agent infrastructure)
 **Date:** 2026-07-27
-**Status:** **In progress · rev 14 (2026-08-02)** — **phases 0–8 and 10 delivered; 9, 11 and 12
-part-delivered**; **59 of 71 gaps addressed — 54 complete and five partial**. Every **P0** is done.
+**Status:** **In progress · rev 15 (2026-08-04)** — **phases 0, 2–8 and 10 delivered; 1, 9, 11 and 12
+part-delivered**; **59 of 71 gaps addressed — 55 complete and four partial** (counted from the §3
+table's own status column, 2026-08-04). Every **P0** is done.
+**Phase 7 closed 2026-08-04** with the artifact review panel (M38) and visual capture (M40); the
+outstanding work is now confined to phases 9, 11 and 12, plus the model tier (§4.6).
 Phase 12's four privacy/authority gate clauses are **all met and enforced by tests**, including an
 egress register that fails the build when an undeclared network call is added. Phase 7 closed Phase 6's partial (M37) by building the evidence it was missing. The only work left in a started phase is the **model tier**
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
@@ -18,7 +21,7 @@ egress register that fails the build when an undeclared network call is added. P
 | 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **16 providers** (Bedrock/Vertex deferred with a reason) · zero-config local first run. |
 | 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
 | 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
-| 7 — Artifacts, steering & verification | 🟡 | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction. **Outstanding:** the artifact *review panel* is not rendered, and verification runs for task agents but not yet for pipeline runs or visual evidence. |
+| 7 — Artifacts, steering & verification | ✅ | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction · verification in all three lanes · **an artifact review panel where a comment on a region reaches the running agent's next turn** — the M39 path finally driven from a surface that knows what the user is looking at · visual capture that refuses to guess rather than attach a screenshot of the wrong app. |
 | 8 — Memory v2 | 🟡 | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back, closing a write-only loop open since plan.md's Phase 5. **Outstanding:** M45's memory visualization panel, and end-of-turn extraction is not yet driven by a model. |
 | 9 — Review automation, MCP parity & hardening | 🟡 | M47–M58 | **Security spine delivered:** secret redaction (P0) · untrusted-content posture with injection fixtures (P0) · one central workspace-boundary guard, replacing four scratch scripts that asserted nothing · per-tool circuit breakers · append-only audit trail, redacted on the way in. **Not started:** the Reviewer agent (M47/M48), MCP transport parity (M49–M51), sandbox tiers (M57), at-rest encryption (M58). |
 | 10 — Skill breadth, distribution & notebooks | ✅ | M59–M61 | **16 → 47 bundled packs** with an eval task each · a registry with pinned refs and checksums, and **load-time enforcement that a pack can never widen a capability** · notebook read/edit/checkpointing that preserves nbformat's `source` array shape. |
@@ -1018,9 +1021,9 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M35 | Parallel wave execution graduated or removed | P1 | E18 | 6 ✅ | **removed.** Unverified for six phases, and the role E18 reserved for it is now filled by the task-agent lane, where the isolation is asserted. Deletion asserted rather than assumed — including the stale compiled artifact |
 | M36 | Multi-root / multi-workspace correctness | P1 | E30 | 6 ✅ | `core/workspace-roots.ts` (longest-prefix attribution, boundary-aware) + `core/project-profile-cache.ts` (per-root profiles); worktree ops take the root they act on |
 | M37 | Multi-model race (N models, compare, pick) | P2 | E27 | 6 ✅ | `core/model-race.ts` — lexicographic ranking (a failing candidate never outranks a passing one), capped field, refuses to name a winner without evidence. **Closed by Phase 7 (M40)**: each candidate now carries a real verification result, so the ranking uses test evidence as designed |
-| M38 | Typed artifacts + review panel | P1 | E4 | 7 🟡 | `core/artifacts.ts` + `agent/artifact-store.ts` — seven types incl. binary, run association, comments, and an index that **rebuilds from filenames** when lost. **Partial:** the review panel itself is not rendered; artifacts are stored and typed but not yet browsable |
+| M38 | Typed artifacts + review panel | P1 | E4 | 7 ✅ | `core/artifacts.ts` + `agent/artifact-store.ts` — seven types incl. binary, run association, comments, and an index that **rebuilds from filenames** when lost. Panel delivered 2026-08-04: `core/artifact-review.ts` + a third Manager tab, browsing by run and by type, screenshots rendered through a webview URI scoped to the artifact directory alone. A comment is **persisted first and steered second**, and the panel says which happened — a review surface whose comments silently go nowhere is one nobody trusts twice |
 | M39 | Mid-run steering (comment-on-artifact → inject) | P1 | E4 | 7 ✅ | `core/steering.ts` + a drain at the top of every loop turn; a per-agent queue so a correction meant for one of four runs cannot reach the other three. Never lands between a `tool_use` and its `tool_result`, never produces two consecutive user turns |
-| M40 | Verification loop with evidence (tests + screenshots + recordings) | P1 | E5 | 7 🟡 | `core/verification.ts` + `agent/verify-runner.ts` — four outcomes (an unrunnable suite is **not** a pass), one bounded self-correction, a `test-report` artifact on every path. **Partial:** wired for task agents only; pipeline runs and visual capture are not |
+| M40 | Verification loop with evidence (tests + screenshots + recordings) | P1 | E5 | 7 ✅ | `core/verification.ts` + `agent/verify-runner.ts` — four outcomes (an unrunnable suite is **not** a pass), one bounded self-correction, a `test-report` artifact on every path. Wired into the pipeline and chat lanes 2026-08-03; visual capture 2026-08-04 (`core/visual-capture.ts` + `agent/visual-capture.ts`) — a configured preview URL is used alone rather than falling back to a guessed port, the allowlist is honoured, and a failed capture leaves the run `incomplete` **with the reason**, not silently upgraded |
 | M41 | Automatic memory extraction | P1 | E7 | 8 🟡 | `sortCandidates` — three bands (auto ≥0.8 / confirm ≥0.5 / drop) plus a content filter that rejects transcript narration, task restatements and questions. **Partial:** the extractor that *produces* candidates from a turn needs a model call and is not wired |
 | M42 | Contradiction detection on memory write | P2 | E7 | 8 ✅ | similarity **and** conflict, because either alone is useless; `decideWrite` returns `ask` and `supersede` archives rather than deletes. Lexical rather than embedding-based **by decision** — a memory write that can fail on a rate limit is one that silently does not happen |
 | M43 | Memory decay / archive | P2 | E7 | 8 ✅ | demote → archive, never hard-delete; high-confidence and used entries exempt. The stage is a function of elapsed time, not of how often the job ran |
@@ -1060,7 +1063,8 @@ table's own Pri column gives 13/30/22/6 — M28, M54 and M56 are P0 and were nev
 P0 tally, which is why the rev-4 text claimed "3 P0 items outstanding" while listing only M14, M15
 and M23.)*
 
-**Delivered so far (Phases 0–12; 9, 11 and 12 partial): 59 of 71 — 54 complete, five partial** (2026-08-02). The four
+**Delivered so far (Phases 0–12; 1, 9, 11 and 12 partial): 59 of 71 — 55 complete, four partial**
+(2026-08-04; M38/M40 closed with Phase 7, M60/M61/M63 with Phase 10 and the CLI). The four
 milestones carried as partial in rev 5 (M3, M10, M17, M19) are closed, M20–M27 landed with them, and
 M28–M30 closed Phase 5.
 
@@ -2420,9 +2424,51 @@ evidence; a deliberately broken change is caught by verify, not by the user.
 > outcome than an honest `unverifiable` — and it is `unverifiable` producing a *document* that makes
 > "100% of runs emit evidence" measurable rather than aspirational.
 >
-> **Still open in Phase 7:** the artifact review panel (M38) and visual capture. `planVerification`
-> requires a screenshot when a UI file changes and `evaluateVerification` reports it missing, so UI
-> work still lands as `incomplete` by design rather than as verified.
+> **Delivered 2026-08-04 — the last two clauses, and the phase closes.**
+>
+> | Gate clause | Status | Where |
+> |---|---|---|
+> | a comment changes executor behaviour within one turn without losing context | **met** | the review panel (M38) → `routeComment` → the live agent's `SteeringQueue` → the loop's drain |
+> | a deliberately broken change is caught by verify, not by the user | **met** | `evaluateVerification`'s `failed` path, asserted in `verification.test.ts` |
+>
+> **The review panel (M38) was the missing *surface*, not the missing model.** The typed store, the
+> index, the run association and `addComment`/`undeliveredComments` all shipped with the phase and
+> nothing called them. `core/artifact-review.ts` is the decision layer — group by run, filter by
+> type, and route a comment — and the panel is a third tab in the Manager beside Pipelines and Task
+> Agents, because "what is my machine doing" and "what did it produce" are one question.
+>
+> **A comment is stored first and steered second, and the two are reported separately.** Most review
+> happens after a run ends, so refusing comments on finished runs would gut the feature; accepting
+> them while implying delivery would be worse. Every comment persists on the artifact; a comment on a
+> *live* run is additionally queued as a steering note, and only then marked delivered. The panel
+> says which of the two happened, in the button label and under it.
+>
+> **This is what M39 was built for.** Until now steering had one entry point: a `window.prompt`
+> behind a Steer button, which cannot carry which artifact the user is reading or which lines they
+> meant. The queue has accepted `artifactPath` and `region` since the phase opened and nothing ever
+> supplied them. A selection in the panel now does, capped at 600 characters on a line boundary —
+> quoting a 400-line plan back at the agent would displace the budget the correction needs.
+>
+> **Visual capture (M40) refuses more often than it guesses, on purpose.** `planVerification` has
+> required a screenshot for UI changes since the phase opened and nothing produced one, so *every* UI
+> change landed `incomplete` — a requirement that cannot be satisfied is not a gate, it is a
+> permanent warning, and people stop reading those. `core/visual-capture.ts` decides where to point a
+> browser: a configured `verificationPreviewUrl` is used **alone** (a URL that is down does not fall
+> back to a guessed port — a screenshot of a *different* app reported as evidence is worse than no
+> screenshot), otherwise the stack's own documented dev port on loopback, and the navigation
+> allowlist is honoured rather than stepped around. A HEAD probe answers "is anything serving" in
+> milliseconds instead of paying 2 s of Chromium launch plus a 30 s navigation timeout to find out;
+> it is registered in the egress accounting like any other outbound call, because a register that
+> skips its loopback entries cannot be relied on for the interesting ones.
+>
+> **Both directions of the clause are asserted.** A UI change lands `verified` when capture succeeds
+> and stays `incomplete` when it does not — the second test is the one that matters, since "UI
+> changes become verified" is trivially satisfiable by treating a missing screenshot as acceptable,
+> which is the decay the fourth outcome exists to prevent. The capture never throws outward and
+> always closes its browser: a verification step that can fail a run, or leak a Chromium per UI
+> change, is one people switch off.
+>
+> **Phase 7 is ✅.** vitest **1 629/62** · harness 418/418 · eval green, no regression.
 
 ### Phase 8 — Memory v2
 *Covers M41–M46. Depends on Phase 3 (embeddings/rerank).*

@@ -236,6 +236,20 @@ export class TaskAgentRegistry {
         return this.live.get(id)?.steering.pending ?? 0;
     }
 
+    /**
+     * Agents a comment can still reach, for the review panel (M38).
+     *
+     * Derived from the same `live` map and the same terminal-status test `steer` uses, so
+     * the panel's "this run is live" badge and the steer call's own answer cannot disagree.
+     * Two independent notions of live is how a UI comes to offer an action that always
+     * fails.
+     */
+    liveIds(): string[] {
+        return Array.from(this.live.entries())
+            .filter(([, entry]) => !isTerminalStatus(entry.summary.status))
+            .map(([id]) => id);
+    }
+
     list(): TaskAgentSummary[] {
         const live = Array.from(this.live.values()).map(e => e.summary);
         const byId = new Map<string, TaskAgentSummary>();
