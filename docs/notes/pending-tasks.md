@@ -1,18 +1,13 @@
 # Black IDE — Pending Tasks
 
-**Derived from:** [`enhancement.md`](./enhancement.md) rev 15 (2026-08-04) · **canonical for open
+**Derived from:** [`enhancement.md`](./enhancement.md) rev 16 (2026-08-04) · **canonical for open
 work** — what exists rather than what is missing is [`features.md`](./features.md); see
 [`README.md`](./README.md) for who owns what.
-**Audited against the tree:** 2026-08-04 — every open row below was re-checked in code, not read off
-the previous revision's claims.
-**Baseline at audit time:** `tsc -b` clean · vitest **1 629/1 629 / 62 suites** · harness 418/418 ·
-eval green, no regression vs `eval/baseline.json` · webview builds · `extension.ts` **699 LOC**
+**Audited against the tree:** 2026-08-04 — every row below was re-checked in code, not read off the
+previous revision's claims.
+**Baseline at audit time:** `tsc -b` clean · vitest **1 946/1 946 / 72 suites** · harness 418/418 ·
+eval green, no regression vs `eval/baseline.json` · webview builds · `extension.ts` **698 LOC**
 (≤700 gate).
-
-**Organised by phase.** The previous revision ordered this list by execution wave, which was right
-while three phases were being closed in parallel and is wrong now: what is left is four phases'
-worth of independent work, and the question a reader arrives with is "what is missing from phase N".
-The wave a task belongs to is a column.
 
 ---
 
@@ -21,160 +16,177 @@ The wave a task belongs to is a column.
 | Phase | Status | Open | Closed since the last audit |
 |:--:|:--:|:--:|---|
 | 0 | ✅ | — | |
-| **1** | 🟡 | 1 | — · blocked on the model tier (§4.6), not on effort |
-| 2–6 | ✅ | — | |
-| **7** | ✅ | **0** | **T6 (M40 visual capture) · T7 (M38 review panel)** — the phase closed 2026-08-04 |
-| **8** | 🟡 | 2 | |
-| **9** | ❌ | 7 | |
-| 10 | ✅ | — | T1 (M61) · T2 (M60) closed 2026-08-03 |
-| **11** | 🟡 | 3 | T3 (M63 CLI) closed 2026-08-03 |
-| **12** | 🟡 | 5 | |
+| **1** | ✅ | **0** | **P1-1** — the LSP-over-grep gate is measured, with a floor |
+| 2–10 | ✅ | — | |
+| **8** | ✅ | **0** | **P8-1 (M41)** · **P8-2 (M45)** |
+| **9** | ✅ | **0** | **all seven** — P9-1 (M57) · P9-2 (M47) · P9-3 (M49) · P9-4 (M50) · P9-5 (M51) · P9-6 (M48) · P9-7 (M58) |
+| **11** | 🟡 | **1** | P11-1 (M62 boundary) · P11-3 (M65 daemon) |
+| **12** | ✅ | **0** | P12-1 (M67) · P12-2 (M68) · P12-3 (M66); P12-4/P12-5 resolved as positions |
+| — | — | — | **X-1** — the model tier, named in sixteen revisions and blocking five phases |
 
-**Eighteen tasks are open across five phases**, plus one cross-cutting capability (§4.6). Three of
-the eighteen are recommended won't-dos rather than work — see §6.
+**One task is open.** Eighteen were open at the last audit.
 
 | Pri | Count | Tasks |
 |:--:|:--:|---|
-| P1 | 7 | P1-1 · P9-1 (M57) · P9-2 (M47) · P9-3 (M49) · P11-1 · P11-2 (M62) · X-1 (§4.6) |
-| P2 | 6 | P8-1 (M41) · P9-4 (M50) · P9-5 (M51) · P9-6 (M48) · P11-3 (M65) · P12-1 (M67) |
-| P3 | 6 | P8-2 (M45) · P9-7 (M58) · P12-2 (M68) · P12-3 (M66) · P12-4 (M70) · P12-5 (M71) |
+| P1 | 1 | **P11-2** (M62 — the physical package move) |
 
-Nothing claimed as delivered was found missing.
+Nothing claimed as delivered was found missing. Two items previously carried as ❌ are now recorded
+as **deliberate positions** rather than debt — see §3.
 
 ---
 
-## 1. Phase 1 — Language-server tools & tests *(1 open)*
+## 1. The one open task
+
+### P11-2 — Physical package move to `packages/agent-core/` · **P1 · Phase 11**
 
 | # | Task | M | Pri | Depends on | Acceptance |
 |:--:|---|:--:|:--:|---|---|
-| **P1-1** | Assert the **LSP-over-grep** gate: symbol questions resolve through the language server rather than a text search | M6/M7 gate | P1 | **§4.6** | The gate is measured on the eval set rather than asserted in prose |
+| **P11-2** | Move the core into a publishable package | M62 | P1 | ~~P11-1~~ **(done)** | The package builds and is consumable on its own; harness green throughout |
 
-The tools themselves shipped — eight of them in `tools/lsp-tools.ts`, with rename across six files
-asserted in a real extension host. What is missing is the *measurement*, and it needs a tier of the
-eval harness that spends real model calls. This is the same blocker as §4.2's ⚠ rows and is tracked
-once, at **X-1**.
+**The dependency is cleared.** P11-1 closed on 2026-08-04: the boundary is transitively enforced,
+60 modules are reachable from `agent-core/index.ts`, and none of them imports `vscode`. The floor
+in `agent-core-boundary.test.ts` rose 45 → 60 rather than falling, which is what the clause asked
+for.
 
----
+**What the previous revisions got wrong about this task, and the correction.** It has been
+described as "mechanical, once the boundary is known to hold" and "merely large before it". Now
+that the boundary does hold, the cost can be measured instead of estimated, and it is larger than
+"mechanical" implies:
 
-## 2. Phase 8 — Memory v2 *(2 open)*
+- The reachable set is **60 files, 50 of them in `src/core/`** — a directory of about 90. The move
+  splits it in half, and the 40 modules left behind would import their moved neighbours across a
+  package boundary.
+- **45 `path.join(DIST, …)` requires** in `test/harness.js` and `eval/*.js` point at compiled paths
+  that move.
+- `package.json`'s `main`, `bin/blackide` and the whole `dist/` layout shift, because covering two
+  source roots changes `rootDir` and `dist/core/x.js` becomes `dist/src/core/x.js`.
 
-| # | Task | M | Pri | Depends on | Acceptance |
-|:--:|---|:--:|:--:|---|---|
-| **P8-1** | Model-driven **end-of-turn extraction** — produce memory candidates from a finished turn | M41 | P2 | **§4.6** for its accuracy gate | Candidates arrive from a turn; `sortCandidates`' three bands and the content filter already judge them |
-| **P8-2** | Memory **visualization panel** | M45 | P3 | — | Entries, confidence, provenance and status are browsable; the data all exists already |
+**How it should be done.** As an npm **workspace** — `packages/agent-core` with its own
+`package.json` and `tsconfig`, resolved through `node_modules` so a runtime `require` works without
+a bundler or a path-alias shim — in **one change**, with the harness green at each step. §4.7 of
+`enhancement.md` records this in full.
 
-**P8-1 is half-built and the built half is the hard one.** `sortCandidates` already bands candidates
-(auto ≥0.8 / confirm ≥0.5 / drop) and filters out transcript narration, task restatements and
-questions. What is missing is the producer — a model call at end of turn — which is why the
-milestone is 🟡 rather than ❌ and why its *accuracy* clause is blocked on the same tier as P1-1.
-
----
-
-## 3. Phase 9 — Review automation, MCP parity & hardening *(7 open — the largest remaining phase)*
-
-The security spine of this phase shipped: redaction, untrusted-content posture, the workspace-boundary
-guard, circuit breakers, the audit trail. What is left is the Reviewer agent, MCP transport parity
-and the sandbox.
-
-| # | Task | M | Pri | Depends on | Acceptance |
-|:--:|---|:--:|:--:|---|---|
-| **P9-1** | **Sandboxed execution tiers** — policy → restricted (cwd-jailed, env-scrubbed, no-network, capped) → contained | M57 | P1 | — | A tier-2 command cannot reach the network, asserted rather than configured; unattended pipeline runs default to restricted or better |
-| **P9-2** | **Reviewer mode + `black-ide.reviewChanges`** on the working diff → a review artifact; high-confidence findings offer a checkpointed fix | M47 | P1 | **P9-1** | Read-only allowlist enforced *at the executor*; findings land as a typed artifact in the review panel; ≥60% TP at ≤1 FP per 10 findings *(the rate needs §4.6 to measure)* |
-| **P9-3** | **MCP streamable HTTP + SSE transports + OAuth** | M49 | P1 | — | A remote MCP server works; a transport failure degrades with a visible reason rather than hanging |
-| **P9-4** | **MCP resources & prompts primitives** | M50 | P2 | P9-3 | Resources readable as context; prompts listed and invocable |
-| **P9-5** | **MCP vetted allowlist for pipeline runs** | M51 | P2 | P9-3 | An unvetted server stays refused in an unattended run (G3's default holds); vetting is per server and explicit |
-| **P9-6** | Opt-in **`gh` PR review** | M48 | P2 | P9-2 | Never ambient — posts only through the M67/M68 per-action confirmation, which cannot be granted in advance |
-| **P9-7** | Optional **at-rest encryption** for `.blackIDE/` | M58 | P3 | — | Off by default; enabling it breaks neither the audit trail's append-only property nor the memory markdown's byte-stable round-trip |
-
-**Sequencing inside the phase: P9-1 before P9-2.** The Reviewer runs under a read-only allowlist, and
-sandbox tiers are the mechanism that makes "read-only" structural rather than advertised. Same
-argument as M56's: a gate that content can reach is not a gate.
-
-**P9-2 emits into the panel Phase 7 just built.** That ordering was the reason to close Phase 7
-first, and it now holds — the Reviewer needs a `review` artifact type and a renderer, and both exist.
+**What it must not be is a half-move.** A repository with part of `core/` inside a package and part
+outside is worse than either end state, and "mechanical" is exactly the estimate that invites
+someone to start it and stop.
 
 ---
 
-## 4. Phase 11 — Headless core, CLI & SDK *(3 open)*
+## 2. Closed since the last audit
 
-| # | Task | M | Pri | Depends on | Acceptance |
-|:--:|---|:--:|:--:|---|---|
-| **P11-1** | Refactor `tool-executor`, `codebase-index`, `artifact-manager` onto the **host interface** | M62 | P1 | — | Each crosses the boundary; `agent-core-boundary.test.ts`'s floor **rises** rather than falls |
-| **P11-2** | Physical package move to **`packages/agent-core/`** | M62 | P1 | P11-1 | Mechanical, once the boundary is known to hold; harness green throughout |
-| **P11-3** | Local **daemon** driving headless runs, results in the inbox | M65 | P2 | — | A daemon run's results appear in the inbox — the phase's fourth gate clause |
+Every row the 2026-08-04 audit listed as open, and what closed it. Kept for one revision so the
+progress is auditable, then removable.
 
-**P11-1 before P11-2, and not the other way round.** The boundary is declared and transitively
-enforced today; moving files before the last three modules cross it turns a compile-time property
-into a merge conflict. The move is mechanical *after* the refactor and merely large before it.
-
----
-
-## 5. Phase 12 — Remote execution, integrations & long tail *(5 open)*
-
-All four of this phase's privacy/authority gate clauses are already met and enforced by tests. What
-is open is feature surface, not posture.
-
-| # | Task | M | Pri | Depends on | Acceptance |
-|:--:|---|:--:|:--:|---|---|
-| **P12-1** | Per-tracker **fetchers** (GitHub Issues / Linear / Jira) behind `core/task-sources.ts` | M67 | P2 | — | Still refuses to guess a tracker from a bare key; each fetcher declared in the egress register |
-| **P12-2** | **Slack transport** for completion notices | M68 | P3 | P12-1 | Outbound goes through the per-action confirmation; no `alwaysAllow` field can express a standing grant |
-| **P12-3** | **Remote / BYO-runner** execution | M66 | P3 | **P11-3** | Opt-in; we do not become a data processor by default |
-| **P12-4** | Domain verticals | M70 | P3 | — | **Recommend won't-do** — see §6 |
-| **P12-5** | Voice input | M71 | P3 | — | Scheduled last, deliberately — see §6 |
+| # | M | What closed it |
+|:--:|:--:|---|
+| **X-1** | — | `core/eval-model-tier.ts` + `eval/model-tier.js` + `eval/model-tasks.js`. Budget enforced **before** each call, N-run variance with a noise band, its own baseline. Added beyond the spec: `GATE_FLOORS`, because a no-regression gate is a ratchet that can be created green at any level |
+| **P1-1** | M6/M7 | The `lspOverGrep` family — six symbol questions, scored on which tool the model reaches for **first**, with an 80% floor that fails independently of any baseline |
+| **P8-1** | M41 | `agent/memory-turn.ts` — inject before a turn, extract after it. The audit said "the producer is missing"; the truth was that **nothing in the editor imported any of Phase 8** |
+| **P8-2** | M45 | A Memory tab: entries, confidence, provenance phrased as an answer to "why do you believe this", decay stated as what will happen and when |
+| **P9-1** | M57 | Three tiers that **refuse rather than degrade**. Asserted against a real process: a tier-2 command cannot open a socket, write outside its jail, or read the credentials it was started with |
+| **P9-2** | M47 | Reviewer mode + `black-ide.reviewChanges`. Read-only at the executor *and* confined; `parseFindings` drops any finding that cannot state a concrete failure |
+| **P9-3** | M49 | Streamable HTTP, HTTP+SSE, OAuth. Every failure names a cause and a next action instead of timing out identically |
+| **P9-4** | M50 | Resources readable as context, prompts listed and invocable |
+| **P9-5** | M51 | Vetting by **identity**, never by name — a renamed entry running a different binary is a different server |
+| **P9-6** | M48 | `black-ide.postReviewToPr`, a separate command, through the per-action confirmation |
+| **P9-7** | M58 | Line-level sealing so the trail stays append-only; exact-bytes decryption so the markdown round-trip holds |
+| **P11-1** | M62 | `codebase-index` and `artifact-manager` crossed; `tool-executor`'s last direct `vscode` reference removed. See §3 for why it is not exported |
+| **P11-3** | M65 | `blackide daemon` / `blackide queue`, file-based, claim-by-rename, results in the inbox |
+| **P12-1** | M67 | Three fetchers, reachable only through a `kind` a URL or explicit `#n` supplied |
+| **P12-2** | M68 | A Slack forward with no `send` — it builds an action and stops |
+| **P12-3** | M66 | BYO runner with **no default endpoint**; a runner that will not say which tier it enforced is refused |
 
 ---
 
-## 6. Cross-cutting, and the three that should not be built
+## 3. Corrections to the previous revision
 
-### X-1 — The model tier (§4.6) · **P1 · not phase work**
+Three places where doing the work showed the task description was wrong. Recorded because a
+roadmap that quietly re-scopes itself is one nobody can audit.
 
-| # | Task | Pri | Unblocks |
-|:--:|---|:--:|---|
-| **X-1** | `--models` on `run-eval.js`: off by default, its own baseline, a budget cap, N-run variance | P1 | **P1-1** · **P8-1**'s accuracy clause · **P9-2**'s TP/FP rate · 8 of §4.2's ⚠ rows |
+**1. P8-1 was understated.** It read "the producer is missing — `sortCandidates` already bands
+candidates". Both halves of that are true and it missed the larger fact: `sortCandidates` banded
+candidates nobody produced, `applyDecay` aged entries nobody wrote, and `MemoryStore.forPrompt`
+rendered a section no prompt included. Phase 8 was five correct pure modules with **no caller in
+the editor at all**. The task was the loop, not the producer.
 
-The single prerequisite named most often in the roadmap, and the one thing fifteen revisions of "M3,
-still short" have not produced. It is a harness capability with a cost model — keys in CI, a budget
-per run, non-determinism to control — and it **must not become a phase task**: hanging five phases'
-deterministic gates off a non-deterministic runner is how a green gate becomes a disabled gate.
+**2. P11-1 named three modules; two of them were the task.** `codebase-index` and
+`artifact-manager` crossed the boundary and are exported. `tool-executor` is deliberately not:
+its last *direct* `vscode` reference is gone, but it still reaches the LSP bridge, the browser and
+the editor's tool runner — because it is the **editor's** executor, and `host-executor.ts` has been
+its boundary-crossing counterpart since M63. Dragging it across would leave the CLI loading five
+hundred lines of editor semantics it can never execute. Two implementations of a narrow interface
+is the answer M62 already gave for the host itself.
 
-### Recommended won't-dos
-
-| # | Task | M | Why |
-|:--:|---|:--:|---|
-| **P12-4** | Domain verticals | M70 | E17's own condition is "ship only if a real user pulls for it." Fifteen revisions, no pull. Carrying it as ❌ implies debt where there is a deliberate position; **§4.5 is where it belongs** |
-| **P12-5** | Voice input | M71 | "Genuinely low value for us, scheduled last." Keep it scheduled last rather than promoting it |
-| **P9-7** | At-rest encryption | M58 | Not a won't-do — but it is the one P3 whose *cost* is in the invariants it must not break (append-only audit, byte-stable memory round-trip), so it should be sized before it is scheduled |
+**3. P9-2 said the `review` artifact type "exists".** It did not — `ARTIFACT_TYPES` had seven
+entries and none of them was `review`. The *renderer* existed, which is what the note meant. Added.
 
 ---
 
-## 7. Progress log
+## 4. Deliberate positions (not open work)
+
+Moved out of the task list on 2026-08-04 and into `enhancement.md` §4.5, where the document's own
+convention says deliberate architectural positions belong.
+
+| # | M | Position |
+|:--:|:--:|---|
+| **P12-4** | M70 | **Domain verticals — ⏸️, condition unmet.** E17 shipped with its own condition: "ship only if a real user pulls for it." Sixteen revisions, no pull. Carrying it as ❌ implied debt and invited someone to clear it; building a vertical for nobody is how a general tool acquires a domain it cannot maintain. It returns to the plan the day a user asks |
+| **P12-5** | M71 | **Voice input — ⏸️, still scheduled last.** Not a won't-do. E31 calls it "genuinely the lowest-value item in this document"; the only change is the label. A deliberate ordering choice reads differently from an omission, and the roadmap had been showing the second |
+
+**P9-7 is no longer on this list.** The previous revision flagged it as "the one P3 whose *cost* is
+in the invariants it must not break… it should be sized before it is scheduled". That was the right
+call and the sizing turned out to be the design: line-level sealing to keep the audit trail
+append-only, exact-bytes decryption to keep the memory round-trip byte-stable. Both invariants hold
+and are asserted.
+
+---
+
+## 5. Progress log
 
 | Date | Phase | Delivered | Evidence |
 |---|:--:|---|---|
 | 2026-08-03 | — | Audit; this document | Baseline re-verified: vitest 1 488/56 |
-| 2026-08-03 | 10 | **T1 (M61)** — `read_notebook`/`edit_notebook_cell` registered; `read_file`/`edit_file` now refuse a `.ipynb` | vitest 1 511/57 · harness 418/418 · eval green |
-| 2026-08-03 | 10 | **T2 (M60)** — `tools/skill-fetch.ts` + `black-ide.addSkillFrom`, https-only transport check | vitest 1 535/58 · harness 418/418 · eval green |
-| 2026-08-03 | 10 | **T0** — Phase 10 → ✅; M60/M61 inventory rows corrected | §3 and the summary table now agree |
-| 2026-08-03 | 11 | **T3 (M63)** — `host-executor.ts` + `headless-run.ts` + `bin/blackide`; the CLI runs a real task | vitest 1 562/59 · harness 418/418 · eval green · fixture-repo run branches, commits, verifies |
-| 2026-08-03 | 7 | **T4 + T5 (M40)** — verification wired into the pipeline and chat lanes; two Phase 7 gate clauses met | vitest 1 577/60 · harness 418/418 · eval green |
-| 2026-08-04 | 7 | **T6 (M40)** — visual capture: `core/visual-capture.ts` + `agent/visual-capture.ts`, wired into all three lanes; a UI change lands `verified` when capture succeeds and `incomplete` **with a reason** when it does not | vitest 1 604/61 · harness 418/418 · eval green |
-| 2026-08-04 | 7 | **T7 (M38)** — the artifact review panel: `core/artifact-review.ts` + a third Manager tab; a region comment reaches the running agent on its next turn. **Phase 7 → ✅** | vitest 1 629/62 · harness 418/418 · eval green · webview builds |
+| 2026-08-03 | 10 | **T1 (M61)** — notebook tools | vitest 1 511/57 |
+| 2026-08-03 | 10 | **T2 (M60)** — remote skill-pack install | vitest 1 535/58 |
+| 2026-08-03 | 11 | **T3 (M63)** — headless executor + `blackide` | vitest 1 562/59 |
+| 2026-08-03 | 7 | **T4 + T5 (M40)** — verification in the pipeline and chat lanes | vitest 1 577/60 |
+| 2026-08-04 | 7 | **T6 (M40)** — visual capture | vitest 1 604/61 |
+| 2026-08-04 | 7 | **T7 (M38)** — the artifact review panel. **Phase 7 → ✅** | vitest 1 629/62 |
+| 2026-08-04 | — | **X-1** — the model tier, plus **P9-1 (M57)** sandbox tiers | vitest 1 702/64 · the network-denial assertion runs against a real socket |
+| 2026-08-04 | 9 | **P9-2 (M47)** — Reviewer mode; `extension.ts` 699 → 654 by extraction | vitest 1 742/65 |
+| 2026-08-04 | 9 | **P9-3/4/5 (M49–M51)** — MCP transports, primitives, vetting | vitest 1 799/67 · tested against a real HTTP server |
+| 2026-08-04 | 8 | **P8-1 + P8-2 (M41, M45)** — the memory loop and its panel. **Phase 8 → ✅** | vitest 1 838/68 |
+| 2026-08-04 | 9 | **P9-6 + P9-7 (M48, M58)**. **Phase 9 → ✅** | vitest 1 883/70 |
+| 2026-08-04 | 11 | **P11-1 (M62)** — the boundary floor rose 45 → 60 | vitest 1 883/70 |
+| 2026-08-04 | 11 | **P11-3 (M65)** — the daemon, results in the inbox | vitest 1 907/71 |
+| 2026-08-04 | 12 | **P12-1/2/3 (M66–M68)**. **Phase 12 → ✅** | vitest 1 946/72 |
 
-**Found while closing Phase 7, and fixed here rather than filed:**
+**Found while closing this wave, and fixed here rather than filed:**
 
-1. **`evaluateVerification` reported `incomplete` without saying why.** The outcome named what was
-   missing (`screenshot`) and never why it was missing, so the same word covered "the browser is
-   switched off", "no dev server was listening" and "Playwright is not installed" — three different
-   afternoons. `Evidence.visualUnavailable` now carries the reason into the summary and the report.
-2. **`SteeringQueue` has accepted `artifactPath` and `region` since Phase 7 and nothing supplied
-   them.** The only caller was a `window.prompt` behind the Steer button, which cannot know what the
-   user is reading. The fields were designed for the panel that had not been built; both halves now
-   exist, and the region is capped on a line boundary so quoting a plan back at the agent cannot
-   displace the budget the correction needs.
-3. **A comment on a finished run had no defined behaviour.** The registry's `steer` refuses one —
-   correctly — but the review surface is used mostly *after* a run ends, so refusing outright would
-   have made the panel useless for its main case. Comments now always persist on the artifact and are
-   marked delivered only when a queue actually took them, with the panel stating which happened.
-4. **`extension.ts` is at 699 of its 700-line gate.** The review panel needed no new lines there
-   because the provider already exposed `artifacts` and `taskAgents`, but the next feature that needs
-   a field will hit the gate. Worth naming now rather than discovering it inside an unrelated change.
+1. **Seatbelt and bwrap match *resolved* paths.** macOS `os.tmpdir()` is `/var/folders/…` symlinked
+   to `/private/var/folders/…`, so a profile granting write access to the unresolved cwd grants it
+   to a path the kernel never sees — every write inside the workspace denied, presenting as "the
+   build fails under tier 2" rather than as a wrong path.
+2. **Under `(deny default)` the macOS loader stats `/`** while resolving APFS firmlinks. Without
+   `(literal "/")` every binary aborts before its first instruction, which reads as a broken sandbox
+   rather than a missing rule.
+3. **`isLoopback` was first written with `/^127\./`,** which matches `127.0.0.1.evil.com`. Its own
+   test caught it. Same class of mistake as the `includes('localhost')` it replaced.
+4. **`fetch` hides the OS error code one level down, and two on a dual-stack host** (inside an
+   `AggregateError` holding one attempt per address family). Reading only `error.code` reports every
+   network failure as a protocol error — pointing the reader at the wrong thing, with confidence.
+5. **A fresh IV per seal means ciphertext differs on every call even when the document does not.**
+   A byte comparison would have rewritten `memory.md` on every idle consolidation pass, defeating
+   the mtime guard and filling the user's git status with churn.
+6. **An encrypted memory file with the wrong key parses as *empty*,** and the next mutation would
+   have rendered that empty document over the user's memories — on the day they change their
+   passphrase or open the repo on a second machine. `read` now distinguishes "missing" from
+   "unreadable" and `mutate` refuses the second.
+7. **The pipeline lane constructed an `MCPClient` and never connected anything to it.** MCP was
+   unavailable unattended *by accident* rather than by policy, and the two are indistinguishable
+   until somebody "fixes" the missing call.
+8. **`REVIEW_TOOLS` was hand-listed and immediately missed two tools** — exactly the failure
+   `tools.ts` documents at `CODE_INTEL_READ_TOOLS`. `tool-surface.test.ts` caught it; it now spreads
+   the constant.
+9. **`extension.ts` hit its 700-line gate, as the last audit predicted.** Answered by extracting
+   `architecture-seed.ts` rather than by raising the gate. 698 now — the same warning applies to the
+   next feature that needs a field.

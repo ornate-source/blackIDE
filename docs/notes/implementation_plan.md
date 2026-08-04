@@ -13,6 +13,66 @@ oversight. It is not a status document — open work lives in
 
 ---
 
+## Preview — the Agent Office at a glance
+
+Three surfaces, one model. The **Front Desk** in the sidebar answers *"does anything need me?"* and is
+always one click away; the **Floor** in an editor tab answers *"what is everything doing?"* and is
+opened deliberately; the **status bar item** answers both in eight characters and costs nothing.
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ● ● ●     blackIDE — ornate_source                                                                       │
+├───┬──────────────────────────────────────┬────────────────────────────────────────────────────────────────┤
+│ ▣ │ ▾ AGENT OFFICE               ④  ⟳    │  NavHeader.tsx  ×  │  ✦ Agent Office  ×                        │
+│ ⌕ ├──────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+│ ⑂ │ ── NEEDS YOU ──────────────── 3 ──   │ Floor │ Front Desk ③ │ Records ⑦ │ Memory ④    ⟳               │
+│ ▷ │ ┌────────────────────────────────┐   │┌ slots ────┐┌ spend ────┐┌ tokens ───┐┌ needs you ──┐          │
+│ ⚙ │ │ ⏸ PARKED · waiting 41 min      │   ││ 3 of 4    ││ 16% spent ││ 148 200   ││ 1 ⏸   1 ✔   │          │
+│───│ │ Add OAuth refresh to the auth… │   ││ 1 free    ││ $0.82/$5  ││ over 4 run││ 1 ✖         │          │
+│ ✦ │ │ pipeline · plan ready          │   │└───────────┘└───────────┘└───────────┘└─────────────┘          │
+│ ▲ │ │ [Read plan] [Approve] [Reject] │   │ WORK                              lane: all ▾                  │
+│ │ │ └────────────────────────────────┘   │┌────────────────────────────────────────────────────┐          │
+│ │ │ ┌────────────────────────────────┐   ││ ● RUNNING   task  ta_m4x1  Frontend · Sonnet 4.5   │          │
+│ │ │ │ ✔ READY · finished 3 min ago   │   ││ Rebuild the navigation header so it collapses at…  │          │
+│ │ │ │ Extract the retry helper out…  │   ││ branch  blackide/agent/ta_m4x1                     │          │
+│ │ │ │ task · 6 files  +142 / −18     │   ││ ▸ edit_file  src/components/NavHeader.tsx   1.4 s  │          │
+│ │ │ │ ✔ verified · 14/14 passing     │   ││ turn [#######-----] 7/25   ctx [#######---] 72%    │          │
+│ │ │ │ [Apply] [Diff]      [Discard]  │   ││ [ Steer ]  [ Diff ]  [ Worktree ]        [ Stop ]  │          │
+│ │ │ └────────────────────────────────┘   │└────────────────────────────────────────────────────┘          │
+│ │ │ ┌────────────────────────────────┐   │┌────────────────────────────────────────────────────┐          │
+│ │ │ │ ✖ FAILED · 12 min ago          │   ││ ⏸ NEEDS YOU  pipe  pr_88f  Sr Architect · Sonnet   │          │
+│ │ │ │ Migrate the settings store to… │   ││ Ship the settings redesign · waiting 41 min        │          │
+│ │ │ │ branch blackide/agent/ta_m3w7  │   ││ HLD ▸ LLD ▸ Plan ▸ Design ▸ Backend ▸ Frontend ▸ T │          │
+│ │ │ │ [Open branch]       [Dismiss]  │   ││                    ▲ waiting · runs in sequence    │          │
+│ │ │ └────────────────────────────────┘   ││ [ Read plan ]  [ Approve ]             [ Reject ]  │          │
+│ │ ├──────────────────────────────────────┤└────────────────────────────────────────────────────┘          │
+│ │ │ ── ON THE FLOOR ───────────── 3/4 ─  │┌────────────────────────────────────────────────────┐          │
+│ │ │ ● ta_m4x1 task nav header  turn 7/25 ││ ✔ READY     task  ta_m3z9      Agent · Sonnet 4.5  │          │
+│ └─│ ● ta_m4x2 task auth mw     turn 3/25 ││ Extract the retry helper out of tool-runner        │          │
+│   │ ● pr_88f  pipe Frontend    phase 5/7 ││ 6 files +142/−18 · verified 14/14 · test-report.md │          │
+│   │ ○ dm_0142 dmon done 02:14     [seen] ││ [ Apply ]  [ Diff ]  [ Worktree ]     [ Discard ]  │          │
+├───┴──────────────────────────────────────┴────────────────────────────────────────────────────────────────┤
+│ git dev*   ⊘ 0  ⚠ 2        ◆ Office 3▸ 1!          Ln 42, Col 8   TypeScript   UTF-8                      │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| What you are looking at | Detail |
+|---|---|
+| **Front Desk** — `buildInbox`'s output, unchanged and un-re-sorted: parked, then ready, then failed. Each card leads with what happened and ends with the transitions that actually exist | §4.3 |
+| **`READY` carries the same weight as a failure.** Nothing is wrong, nothing is on a timer, and the work quietly never lands — the case the inbox was built for | `agent-inbox.ts:112` |
+| **ON THE FLOOR** — one line per live item, four lanes (`task` · `pipe` · `chat` · `dmon`) in one roster, keyed by real ids you can paste into `git` | §2.1 |
+| **Every header tile sources from `GovernorSnapshot`** — which the code already computes and today throws away | `agent-governor.ts:166` |
+| **`turn 7/25` and `ctx 72%`** replace the token-rate sparkline: an agent about to run out of loop, or about to compact, is something you can act on | §2.4 |
+| **`runs in sequence`** printed on the pipeline card. Parallel wave execution was deleted in Phase 6, so the strip is a position indicator and says so | §2.3 R3 |
+| **The branch appears on every card that has one** — it is the recovery path, not metadata | §2.3 R5 |
+| **Status bar** `◆ Office 3▸ 1!` — three running, one waiting. The only always-visible surface, and the answer to what is left of F16 | §4.2 |
+
+Nothing above is drawn from a field that does not exist; the audit of what does and does not is §1.
+The wireframes for each surface on its own — sidebar, Floor, Desk, empty and budget-exhausted states —
+are §4.
+
+---
+
 ## 0. Verdict on the previous revision
 
 The previous revision proposed a dark "Agent Swarm Monitor" — five telemetry tiles, per-node cards

@@ -20,18 +20,18 @@ for what is open. See [`README.md`](./README.md) for who owns what.
 | Phase | Status | Covers | Evidence |
 |---|:--:|---|---|
 | 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**671** (≤700 gate met **and now enforced by a test**; **699** as of 2026-08-04) · eval harness with a wrong-idiom metric, since grown to **112 tasks / 21 fixtures** · vitest wired · skill diagnostics. |
-| 1 — Language-server tools & tests | 🟡 | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; 5 of 6 gates asserted, incl. rename across 6 files in a real extension host. **Outstanding:** the LSP-over-grep gate needs the model tier (§4.6). |
+| 1 — Language-server tools & tests | ✅ | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; rename across 6 files asserted in a real extension host. The **LSP-over-grep gate is now measured**, not asserted in prose: the model tier scores which tool a symbol question reaches for *first*, with an 80% floor that fails independently of any baseline (§4.6). |
 | 2 — Rules, prompts & modes | ✅ | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel with **rule *and* tool toggles** — the tool half enforced at the executor, not advertised. M9's stronger reading closed as won't-do. |
 | 3 — Retrieval substrate | ✅ | M14–M22 | **All nine milestones.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction **36.9%** at realistic path depth · git history tools · **index build 5 000 files in 1 247 ms** against a ≤2 s gate · 11 `@`-mention providers incl. `@symbol`, `@docs`, `@web`. |
 | 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **15 providers** (recounted 2026-08-04; Bedrock/Vertex deferred with a reason) · zero-config local first run. |
 | 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
 | 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
 | 7 — Artifacts, steering & verification | ✅ | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction · verification in all three lanes · **an artifact review panel where a comment on a region reaches the running agent's next turn** — the M39 path finally driven from a surface that knows what the user is looking at · visual capture that refuses to guess rather than attach a screenshot of the wrong app. |
-| 8 — Memory v2 | 🟡 | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back, closing a write-only loop open since plan.md's Phase 5. **Outstanding:** M45's memory visualization panel, and end-of-turn extraction is not yet driven by a model. |
-| 9 — Review automation, MCP parity & hardening | 🟡 | M47–M58 | **Security spine delivered:** secret redaction (P0) · untrusted-content posture with injection fixtures (P0) · one central workspace-boundary guard, replacing four scratch scripts that asserted nothing · per-tool circuit breakers · append-only audit trail, redacted on the way in. **Not started:** the Reviewer agent (M47/M48), MCP transport parity (M49–M51), sandbox tiers (M57), at-rest encryption (M58). |
+| 8 — Memory v2 | ✅ | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back. **The loop is closed:** `agent/memory-turn.ts` injects before a turn and extracts after it, and M45's panel shows what is believed, at what confidence, from where. Until now none of the five pure modules was imported by the editor — four correct algorithms and no loop. |
+| 9 — Review automation, MCP parity & hardening | ✅ | M47–M58 | **Security spine:** redaction · untrusted-content posture · one central workspace-boundary guard · circuit breakers · append-only audit trail, redacted on the way in. **Closed 2026-08-04:** sandbox tiers that **refuse rather than degrade** when nothing can enforce them, asserted against a real socket (M57) · Reviewer mode, read-only at the executor *and* confined (M47) · MCP streamable-HTTP/SSE/OAuth where a failure names a cause and a next action instead of timing out (M49–M51) · opt-in `gh` PR review through the per-action gate (M48) · at-rest encryption that breaks neither the append-only trail nor the byte-stable round-trip (M58). |
 | 10 — Skill breadth, distribution & notebooks | ✅ | M59–M61 | **16 → 47 bundled packs** with an eval task each · a registry with pinned refs and checksums, and **load-time enforcement that a pack can never widen a capability** · notebook read/edit/checkpointing that preserves nbformat's `source` array shape. |
-| 11 — Headless core, CLI & SDK | 🟡 | M62–M65 | The core boundary **declared and transitively enforced** (zero `vscode` reachable), a Node host implementing it with no editor, and a CLI surface with a JSON event stream and CI exit codes. **Outstanding:** the physical package move, the executor's host refactor, and the daemon (M65). |
-| 12 — Remote execution, integrations, analytics | 🟡 | M66–M71 | **All four gate clauses met:** the default build phones home to nobody (enforced by a source-walking egress accounting test) · an org policy can only **tighten**, never widen · nothing is posted externally without a per-action confirmation that *cannot* be granted in advance · disabling the analytics sink removes its egress by construction. **Not started:** remote execution (M66), domain verticals (M70), voice (M71). |
+| 11 — Headless core, CLI & SDK | 🟡 | M62–M65 | The core boundary **declared and transitively enforced** (zero `vscode` reachable), a Node host, a CLI with a JSON event stream and CI exit codes, and now a **local daemon whose results reach the inbox** (M65). `codebase-index` and `artifact-manager` crossed the boundary — the reachable floor rose 45 → 60. **Outstanding: the physical package move only** (§4.7 records what it actually costs, which is more than "mechanical"). |
+| 12 — Remote execution, integrations, analytics | ✅ | M66–M71 | **All four gate clauses met:** the default build phones home to nobody (source-walking egress accounting) · an org policy can only **tighten** · nothing is posted externally without a per-action confirmation that *cannot* be granted in advance · disabling the sink removes its egress. **Closed 2026-08-04:** the three tracker fetchers (M67), the Slack forward (M68), and BYO-runner execution with **no default endpoint of ours** (M66). M70 and M71 are ⏸️ deliberate positions rather than debt — see their rows. |
 
 **Re-verified 2026-08-04 by running everything:** harness **418/418** · vitest **1 629 / 62
 suites** · eval gate green (112 tasks / 21 fixtures · stack detection 100% 21/21 · skill exact-match
@@ -637,13 +637,13 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 🟡 | boundary declared (`src/agent-core/index.ts`) and **transitively enforced** by `__tests__/agent-core-boundary.test.ts`; four dependency edges cut to make it hold. **Partial:** the modules are named, not yet physically moved into a package |
 | M63 | Headless CLI | P1 | E14 | 11 ✅ | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. `agent-core/host-executor.ts` (the second implementation of the executor shape, on `AgentHost`) + `headless-run.ts` + `bin/blackide` 2026-08-03; a fixture-repo run branches, commits and verifies, and `--output pr` that cannot push exits 1 rather than 0 |
 | M64 | SDK entry point | P2 | E14 | 11 ✅ | the barrel *is* the SDK surface: `AgentHost` plus the loop, router, retrieval, memory and safety exports, with `silentNotifier`/`denyingApproval` baselines for embedding |
-| M65 | Background (local daemon) agents | P2 | E14 | 11 ❌ | not started |
-| M66 | Remote/cloud agent execution | P3 | E14 | 12 ❌ | not started; unblocked by Phase 11's host seam but depends on the runner that phase did not finish |
-| M67 | Issue-tracker context + task sources (Issues/Linear/Jira) | P2 | E33 | 12 🟡 | `core/task-sources.ts` — reference parsing that **refuses to guess** a tracker from a bare key, plus the outbound model. **Partial:** the per-tracker fetchers are not wired |
-| M68 | Slack / chat completion notifications | P3 | E33 | 12 🟡 | notices are rendered for the **inbox**, which is local; forwarding onward is an outbound action like any other and goes through the confirmation gate. **Partial:** no Slack transport |
+| M65 | Background (local daemon) agents | P2 | E14 | 11 ✅ | `agent-core/daemon.ts` + `core/daemon-protocol.ts`, `blackide daemon` / `blackide queue`. File-based queue (a socket-less daemon loses requests; a file waits), **claim-by-rename** so two daemons cannot run one task twice, and results that land in the **inbox** — the phase's fourth gate clause |
+| M66 | Remote/cloud agent execution | P3 | E14 | 12 ✅ | `agent-core/remote-runner.ts` — a `HostProcess` over the user's own runner. **No default endpoint and no service of ours**, so an unconfigured install has no remote execution rather than remote execution pointed at us. The M57 tier travels with each command and the runner must echo back what it enforced: a missing `enforced` field is refused, because "it was missing so it probably complied" makes the tiers decorative over a network |
+| M67 | Issue-tracker context + task sources (Issues/Linear/Jira) | P2 | E33 | 12 ✅ | `core/task-sources.ts` (reference parsing that **refuses to guess** a tracker from a bare key, plus the outbound model) + `core/task-fetchers.ts` (the three fetchers). A fetcher is reachable only via a `kind` a URL or explicit `#n` supplied — there is no try-each-tracker path, which is what would send the user's token to two vendors they do not use |
+| M68 | Slack / chat completion notifications | P3 | E33 | 12 ✅ | notices still go to the local **inbox** by default; `core/slack-transport.ts` forwards one, after the user reads it. The module has no `send` — it builds an `OutboundAction` and stops, so no standing grant is expressible. Handles Slack's `200 {"ok": false}`, which is the commonest way such an integration is quietly dead |
 | M69 | Self-hosted team analytics + tightening-only org policy | P2 | E32 | 12 ✅ | `core/org-policy.ts` (tighten-only, asserted as a **capability-score** property over the whole structure, not field by field) + `core/egress.ts` (no default endpoint anywhere in the source; an allowlist projection that sends counts, never content) |
-| M70 | Domain verticals (firmware, modernization pipeline template) | P3 | E17 | 12 ❌ | not started. E17 says "ship only if a real user pulls for it" — no such pull |
-| M71 | Voice input | P3 | E31 | 12 ❌ | not started; "genuinely low value for us, scheduled last" |
+| M70 | Domain verticals (firmware, modernization pipeline template) | P3 | E17 | 12 ⏸️ | **Deliberate position, not debt.** E17's own condition is "ship only if a real user pulls for it"; sixteen revisions, no pull. Carried as ⏸️ rather than ❌ so the roadmap stops reading as though this is owed — the condition is unmet, and building it anyway would be building for nobody |
+| M71 | Voice input | P3 | E31 | 12 ⏸️ | **Deliberate position.** E31 calls it "genuinely the lowest-value item in this document… scheduled last". Still scheduled last, and now labelled as a choice rather than as an omission |
 
 **Counts:** 71 gaps — **P0: 13 · P1: 30 · P2: 22 · P3: 6**. All 71 are scheduled.
 
@@ -2724,9 +2724,26 @@ eval-set debt, because the eval set is not what is missing.
 | Cross-session memory reuse | ~0 | ≥70% of eligible facts | 8 |
 | Injection-fixture escalations | untested | **0** (hard gate) | 9 |
 
-### 4.6 The model tier — the one thing phases 0–4 still need
+### 4.6 The model tier — ✅ delivered 2026-08-04
 
-*Added 2026-08-01, when it became the only outstanding item in five delivered phases.*
+*Added 2026-08-01, when it became the only outstanding item in five delivered phases. Built
+2026-08-04, sixteen revisions after it was first named.*
+
+> **What shipped.** `core/eval-model-tier.ts` (budget, variance, gate, scoring) +
+> `eval/model-tier.js` (the I/O shell) + `eval/model-tasks.js` (13 tasks across the three blocked
+> measurements). Reached only via `node eval/run-eval.js --models`; gated against its own
+> `eval/baseline-models.json`; incapable of moving a number in the deterministic baseline.
+>
+> Every requirement below was met, and one was added that this section did not anticipate:
+> **`GATE_FLOORS`**. A no-regression gate is a ratchet — it stops a number falling and says nothing
+> about whether it was ever good enough, so it can be created green at 20%. Phase 1's clause is not
+> "LSP-over-grep does not get worse", it is *"symbol questions resolve through the language
+> server"*: a property with a bar. `lspOverGrep` carries an 80% floor, `reviewFindings` carries
+> P9-2's 60% verbatim, and a run below either fails on the day the baseline is first recorded.
+>
+> The other lesson worth recording: **a truncated run reports `incomplete`, never `passed`.** The
+> budget is checked *before* each call rather than tallied after, because the day a green tick does
+> the most damage is the day the key is rate-limited and two of thirteen tasks ran.
 
 Four of §4.2's rows and Phase 1's last gate all need the same thing: **an opt-in tier of the eval
 harness that spends real model calls.** It is written up here, as a capability with a shape and a
@@ -2759,6 +2776,35 @@ currently blocks bad merges — deterministic, fast, free, green — into one th
 for reasons nobody can reproduce. A gate that fails randomly gets switched off, and then nothing is
 guarded. Separate tiers, separate baselines, and the honest ⚠ marks stay in §4.2 until the tier
 exists.
+
+### 4.7 The package move (M62's second half) — what it actually costs
+
+*Added 2026-08-04, after the boundary refactor it was sequenced behind was finished.*
+
+The roadmap has described this as "mechanical, once the boundary is known to hold". The boundary
+now holds — transitively enforced, 60 modules reachable, zero `vscode` among them — so the
+mechanical part is unblocked and the estimate can be replaced with a measurement.
+
+**It is mechanical and it is not small.** The reachable set is 60 files, and 50 of them are in
+`src/core/`, which holds about 90. A physical move therefore *splits that directory in half*: the
+40 core modules that stay behind would import their moved neighbours across a package boundary, and
+`core/` would stop being a place you can read top to bottom. That is a real cost the word
+"mechanical" hides.
+
+The rest of the blast radius, measured rather than guessed:
+
+- **45 `path.join(DIST, …)` requires** in `test/harness.js` and `eval/*.js`, each pointing at a
+  compiled path that moves.
+- **`package.json`'s `main`**, `bin/blackide`, and the `dist/` layout every one of those depends
+  on — because covering two roots changes `rootDir`, and `dist/core/x.js` becomes `dist/src/core/x.js`.
+- Every extension-side import of a moved module.
+
+**Why it is still worth doing, and what it needs.** The payoff is a publishable SDK, which is the
+entire point of Phase 11. It should be done as an npm **workspace** (`packages/agent-core` with its
+own `package.json` and `tsconfig`, resolved through `node_modules` so runtime `require` works
+without a bundler or a path-alias shim), in one change, with the harness green at each step. What it
+must not be is a half-move: a repository with some of `core/` in a package and some outside it is
+worse than either end state, and that is the failure mode a "mechanical" estimate invites.
 
 ### 4.3 Coverage check
 
@@ -2817,6 +2863,16 @@ features we can or should "support":
   `agent-core` is what would make it possible later, so this stays open rather than blocked.
 - **A learned skill/rule router.** Rule-based resolution stays until the eval set shows precision
   demands otherwise.
+- **Domain verticals** (firmware, a modernization pipeline template — M70). *Moved here
+  2026-08-04.* E17 shipped with its own condition attached: "ship only if a real user pulls for
+  it." Sixteen revisions later there has been no such pull. Carrying it as ❌ implied debt and
+  invited someone to clear it; the honest position is that the condition is unmet, and building a
+  vertical for nobody is how a general tool acquires a domain it cannot maintain. It moves back to
+  the plan the day a user asks.
+- **Voice input** (M71) — *not* a won't-do, and listed here only so the distinction is visible.
+  E31 calls it "genuinely the lowest-value item in this document… scheduled last", and it stays
+  scheduled last. The change on 2026-08-04 is that it is labelled ⏸️ rather than ❌: a deliberate
+  ordering choice reads differently from an omission, and the roadmap had been showing the second.
 
 ---
 

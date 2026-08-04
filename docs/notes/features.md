@@ -55,7 +55,8 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 9 | **Agent inbox with parking and notifications** | ✅ | 🟢 | Blocked / parked / failed / finished-unreviewed surfaced with badge counts, notified once per (item, reason). `core/agent-inbox.ts` |
 | 10 | **Multi-model race** | ✅ | 🟢 | The same prompt to N models in N worktrees, ranked on real verification evidence then diff size, willing to report no winner. Nothing auto-applies. `core/model-race.ts` |
 | 11 | **Request classification / auto-orchestrate** | ✅ | 🟡 | Decides when a prompt deserves a plan or a pipeline — **keyword heuristics, not a model**, so an unusually phrased request can be misrouted. `agent/planning-engine.ts` |
-| 12 | **Background / off-machine agents** | 📋 | — | A local daemon driving headless runs with results in the inbox. Unblocked by the Phase 11 host seam; the daemon (M65) is not started. |
+| 12 | **Background / off-machine agents** | ✅ | ✅ | `blackide daemon` / `blackide queue` — a file-based queue anything can fill, claim-by-rename so two daemons cannot run one task twice, and results that reach the **inbox** (M65). Off-machine execution is the BYO runner (#13). `agent-core/daemon.ts` |
+| 13 | **Remote / BYO-runner execution** | ✅ | ✅ | Commands run on a machine the user operates, as a `HostProcess` swap — the filesystem stays local, so only the slow, isolation-worthy part moves (M66). **No default endpoint and no service of ours.** The sandbox tier travels with each command and a runner that will not say which tier it enforced is refused; an unreachable one never falls back to running locally. `agent-core/remote-runner.ts` |
 
 ## 2. The fleet — agents and modes
 
@@ -66,7 +67,7 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 15 | **Custom modes** | ✅ | 🟢 | YAML frontmatter, three scopes, hot reload, and inline diagnostics for a malformed definition. |
 | 16 | **Per-mode tool allowlist and iteration budget** | ✅ | 🟢 | Enforced at the executor as well as advertised, so a mode cannot execute what it never offered. `agent/tool-executor.ts` |
 | 17 | **Learn mode** | ✅ | 🟢 | Explains before editing and is read-only *by construction* — no write or exec tool is in the allowlist at all. |
-| 18 | **Reviewer agent** | 📋 | — | A read-only mode reviewing the working diff into a review artifact, with opt-in `gh` PR review. M47/M48; sequenced behind sandbox tiers (#66). |
+| 18 | **Reviewer agent** | ✅ | ✅ | Reviewer mode + `black-ide.reviewChanges` → a `review` artifact, with `black-ide.postReviewToPr` behind the per-action confirmation (M47/M48). Read-only **at the executor** and confined to the restricted tier; findings without a concrete failure scenario are dropped, which is what the ≤1-FP-in-10 clause costs. `core/code-review.ts` |
 | 19 | **Domain-vertical fleets** | 📋 | — | Firmware and legacy-modernisation verticals. Out of our lane unless a real user pulls for them — see §8. |
 
 ## 3. Knowledge, rules and memory
@@ -80,14 +81,14 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 24 | **Team / org shared rules** | ✅ | 🟢 | Injected first so they survive truncation, and not user-disableable. |
 | 25 | **Long-term project memory** | ✅ | 🟢 | Durable, human-readable markdown under `.blackIDE/knowledge/`. `core/knowledge-base.ts` |
 | 26 | **Memory v2 — decay, dedup, contradiction, consolidation** | ✅ | 🟢 | Typed tiered entries beside a markdown projection that round-trips byte-for-byte; contradictions **ask** rather than overwrite, decay demotes then archives and never deletes. `core/memory-model.ts`, `core/memory-lifecycle.ts` |
-| 27 | **Automatic memory extraction** | 🟡 | 🟡 | The judgement half is built and tested — three confidence bands plus a content filter rejecting narration, restatements and questions. **Missing: the producer**, a model call at end of turn (M41). |
+| 27 | **Automatic memory extraction** | ✅ | ✅ | The whole loop (M41): inject before a turn, extract after it through the `edit` role, band the candidates, queue the middling ones for a one-click confirm. Extraction is fire-and-forget by signature — it returns nothing and cannot reject, so no lane can make a user wait on it or fail because of it. `core/memory-extract.ts` · `agent/memory-turn.ts` |
 | 28 | **`update_mindmap` tool** | ✅ | 🟢 | The agent's own way to record modules, functions and linkages into `project_mindmap.md`, by section append or replace. |
 | 29 | **Deterministic stack sync to the mindmap** | ✅ | 🟢 | The detected stack is upserted into a stable section by the extension, not the model, so re-syncing never duplicates it. |
 | 30 | **Per-phase auto-sync** | ✅ | 🟢 | Each pipeline phase appends what it touched, so the record does not depend on an executor remembering to write it. |
 | 31 | **Mindmap size capping** | ✅ | 🟢 | At 100 KB the oldest machine-written Auto-Sync sections drop first and agent-authored ones never do. |
 | 32 | **Mindmap read-back into the prompt** | ✅ | 🟢 | Injected as its own budgeted block, excluding auto-sync so a run does not re-read its own history. Closed a write-only loop open since `plan.md` Phase 5. `core/mindmap-readback.ts` |
 | 33 | **Architecture mindmap documents** | ✅ | 🟢 | `docs/mindmap/{mind,tech,hld,lld}.md` — the hand-maintained record the pipeline's analysis phases read and write alongside the generated one. |
-| 34 | **Memory visualization panel** | 📋 | — | Entries, links, confidence and provenance rendered for a human (M45). The data all exists already. |
+| 34 | **Memory visualization panel** | ✅ | ✅ | A Memory tab in the Manager panel (M45): entries grouped by status and ordered by confidence, provenance phrased as an answer to "why do you believe this", and decay stated as what will happen and when. "Edit memory.md" is a primary action, because ADR 007 makes the file the user's. `core/memory-view.ts` |
 
 ## 4. Retrieval and context
 
@@ -123,9 +124,9 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 57 | **Tool circuit breakers** | ✅ | 🟢 | Per tool, per run: three consecutive failures or a blown latency budget disables it with a visible reason, refused at the executor as well as unadvertised. `core/tool-breaker.ts` |
 | 58 | **Vision / image input** | ✅ | 🟢 | Images on user turns *and* tool results, in both OpenAI and Anthropic shapes. |
 | 59 | **Browser automation** | ✅ | 🟡 | Playwright driving a real Chromium behind a domain allowlist, installed on demand. **Limitation:** the install is a first-run cost and the allowlist is per-workspace. `tools/browser-tool.ts` |
-| 60 | **MCP client** | 🟡 | 🟡 | Works, but **stdio only and Agent-mode only** — refused in pipeline runs. Remote transports, resources and prompts are M49–M51. `tools/mcp-client.ts` |
+| 60 | **MCP client** | ✅ | ✅ | Three transports — stdio, streamable HTTP, HTTP+SSE — plus OAuth, resources and prompts (M49–M51). A failure names a cause and a next action rather than timing out identically for a crash, a typo and an expired token. Unattended runs connect only **vetted** servers, identified by command line or origin+path rather than by name. `tools/mcp-transport.ts` |
 | 61 | **Agent hooks** | ✅ | 🟡 | `beforeToolCall` / `afterToolCall` / `beforeResponse` / `onError` exist and run, but are **under-documented and unused by first-party features**, so the shape is unproven. `agent/hooks.ts` |
-| 62 | **Sandboxed execution tiers** | 📋 | — | Restricted (cwd-jailed, env-scrubbed, no-network) and contained tiers above today's policy gate (M57). Today `run_command` is policy-gated but not contained. |
+| 62 | **Sandboxed execution tiers** | ✅ | ✅ | policy → restricted → contained (M57), via `sandbox-exec` or bubblewrap. **Refuses rather than degrades**: a confined tier on a machine with no mechanism returns a refusal naming what is missing, because "could not confine, ran anyway" is indistinguishable from confinement — including to the tests. Asserted against a real socket. `core/sandbox.ts` |
 
 ## 6. Editor integration and platform
 
@@ -148,7 +149,7 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 77 | **Headless core with an enforced boundary** | 🟡 | 🟢 | Nothing reachable from `agent-core` imports `vscode`, checked **transitively** on every commit, with a Node host proving it. **Missing:** three modules still to cross the host interface, and the physical package move (M62). `src/agent-core/` |
 | 78 | **SDK entry point** | ✅ | 🟢 | The core barrel plus the host interface, with silent-notifier and denying-approval baselines for embedding. `agent-core/index.ts` |
 | 79 | **Extension marketplace / Open VSX compatibility** | ✅ | 🟢 | Full gallery and API-proposal compatibility tables in `config/product.json`, already at bar. |
-| 80 | **Voice input** | 📋 | — | Scheduled last, deliberately — low value for this product (M71). |
+| 80 | **Voice input** | ⏸️ | — | Still scheduled last, deliberately (M71). Relabelled 2026-08-04 from 📋 to ⏸️: E31 calls it "genuinely the lowest-value item in this document", and an ordering choice should not read as an omission. |
 
 ## 7. Safety, privacy and quality engineering
 
@@ -166,12 +167,12 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 90 | **Per-action outbound confirmation** | ✅ | 🟢 | Nothing is posted externally without confirming *that* post; `OutboundContext` has no field for a remembered answer, so a standing grant is inexpressible. |
 | 91 | **Local-only telemetry and diagnostics export** | ✅ | 🟢 | Nothing leaves the machine by default, and as of Phase 12 that is enforced rather than asserted. `core/telemetry-sink.ts` |
 | 92 | **Self-hosted team analytics** | 🟡 | 🟡 | Off by default with **no endpoint anywhere in the source**, sending an eight-field allowlist projection — counts, never content. **Missing:** the sink transport and any dashboard (M69). |
-| 93 | **Issue-tracker task sources** | 🟡 | 🟡 | Reference parsing that refuses to guess a tracker from a bare key, plus the outbound model. **Missing:** the per-tracker fetchers (GitHub/Linear/Jira) and a Slack transport (M67/M68). `core/task-sources.ts` |
+| 93 | **Issue-tracker task sources** | ✅ | ✅ | Reference parsing that refuses to guess a tracker from a bare key, plus the three fetchers (M67) and a Slack forward (M68). No try-each-tracker path — that is what sends a user's token to two vendors they do not use. Slack has no `send`: it builds an action the user confirms. `core/task-fetchers.ts` · `core/slack-transport.ts` |
 | 94 | **Skill validation diagnostics** | ✅ | 🟢 | Malformed packs surface in the Problems panel instead of collapsing into a silent `undefined`; catches packs that can never fire and packs that would fire every turn. `agent/skill-diagnostics.ts` |
 | 95 | **Test architecture — four tiers** | 🟡 | 🟢 | Harness **418** · vitest **1 629 / 62 suites** · an eval gate with a recorded baseline. **One tier is down:** the 19 real-host integration tests have not launched since Phase 5 — `@vscode/test-electron` spawns `Contents/MacOS/Electron` and VS Code 1.131 ships `Contents/MacOS/Code`. |
 | 96 | **Golden-task eval harness** | ✅ | 🟢 | 112 tasks over 21 fixtures gating stack detection, skill precision, wrong-idiom leakage, recall and index-build time, with a recorded baseline that fails the build on a regression. `eval/` |
 | 97 | **Opt-in model tier for the eval harness** | 📋 | — | `--models` on `run-eval.js` with its own baseline, a budget cap and N-run variance. **The oldest open item** — five metric rows and Phase 1's last gate all wait on it (§4.6 / X-1). |
-| 98 | **At-rest encryption for `.blackIDE/`** | 📋 | — | Optional and off by default (M58). Our directory is the user's repo, which is defensible, but it is not currently an option we offer. |
+| 98 | **At-rest encryption for `.blackIDE/`** | ✅ | ✅ | Optional, off by default, scoped per part (M58). Line-level sealing keeps the audit trail append-only — whole-file encryption would make every append a rewrite; exact-bytes decryption keeps the memory markdown's round-trip byte-stable. `core/at-rest.ts` |
 
 ## 8. Not scheduled — deliberate positions
 
@@ -184,7 +185,7 @@ Absent on purpose. Each is an architectural decision, not a missing feature.
 | 101 | **Ambient PR bot** | ⬜ | — | Review is explicit and per-action; nothing posts under your name without you seeing the text. |
 | 102 | **Bedrock and Vertex providers** | ⬜ | — | SigV4 signing and a Google OAuth exchange are auth implementations, not base URLs. A half-working entry would accept a key and fail every call. |
 | 103 | **Parallel pipeline-wave execution** | ⬜ | — | Deleted in Phase 6 rather than graduated — unverified for six phases, and its role is filled by task agents, where isolation is asserted. |
-| 104 | **Domain verticals** | ⬜ | — | E17's own condition was "ship only if a real user pulls for it." Fifteen revisions, no pull. Listed here rather than carried as debt. |
+| 104 | **Domain verticals** | ⬜ | — | E17's own condition was "ship only if a real user pulls for it." Sixteen revisions, no pull. Listed here rather than carried as debt; it returns to the plan the day a user asks. |
 
 ---
 

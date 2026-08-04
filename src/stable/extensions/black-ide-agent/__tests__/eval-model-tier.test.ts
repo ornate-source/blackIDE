@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
     BudgetLedger, DEFAULT_PRICING, ModelTierMetrics, approxTokens, estimateCostUsd,
-    gateModelMetrics, pricingFor, scoreExtraction, scoreLspOverGrep, scoreReview,
+    GATE_FLOORS, gateModelMetrics, pricingFor, scoreExtraction, scoreLspOverGrep, scoreReview,
     stdErrPct, summarise,
 } from '../src/core/eval-model-tier';
 
@@ -146,8 +146,13 @@ describe('gate: quiet on noise, loud on a real drop, never green on a truncated 
             metrics([{ family: 'lspOverGrep', ratePct: 80, stdErrPct: 4 }]),
         );
         expect(result.ok).toBe(false);
-        expect(result.regressions[0]).toMatch(/lspOverGrep: 80% → 40%/);
-        expect(result.regressions[0]).toMatch(/noise band/);
+        // Two complaints, not one: 40% is both a drop from the baseline *and* below
+        // `lspOverGrep`'s absolute floor. Reported separately because they need different
+        // fixes — one is "something regressed", the other is "this was never good enough".
+        const joined = result.regressions.join('\n');
+        expect(joined).toMatch(/lspOverGrep: 80% → 40%/);
+        expect(joined).toMatch(/noise band/);
+        expect(joined).toMatch(/below the 80% floor/);
     });
 
     it('an improvement is never a regression', () => {
@@ -188,6 +193,55 @@ describe('gate: quiet on noise, loud on a real drop, never green on a truncated 
         const result = gateModelMetrics(metrics([{ family: 'f', ratePct: 70 }]), undefined);
         expect(result.ok).toBe(true);
         expect(result.notes.join(' ')).toMatch(/No model baseline recorded yet/);
+    });
+});
+
+// ─── P1-1: the clause has a floor, not just a ratchet ───────────────────────
+
+describe('gate floors: a clause is a bar, not merely a direction', () => {
+    it('P1-1 fails below its floor even with no baseline to regress against', () => {
+        /*
+         * The distinction P1-1 turns on. A no-regression gate is a ratchet: it stops a
+         * number falling and says nothing about whether it was ever good enough — so it
+         * can be created green at any level, including 20%. The clause is "symbol
+         * questions **resolve through the language server**", which is a property with a
+         * bar, and `GATE_FLOORS` is that bar.
+         */
+        const result = gateModelMetrics(metrics([{ family: 'lspOverGrep', ratePct: 40, stdErrPct: 2 }]), undefined);
+        expect(result.ok).toBe(false);
+        expect(result.regressions[0]).toMatch(/below the 80% floor this clause requires/);
+        expect(result.regressions[0]).toMatch(/not merely below the baseline/);
+    });
+
+    it('P1-1 passes at its floor', () => {
+        expect(gateModelMetrics(metrics([{ family: 'lspOverGrep', ratePct: 85, stdErrPct: 3 }]), undefined).ok).toBe(true);
+    });
+
+    it('spends the error bar in the run\'s favour, so noise is not a failure', () => {
+        // 78% ± 4 reaches 80 within two standard errors: below the line, but not
+        // distinguishably below it.
+        expect(gateModelMetrics(metrics([{ family: 'lspOverGrep', ratePct: 78, stdErrPct: 4 }]), undefined).ok).toBe(true);
+    });
+
+    it('P9-2\'s floor is its acceptance clause verbatim', () => {
+        expect(GATE_FLOORS.reviewFindings).toBe(60);
+        expect(gateModelMetrics(metrics([{ family: 'reviewFindings', ratePct: 30, stdErrPct: 1 }]), undefined).ok).toBe(false);
+    });
+
+    it('a family with no clause has no floor, and only ratchets', () => {
+        expect(GATE_FLOORS.somethingElse).toBeUndefined();
+        expect(gateModelMetrics(metrics([{ family: 'somethingElse', ratePct: 5 }]), undefined).ok).toBe(true);
+    });
+
+    it('the floor still applies when a baseline exists and has not regressed', () => {
+        // A baseline recorded below the floor must not launder a failing clause into a
+        // passing gate. This is the case that makes the floor worth having at all.
+        const result = gateModelMetrics(
+            metrics([{ family: 'lspOverGrep', ratePct: 45, stdErrPct: 2 }]),
+            metrics([{ family: 'lspOverGrep', ratePct: 45, stdErrPct: 2 }]),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.regressions.join(' ')).toMatch(/below the 80% floor/);
     });
 
     it('a different model makes the comparison advisory rather than failing', () => {

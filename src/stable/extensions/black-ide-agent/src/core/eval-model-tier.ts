@@ -284,6 +284,34 @@ export interface ModelTierMetrics {
     families: FamilyStat[];
 }
 
+/**
+ * Absolute floors, independent of any baseline.
+ *
+ * A no-regression gate is a ratchet: it stops a number falling, and says nothing about
+ * whether the number was ever good enough. P1-1's clause is not "LSP-over-grep does not
+ * get worse", it is "**symbol questions resolve through the language server rather than a
+ * text search**" — a property, with a bar. So the families that correspond to a roadmap
+ * clause carry a floor here, and a run below it fails even on the day the baseline is
+ * first recorded.
+ *
+ * The numbers are the clauses:
+ *   `lspOverGrep`      — 80%. Phase 1's whole thesis is that eight language-server tools
+ *                        beat a text search on symbol questions; if the model reaches for
+ *                        grep first on one question in five, the tools are not earning the
+ *                        eight milestones spent building them.
+ *   `reviewFindings`   — 60%, which is P9-2's "≥60% TP at ≤1 FP per 10 findings" verbatim.
+ *                        `scoreReview` already enforces the conjunction per task, so a
+ *                        task only passes when both halves hold.
+ *   `memoryExtraction` — 70%. Lower than the others on purpose: extraction's failure is
+ *                        recoverable (a missed fact costs one re-derivation) where a
+ *                        review's is not (a wrong finding costs a developer's trust).
+ */
+export const GATE_FLOORS: Record<string, number> = {
+    lspOverGrep: 80,
+    reviewFindings: 60,
+    memoryExtraction: 70,
+};
+
 export interface GateOptions {
     /**
      * How many standard errors a drop must exceed before it counts. Two is the usual
@@ -334,9 +362,30 @@ export function gateModelMetrics(
         return { ok: false, regressions, notes };
     }
 
+    /*
+     * Floors first, and independently of the baseline.
+     *
+     * Checked before the no-regression comparison so that a first run — which has no
+     * baseline to regress against — still fails when a clause is not met. A gate that
+     * only ratchets is a gate that can be created green at any level.
+     */
+    for (const family of current.families) {
+        const floor = GATE_FLOORS[family.family];
+        if (floor === undefined) continue;
+        // The error bar is spent in the run's favour: a family whose rate is below the
+        // floor but whose confidence interval reaches it is noise, not a failure.
+        const band = sigma * family.stdErrPct;
+        if (family.ratePct + band < floor) {
+            regressions.push(
+                `  ✗ ${family.family}: ${family.ratePct}% (± ${family.stdErrPct}) is below the ${floor}% `
+                + 'floor this clause requires, not merely below the baseline.',
+            );
+        }
+    }
+
     if (!baseline) {
         notes.push('No model baseline recorded yet — run with --models --json to create one.');
-        return { ok: true, regressions, notes };
+        return { ok: regressions.length === 0, regressions, notes };
     }
 
     if (baseline.model !== current.model) {
@@ -346,7 +395,7 @@ export function gateModelMetrics(
             + `"${current.model}" — rates are not comparable across models, so the gate is advisory.`);
     }
 
-    const previous = new Map(baseline.families.map(f => [f.family, f]));
+    const previous = baseline ? new Map(baseline.families.map(f => [f.family, f])) : new Map<string, FamilyStat>();
     for (const family of current.families) {
         const before = previous.get(family.family);
         if (!before) {
