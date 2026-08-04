@@ -19,6 +19,8 @@
 // not reading the same filesystem the process is on. One indirection here is what makes
 // all three possible; `fs` everywhere is what makes them rewrites.
 
+import { SandboxTier } from '../core/sandbox';
+
 /** A workspace folder, in the shape `core/workspace-roots.ts` already uses. */
 export interface HostRoot {
     path: string;
@@ -60,7 +62,27 @@ export interface HostProcess {
         timeoutMs?: number;
         signal?: AbortSignal;
         onChunk?: (stream: 'stdout' | 'stderr', text: string) => void;
-    }): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut?: boolean }>;
+        /**
+         * The confinement tier this command must run under (M57).
+         *
+         * A host that cannot enforce the requested tier must set `refused` and **not run
+         * the command**. Silently running it unconfined is the one behaviour this field
+         * exists to make impossible: a remote runner (M66) that ignored the tier would
+         * turn a local guarantee into a claim about somebody else's machine, and the
+         * core would have no way to tell.
+         */
+        sandbox?: SandboxTier;
+    }): Promise<{
+        stdout: string;
+        stderr: string;
+        exitCode: number;
+        timedOut?: boolean;
+        /**
+         * Set when the requested tier could not be enforced. The command did **not** run;
+         * the string explains why and is safe to show a model.
+         */
+        refused?: string;
+    }>;
 }
 
 /**

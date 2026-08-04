@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
+import { runSandboxed } from '../core/sandbox-runner';
 import {
     AgentHost, ApprovalRequest, HostFileSystem, HostNotifier, HostProcess, HostRoot,
     HostSecrets, HostStorage,
@@ -182,14 +183,39 @@ function envSecrets(env: Record<string, string | undefined>): HostSecrets {
 
 function nodeProcess(): HostProcess {
     return {
-        run(command, options = {}) {
+        async run(command, options = {}) {
+            /*
+             * The confined path (M57).
+             *
+             * Delegated in full rather than partially reimplemented here. The comment
+             * this replaces was right that half a containment is worse than none, and
+             * the same argument applies to a second copy of it: `runSandboxed` owns the
+             * profile, the env scrub, the private temp and the refusal, and this host
+             * owns none of them.
+             */
+            if (options.sandbox && options.sandbox !== 'policy') {
+                const result = await runSandboxed({
+                    command,
+                    cwd: options.cwd || process.cwd(),
+                    tier: options.sandbox,
+                    timeoutMs: options.timeoutMs,
+                    signal: options.signal,
+                    onChunk: options.onChunk,
+                });
+                return {
+                    stdout: result.stdout, stderr: result.stderr,
+                    exitCode: result.exitCode, timedOut: result.timedOut,
+                    refused: result.refused,
+                };
+            }
+
             return new Promise((resolve) => {
                 const child = spawn(command, {
                     shell: true,
                     cwd: options.cwd,
-                    // The environment is passed through rather than scrubbed. M57's
-                    // execution tiers are where scrubbing belongs, and doing half of it
-                    // here would give the appearance of containment without the substance.
+                    // Unscrubbed, and correctly so: this branch is the `policy` tier,
+                    // where a human approved the command. Scrubbing here would break
+                    // working setups to protect a command the user explicitly allowed.
                     env: process.env,
                 });
                 let stdout = '';

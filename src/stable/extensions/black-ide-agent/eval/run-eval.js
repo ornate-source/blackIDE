@@ -19,10 +19,14 @@
  *      (Phase 3). Lexical tier only — see eval/retrieval.js for why that is the
  *      right baseline rather than a limitation to apologise for.
  *
- * ── What it deliberately does NOT measure yet ────────────────────────────────
- *   - End-to-end task success / wrong-idiom rate. Both need real model calls;
- *     scaffolded as the opt-in model tier, not run in CI.
- *   Claiming that today would be inventing a baseline we cannot defend.
+ * ── The model tier (X-1), added 2026-08-04 ───────────────────────────────────
+ *   node eval/run-eval.js --models   # also measure what needs real model calls
+ *
+ * Off unless asked for, gated against its own `eval/baseline-models.json`, and
+ * incapable of moving a number in the deterministic baseline below. That
+ * separation is the whole design: hanging five phases' deterministic gates off a
+ * non-deterministic, paid runner is how a green gate becomes a disabled one. See
+ * `eval/model-tier.js`.
  */
 
 const path = require('path');
@@ -280,10 +284,29 @@ async function main() {
         const out = path.join(__dirname, 'baseline.json');
         fs.writeFileSync(out, JSON.stringify(result.metrics, null, 2) + '\n', 'utf8');
         process.stdout.write(`baseline written to ${path.relative(process.cwd(), out)}\n`);
+        // The model tier still runs when asked, so `--models --json` records both
+        // baselines. It writes its own file and cannot touch the one just written.
+        if (process.argv.includes('--models')) {
+            const { runModelTier } = require('./model-tier');
+            process.exit(await runModelTier(process.argv) ? 0 : 1);
+        }
         process.exit(0);
     }
 
     return result;
+}
+
+/**
+ * The model tier, after the deterministic gate and never instead of it.
+ *
+ * Ordered this way so a failure is attributable: if the deterministic tier is red, the
+ * build stops before a single paid call is made, and nobody is left asking whether the
+ * model number moved because the resolver changed.
+ */
+async function maybeRunModelTier() {
+    if (!process.argv.includes('--models')) return;
+    const { runModelTier } = require('./model-tier');
+    if (!await runModelTier(process.argv)) process.exit(1);
 }
 
 /*
@@ -343,7 +366,7 @@ function gate(result) {
     process.stdout.write('  No regression against eval/baseline.json.\n\n');
 }
 
-main().then(gate).catch((err) => {
+main().then(gate).then(maybeRunModelTier).catch((err) => {
     process.stderr.write(`\nFAIL: eval run threw — ${err?.stack || err}\n`);
     process.exit(1);
 });

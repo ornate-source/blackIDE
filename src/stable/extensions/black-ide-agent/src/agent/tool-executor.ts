@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { AgentMode, ToolCall, ToolResult, ImagePart } from '../core/types';
+import { AgentMode, CommandResult, ToolCall, ToolResult, ImagePart } from '../core/types';
+import { SandboxTier } from '../core/sandbox';
+import { runSandboxed } from '../core/sandbox-runner';
 import { isToolAllowedInMode } from '../core/tools';
 import { isDeniedByUser } from '../core/tool-toggles';
 import { Verification } from '../core/fast-apply';
@@ -84,6 +86,17 @@ export interface ExecutorDeps {
      * rather than guessing a command for the wrong ecosystem.
      */
     getProjectProfile?: () => Promise<ProjectProfile>;
+    /**
+     * The sandbox tier every command from this executor runs under (Phase 9, M57).
+     *
+     * Defaults to `policy` — today's behaviour — because this executor is the *editor's*,
+     * where a human approved the command a moment ago. The lanes where nobody did
+     * (pipeline, scheduled, daemon) pass `restricted` or better, and the Reviewer passes
+     * `restricted` regardless. `tierFor` is the only thing that should compute this.
+     */
+    sandboxTier?: SandboxTier;
+    /** Variables the user explicitly allows through a confined run's env scrub. */
+    sandboxEnvAllow?: readonly string[];
 }
 
 /** Executes a single tool call and returns a structured result for the model. */
@@ -102,6 +115,36 @@ export class AgentToolExecutor {
 
     private abs(p: string): string {
         return path.isAbsolute(p) ? p : path.join(this.d.rootPath, p);
+    }
+
+    /**
+     * Every shell command this executor runs, at the run's sandbox tier (M57).
+     *
+     * One funnel rather than a call at each site. `run_command` and `run_tests` are two
+     * tools today and the pattern invites a third, and a tier that two of three exec
+     * paths respect is not a tier — it is a setting with an exception nobody documented.
+     *
+     * At `policy` this delegates to the original `ToolRunner.executeCommand`, so the
+     * default path is byte-for-byte the behaviour that has always shipped: the terminal
+     * feed, the process-group kill, the existing caps. Confinement is an addition for
+     * the lanes that ask for it, never a rewrite of the one that does not.
+     */
+    private async runShell(command: string, timeoutMs: number): Promise<CommandResult & { refused?: string }> {
+        const tier = this.d.sandboxTier ?? 'policy';
+        const onChunk = (stream: 'stdout' | 'stderr', text: string) => this.d.onTerminalChunk?.(stream, text);
+
+        if (tier === 'policy') {
+            return ToolRunner.executeCommand(command, this.d.rootPath, timeoutMs, this.d.signal, onChunk);
+        }
+
+        const result = await runSandboxed({
+            command, cwd: this.d.rootPath, tier, timeoutMs,
+            envAllowExtra: this.d.sandboxEnvAllow,
+            signal: this.d.signal, onChunk,
+        });
+        if (result.refused) return { stdout: '', stderr: '', exitCode: 1, timedOut: false, refused: result.refused };
+        this.d.log(`[Sandbox] ${result.note}`);
+        return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, timedOut: result.timedOut };
     }
 
     /**
@@ -347,10 +390,8 @@ export class AgentToolExecutor {
                 case 'run_command': {
                     const approved = await this.d.approve({ kind: 'exec', command: a.command });
                     if (!approved) return this.ok(tc, `User/policy rejected command: ${a.command}`);
-                    const r = await ToolRunner.executeCommand(
-                        a.command, this.d.rootPath, this.d.commandTimeoutMs ?? 120000, this.d.signal,
-                        (stream, text) => this.d.onTerminalChunk?.(stream, text),
-                    );
+                    const r = await this.runShell(a.command, this.d.commandTimeoutMs ?? 120000);
+                    if (r.refused) return this.err(tc, r.refused);
                     const parts = [
                         `Exit code: ${r.exitCode}${r.timedOut ? ' (timed out)' : ''}`,
                         r.stdout ? `Stdout:\n${r.stdout}` : 'Stdout: (empty)',
@@ -532,13 +573,12 @@ export class AgentToolExecutor {
                     const approved = await this.d.approve({ kind: 'exec', command: selected.command });
                     if (!approved) return this.ok(tc, `User/policy rejected the test command: ${selected.command}`);
 
-                    const r = await ToolRunner.executeCommand(
-                        selected.command, this.d.rootPath,
+                    const r = await this.runShell(
+                        selected.command,
                         // Test suites legitimately run longer than a normal command.
                         Math.max(this.d.commandTimeoutMs ?? 120000, 300000),
-                        this.d.signal,
-                        (stream, text) => this.d.onTerminalChunk?.(stream, text),
                     );
+                    if (r.refused) return this.err(tc, r.refused);
                     const report = parseTestOutput(selected.framework, r, selected.command);
                     return this.ok(tc, formatTestReport(report));
                 }

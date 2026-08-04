@@ -26,6 +26,7 @@ import { ToolCall, ToolDefinition, ToolResult } from '../core/types';
 import { isToolAllowedInMode } from '../core/tools';
 import { AgentMode } from '../core/types';
 import { CommandPolicy } from '../core/command-policy';
+import { SandboxTier, tierFor } from '../core/sandbox';
 import { guardPath } from '../core/workspace-guard';
 import { compactGrep, RawOutputStore, withRawPointer } from '../core/output-compact';
 import { formatTestReport, parseTestOutput, selectTestCommand } from '../core/test-report';
@@ -41,6 +42,11 @@ export interface HostExecutorDeps {
     /** The root the agent acts in. Defaults to the host's first root. */
     root?: string;
     policy?: CommandPolicy;
+    /**
+     * Confinement tier for every command this run makes (M57). Defaults to
+     * `restricted`, because a headless run is unattended by construction.
+     */
+    sandboxTier?: SandboxTier;
     commandTimeoutMs?: number;
     signal?: AbortSignal;
     getProjectProfile?: () => Promise<ProjectProfile | undefined>;
@@ -141,6 +147,17 @@ export function createHostExecutor(deps: HostExecutorDeps): HostExecutor {
         return undefined;
     };
 
+    /*
+     * The sandbox tier for a headless run (M57 · P9-1).
+     *
+     * `tierFor({ unattended: true })` is `restricted`, and that is the default here
+     * rather than something the caller opts into. A headless run is the definition of
+     * unattended: there is no approval dialogue, only `host.approval` answering from a
+     * flag the user set before the run started, so the tier-1 assumption — that a human
+     * saw the command — is false for every command in the run.
+     */
+    const tier = deps.sandboxTier ?? tierFor({ unattended: true });
+
     const runCommand = async (tc: ToolCall, command: string, timeoutMs: number) => {
         const decision = policy?.evaluate(command);
         if (decision?.decision === 'deny') {
@@ -151,7 +168,11 @@ export function createHostExecutor(deps: HostExecutorDeps): HostExecutor {
             return ok(tc, `The host refused the command: ${command}\n`
                 + 'Unattended runs deny commands by default (G3). Report what you would have run rather than retrying.');
         }
-        const r = await deps.host.process.run(command, { cwd: root, timeoutMs, signal: deps.signal });
+        const r = await deps.host.process.run(command, { cwd: root, timeoutMs, signal: deps.signal, sandbox: tier });
+        // A tier the host could not enforce is a refusal, not a failed command, and the
+        // difference matters to what the model does next: a failure invites a retry, and
+        // retrying a command that was never run is a loop.
+        if (r.refused) return err(tc, r.refused);
         return { r, refusal: undefined as ToolResult | undefined };
     };
 
