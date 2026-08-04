@@ -2,9 +2,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { EXIT, exitCodeFor, parseArgs, renderEvent, renderHuman } from '../src/agent-core/cli';
-import { createNodeHost } from '../src/agent-core/node-host';
-import { denyingApproval, silentNotifier } from '../src/agent-core/host';
+import { EXIT, exitCodeFor, parseArgs, renderEvent, renderHuman } from '@blackide/agent-core/agent-core/cli';
+import { createNodeHost } from '@blackide/agent-core/agent-core/node-host';
+import { denyingApproval, silentNotifier } from '@blackide/agent-core/agent-core/host';
 
 /**
  * Phase 11, M63/M64 — the headless surface.

@@ -1,14 +1,14 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { MemoryEntry, injectable, renderForPrompt, touch } from '../core/memory-model';
+import { MemoryEntry, injectable, renderForPrompt, touch } from '@blackide/agent-core/core/memory-model';
 import {
     MemoryDocument, EMPTY_DOCUMENT, parseMemoryMarkdown, renderMemoryMarkdown, withEntries,
-} from '../core/memory-markdown';
+} from '@blackide/agent-core/core/memory-markdown';
 import {
     ExtractionCandidate, WriteDecision, applyDecay, consolidate, decideWrite, sortCandidates,
     supersede,
-} from '../core/memory-lifecycle';
-import { openDocument, sealDocument } from '../core/at-rest';
+} from '@blackide/agent-core/core/memory-lifecycle';
+import { openDocument, sealDocument } from '@blackide/agent-core/core/at-rest';
 
 // ─── The durable memory store (Phase 8) ─────────────────────────────────────
 //

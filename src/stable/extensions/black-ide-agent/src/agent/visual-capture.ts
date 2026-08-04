@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { BrowserTool } from '../tools/browser-tool';
 import { BrowserSettings } from '../tools/browser-capability';
-import { ProjectProfile } from '../core/project-profiler';
+import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
 import { describeCaptureFailure, planVisualCapture } from '../core/visual-capture';
 import { ArtifactStore } from './artifact-store';
 

@@ -1,4 +1,4 @@
-import { TokenUsageEntry } from './types';
+import { TokenUsageEntry } from '@blackide/agent-core/core/types';
 
 // Token Usage & Cost Tracking — Feature 12
 export class TokenTracker {

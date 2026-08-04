@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { FRAMEWORK_IDENTITY_TOKENS, detectProjectProfile } from '../src/core/project-profiler';
+import { FRAMEWORK_IDENTITY_TOKENS, detectProjectProfile } from '@blackide/agent-core/core/project-profiler';
+import { readSource } from './source-roots';
 
 /**
  * Regression cover for eval finding F2: React-based frameworks must be detected *in
@@ -63,7 +64,7 @@ describe('React-family detection (F2)', () => {
  * direction that matters, so it is asserted against the source rather than trusted.
  */
 describe('FRAMEWORK_IDENTITY_TOKENS covers what the profiler emits', () => {
-    const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'project-profiler.ts'), 'utf8');
+    const source = readSource('core', 'project-profiler.ts');
 
     /** Every literal the profiler pushes into `frameworks`, via `fw()` or `add(frameworks, …)`. */
     const emitted = new Set<string>([

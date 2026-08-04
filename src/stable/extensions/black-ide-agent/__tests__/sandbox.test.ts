@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
     ENV_ALLOWLIST, SandboxMechanism, SandboxPlan, atLeast, highest, macosProfile, parseTier,
     planSandbox, refusalMessage, scrubEnv, tierFor, tierRank, TIER_LIMITS,
-} from '../src/core/sandbox';
-import { detectMechanisms, runSandboxed } from '../src/core/sandbox-runner';
+} from '@blackide/agent-core/core/sandbox';
+import { detectMechanisms, runSandboxed } from '@blackide/agent-core/core/sandbox-runner';
 
 /**
  * Sandboxed execution tiers (Phase 9, M57 · P9-1).

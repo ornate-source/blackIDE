@@ -1,8 +1,8 @@
 import {
     selectTestCommand, parseTestOutput, formatTestReport,
     parsePytest, parseJest, parseVitest, parseDotnet, parseCargo, parseGo, parseRspec,
-} from '../src/core/test-report';
-import { ProjectProfile } from '../src/core/project-profiler';
+} from '@blackide/agent-core/core/test-report';
+import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
 
 /**
  * Phase 1 (M8). Output samples below are shaped like real runner output, including

@@ -4,7 +4,7 @@ import * as os from 'os';
 import {
     parsePromptFile, expandPrompt, parseSlashInvocation, resolveWorkflow,
     RESERVED_PROMPT_NAMES, UserPrompt,
-} from '../src/core/prompt-library';
+} from '@blackide/agent-core/core/prompt-library';
 import { PromptLibrary } from '../src/core/prompt-library-loader';
 
 /** Phase 2 (M12) — user-defined slash commands and workflows. */

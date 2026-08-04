@@ -5,9 +5,9 @@ work** — what exists rather than what is missing is [`features.md`](./features
 [`README.md`](./README.md) for who owns what.
 **Audited against the tree:** 2026-08-04 — every row below was re-checked in code, not read off the
 previous revision's claims.
-**Baseline at audit time:** `tsc -b` clean · vitest **1 946/1 946 / 72 suites** · harness 418/418 ·
-eval green, no regression vs `eval/baseline.json` · webview builds · `extension.ts` **698 LOC**
-(≤700 gate).
+**Baseline at audit time:** `tsc -b` clean · vitest **1 956/1 956 / 72 suites** · harness 418/418 ·
+eval green, no regression vs `eval/baseline.json` · webview builds · CLI runs · `extension.ts`
+**698 LOC** (≤700 gate).
 
 ---
 
@@ -20,55 +20,59 @@ eval green, no regression vs `eval/baseline.json` · webview builds · `extensio
 | 2–10 | ✅ | — | |
 | **8** | ✅ | **0** | **P8-1 (M41)** · **P8-2 (M45)** |
 | **9** | ✅ | **0** | **all seven** — P9-1 (M57) · P9-2 (M47) · P9-3 (M49) · P9-4 (M50) · P9-5 (M51) · P9-6 (M48) · P9-7 (M58) |
-| **11** | 🟡 | **1** | P11-1 (M62 boundary) · P11-3 (M65 daemon) |
+| **11** | ✅ | **0** | P11-1 (M62 boundary) · **P11-2 (M62 package move)** · P11-3 (M65 daemon) |
 | **12** | ✅ | **0** | P12-1 (M67) · P12-2 (M68) · P12-3 (M66); P12-4/P12-5 resolved as positions |
 | — | — | — | **X-1** — the model tier, named in sixteen revisions and blocking five phases |
 
-**One task is open.** Eighteen were open at the last audit.
+**Nothing is open.** Eighteen tasks were open at the last audit; all eighteen are closed.
 
-| Pri | Count | Tasks |
-|:--:|:--:|---|
-| P1 | 1 | **P11-2** (M62 — the physical package move) |
+Every phase, 0 through 12, is ✅. Nothing claimed as delivered was found missing. Two items
+previously carried as ❌ are now recorded as **deliberate positions** rather than debt — see §4.
 
-Nothing claimed as delivered was found missing. Two items previously carried as ❌ are now recorded
-as **deliberate positions** rather than debt — see §3.
+> **This document has done its job.** It exists to name open work, and there is none. Keep it as
+> the place the next wave is written down; §3's corrections and §5's defect list are the parts
+> worth carrying forward, because they record what the roadmap got *wrong*, which is the thing a
+> plan cannot learn from its own successes.
 
 ---
 
-## 1. The one open task
+## 1. No open tasks
 
-### P11-2 — Physical package move to `packages/agent-core/` · **P1 · Phase 11**
+The last one closed on 2026-08-04. **P11-2 — the physical package move** — is done:
+`packages/agent-core/` is a real package with its own manifest, its own `tsconfig`, subpath
+exports, and no path back into the extension.
 
-| # | Task | M | Pri | Depends on | Acceptance |
-|:--:|---|:--:|:--:|---|---|
-| **P11-2** | Move the core into a publishable package | M62 | P1 | ~~P11-1~~ **(done)** | The package builds and is consumable on its own; harness green throughout |
+**What it cost, against what the roadmap estimated.** It was called "mechanical, once the
+boundary is known to hold". It was mechanical, and the estimate still understated it:
 
-**The dependency is cleared.** P11-1 closed on 2026-08-04: the boundary is transitively enforced,
-60 modules are reachable from `agent-core/index.ts`, and none of them imports `vscode`. The floor
-in `agent-core-boundary.test.ts` rose 45 → 60 rather than falling, which is what the clause asked
-for.
+| | |
+|---|---|
+| Modules moved | 64 |
+| Import specifiers rewritten | 160 in 52 extension files · 93 in 52 test files |
+| `path.join(DIST, …)` requires repointed | 45, across the harness and the eval |
+| `src/core/` after the split | 55 files stay, 51 move — the directory really does split in half |
 
-**What the previous revisions got wrong about this task, and the correction.** It has been
-described as "mechanical, once the boundary is known to hold" and "merely large before it". Now
-that the boundary does hold, the cost can be measured instead of estimated, and it is larger than
-"mechanical" implies:
+**Three things the estimate missed**, recorded in `enhancement.md` §4.7 in full:
 
-- The reachable set is **60 files, 50 of them in `src/core/`** — a directory of about 90. The move
-  splits it in half, and the 40 modules left behind would import their moved neighbours across a
-  package boundary.
-- **45 `path.join(DIST, …)` requires** in `test/harness.js` and `eval/*.js` point at compiled paths
-  that move.
-- `package.json`'s `main`, `bin/blackide` and the whole `dist/` layout shift, because covering two
-  source roots changes `rootDir` and `dist/core/x.js` becomes `dist/src/core/x.js`.
+1. **A type-only import is still a compile-time edge.** M62 made `agent-loop`'s import of
+   the editor executor type-only and recorded that as done. The loop still *named* a type
+   on the editor side, so the package could not compile without it. The shape turned out
+   to be one method; it now lives in `core/types.ts` as `ToolExecutor`, where both
+   implementations satisfy it structurally and neither owns it.
+2. **An inline `import('./types')` type expression** is not a `from` clause, so no
+   import-rewriting regex sees it. One existed. The compiler caught it.
+3. **Resolution has to be by looking, not by a list.** The harness, the eval and a dozen
+   structural tests hardcoded `../src/…`. All now resolve a source-relative path against
+   whichever root has it, so the next module to cross — in either direction — needs no
+   change to any of them.
 
-**How it should be done.** As an npm **workspace** — `packages/agent-core` with its own
-`package.json` and `tsconfig`, resolved through `node_modules` so a runtime `require` works without
-a bundler or a path-alias shim — in **one change**, with the harness green at each step. §4.7 of
-`enhancement.md` records this in full.
-
-**What it must not be is a half-move.** A repository with part of `core/` inside a package and part
-outside is worse than either end state, and "mechanical" is exactly the estimate that invites
-someone to start it and stop.
+**What the move bought over the logical boundary alone.** "The core does not import
+`vscode`" was previously a property of files sitting in the same tree as the editor, one
+careless relative import away, asserted by one test. The package is now a separate
+compilation unit with no path back, so a stray import is a **compile error**. The walk
+stays, because the compiler only catches a *broken* import — not a working one that drags
+`vscode` in through a new and reasonable-looking dependency. The reachable floor rose
+45 → 60 → **64**, at each step as the clause asked.
 
 ---
 
@@ -91,6 +95,7 @@ progress is auditable, then removable.
 | **P9-6** | M48 | `black-ide.postReviewToPr`, a separate command, through the per-action confirmation |
 | **P9-7** | M58 | Line-level sealing so the trail stays append-only; exact-bytes decryption so the markdown round-trip holds |
 | **P11-1** | M62 | `codebase-index` and `artifact-manager` crossed; `tool-executor`'s last direct `vscode` reference removed. See §3 for why it is not exported |
+| **P11-2** | M62 | `packages/agent-core/` — 64 modules, own manifest and `tsconfig`, subpath exports, consumable by name. The boundary is enforced by the build now, not only by the walk |
 | **P11-3** | M65 | `blackide daemon` / `blackide queue`, file-based, claim-by-rename, results in the inbox |
 | **P12-1** | M67 | Three fetchers, reachable only through a `kind` a URL or explicit `#n` supplied |
 | **P12-2** | M68 | A Slack forward with no `send` — it builds an action and stops |
@@ -100,7 +105,7 @@ progress is auditable, then removable.
 
 ## 3. Corrections to the previous revision
 
-Three places where doing the work showed the task description was wrong. Recorded because a
+Four places where doing the work showed the task description was wrong. Recorded because a
 roadmap that quietly re-scopes itself is one nobody can audit.
 
 **1. P8-1 was understated.** It read "the producer is missing — `sortCandidates` already bands
@@ -119,6 +124,13 @@ is the answer M62 already gave for the host itself.
 
 **3. P9-2 said the `review` artifact type "exists".** It did not — `ARTIFACT_TYPES` had seven
 entries and none of them was `review`. The *renderer* existed, which is what the note meant. Added.
+
+**4. "Mechanical" was the wrong word for P11-2, twice over.** It was mechanical in the sense that
+every step was determined — and it was 64 files, 253 import rewrites and three classes of edge the
+word hides entirely (a type-only import that is still a compile-time edge, an inline `import()`
+type expression no rewriting regex sees, and every hardcoded `../src/…` in the test tier). The
+estimate was not wrong about the *kind* of work; it was wrong about there being nothing to think
+about.
 
 ---
 
@@ -159,6 +171,8 @@ and are asserted.
 | 2026-08-04 | 11 | **P11-1 (M62)** — the boundary floor rose 45 → 60 | vitest 1 883/70 |
 | 2026-08-04 | 11 | **P11-3 (M65)** — the daemon, results in the inbox | vitest 1 907/71 |
 | 2026-08-04 | 12 | **P12-1/2/3 (M66–M68)**. **Phase 12 → ✅** | vitest 1 946/72 |
+| 2026-08-04 | 1 | **P1-1** — the LSP-over-grep gate, with an absolute floor rather than a ratchet. **Phase 1 → ✅** | vitest 1 952/72 |
+| 2026-08-04 | 11 | **P11-2 (M62)** — the package move. **Phase 11 → ✅, and the roadmap with it** | vitest 1 956/72 · harness 418/418 · eval green · the package imports standalone by name |
 
 **Found while closing this wave, and fixed here rather than filed:**
 

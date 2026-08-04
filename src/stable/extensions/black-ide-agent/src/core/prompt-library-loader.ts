@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { UserPrompt, PromptProblem, parsePromptFile } from './prompt-library';
+import { UserPrompt, PromptProblem, parsePromptFile } from '@blackide/agent-core/core/prompt-library';
 
 // Loader for `.blackide/prompts/*.md` — Phase 2 (M12). Mirrors RulesLoader: same
 // discovery shape, same hot-reload, same Problems-panel reporting, so the three

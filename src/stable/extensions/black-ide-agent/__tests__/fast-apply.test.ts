@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
 import {
     CANNOT_APPLY, buildApplyPrompt, changedFraction, countBlocks, extractBlocks, verifyFastApply,
-} from '../src/core/fast-apply';
+} from '@blackide/agent-core/core/fast-apply';
 import { ToolRunner } from '../src/tools/tool-runner';
 import { AgentToolExecutor, ExecutorDeps } from '../src/agent/tool-executor';
 

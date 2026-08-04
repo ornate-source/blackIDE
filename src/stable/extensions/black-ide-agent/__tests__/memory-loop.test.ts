@@ -9,7 +9,8 @@ import {
 import { MemoryTurn } from '../src/agent/memory-turn';
 import { MemoryStore } from '../src/memory/memory-store';
 import { buildMemoryView, describeAge, describeDecay, describeOrigin } from '../src/core/memory-view';
-import { createMemory } from '../src/core/memory-model';
+import { createMemory } from '@blackide/agent-core/core/memory-model';
+import { readSource } from './source-roots';
 
 /**
  * The memory loop (Phase 8, M41 · P8-1) and its panel (M45 · P8-2).
@@ -349,7 +350,7 @@ describe('the memory view', () => {
 // ─── Wiring ─────────────────────────────────────────────────────────────────
 
 describe('the loop is actually reachable from the editor', () => {
-    const src = (...parts: string[]) => fs.readFileSync(path.join(__dirname, '..', 'src', ...parts), 'utf8');
+    const src = (...parts: string[]) => readSource(...parts);
 
     it('the chat lane injects memory into the prompt', () => {
         // Structural, and the assertion that would have caught the original state: every

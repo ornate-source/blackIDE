@@ -2,9 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { inferPreviewUrls, planVisualCapture } from '../src/core/visual-capture';
-import { evaluateVerification, planVerification, renderVerificationReport } from '../src/core/verification';
+import { evaluateVerification, planVerification, renderVerificationReport } from '@blackide/agent-core/core/verification';
 import { EGRESS_REGISTER } from '../src/core/egress';
-import { ProjectProfile } from '../src/core/project-profiler';
+import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
+import { readSource } from './source-roots';
 
 /**
  * Visual evidence (Phase 7, M40's third gate clause).
@@ -254,7 +255,7 @@ describe('the probe is declared egress like anything else', () => {
 // ─── The wiring ─────────────────────────────────────────────────────────────
 
 describe('every lane that verifies can also capture', () => {
-    const src = (...parts: string[]) => fs.readFileSync(path.join(__dirname, '..', 'src', ...parts), 'utf8');
+    const src = (...parts: string[]) => readSource(...parts);
 
     it('all three lanes pass a captureVisual, through the one shared implementation', () => {
         for (const file of [['agent', 'task-agent-entry.ts'], ['agent', 'pipeline-entry.ts'], ['agent', 'chat-task.ts']]) {

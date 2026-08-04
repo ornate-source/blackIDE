@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { LLMClient } from './llm-client';
-import { LLMConfigEntry } from './types';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 import { HistoryStore } from '../memory/history-store';
 
 /**

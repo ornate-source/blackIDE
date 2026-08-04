@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     AGENT_EDIT_GRACE_MS, agentIsWriting, asAgentEdit, markAgentWrite, resetEditOrigin, withinAgentEditGrace,
 } from '../src/core/edit-origin';
-import { EditHistory, renderEditHistory } from '../src/core/edit-history';
+import { EditHistory, renderEditHistory } from '@blackide/agent-core/core/edit-history';
 import {
     DocumentStamp, NO_EDIT, budgetSignal, buildNextEditPrompt, isStale, normalizePath,
     parseProposal, selectCandidates, validateProposal,
-} from '../src/core/next-edit';
+} from '@blackide/agent-core/core/next-edit';
 
 /**
  * Phase 5, M28 — next-edit prediction.

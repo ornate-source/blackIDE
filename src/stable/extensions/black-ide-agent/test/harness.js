@@ -37,36 +37,50 @@ Module._resolveFilename = function (request, ...rest) {
 require.cache['vscode'] = { id: 'vscode', filename: 'vscode', loaded: true, exports: vscodeStub };
 
 const DIST = path.join(__dirname, '..', 'dist');
+/*
+ * Where a compiled module lives, now that the core is a package (M62 · P11-2).
+ *
+ * Two output trees: the extension's `dist/`, and `packages/agent-core/dist/` for the 64
+ * modules that moved. Resolved by looking rather than by a hardcoded list, so the next
+ * module to cross the boundary — in either direction — needs no change here. A list would
+ * have to be kept in step with the package by hand, and the failure mode of getting it
+ * wrong is a `MODULE_NOT_FOUND` in a test suite rather than anywhere useful.
+ */
+const AGENT_CORE_DIST = path.join(__dirname, '..', 'packages', 'agent-core', 'dist');
+const mod = (rel) => {
+    const inCore = path.join(AGENT_CORE_DIST, rel);
+    return fs.existsSync(inCore) ? inCore : path.join(DIST, rel);
+};
 const SRC = path.join(__dirname, '..', 'src');
-const { LLMClient } = require(path.join(DIST, 'core/llm-client.js'));
-const { runAgentLoop } = require(path.join(DIST, 'agent/agent-loop.js'));
-const { BASE_TOOLS, toolsForMode, isToolAllowedInMode, renderToolDocs } = require(path.join(DIST, 'core/tools.js'));
-const { CommandPolicy } = require(path.join(DIST, 'core/command-policy.js'));
-const { toTelemetryRecord, classifyError, TelemetrySink } = require(path.join(DIST, 'core/telemetry-sink.js'));
-const { reconcileInterruptedRuns, mergeRunViews, capRunHistory, isTerminal } = require(path.join(DIST, 'core/pipeline-runs.js'));
-const { scheduleTasks, toParallelWaves } = require(path.join(DIST, 'core/task-scheduler.js'));
-const { nextAdrId, formatAdr, upsertFeatureStatus, KnowledgeBase } = require(path.join(DIST, 'core/knowledge-base.js'));
-const { capSections, allocateBudget } = require(path.join(DIST, 'core/text-cap.js'));
-const { selectExecutionWaves, formatDependencyGraph } = require(path.join(DIST, 'agent/pipeline-orchestrator.js'));
-const { buildPrCommands, compareUrlFallback, shellQuote } = require(path.join(DIST, 'core/git-pr.js'));
-const { CheckpointManager } = require(path.join(DIST, 'core/checkpoint-manager.js'));
-const { ContextManager } = require(path.join(DIST, 'core/context-manager.js'));
-const { PromptBuilder } = require(path.join(DIST, 'core/prompt-builder.js'));
-const { EventBus } = require(path.join(DIST, 'core/event-bus.js'));
-const { SessionManager } = require(path.join(DIST, 'core/session-manager.js'));
-const { diffLines, applyHunks } = require(path.join(DIST, 'core/diff.js'));
-const { PlanningEngine } = require(path.join(DIST, 'agent/planning-engine.js'));
-const { selectExecutionPhases, resolveModelForPhase, PipelineOrchestrator, buildPipelineContextSummary, isOverTokenBudget } = require(path.join(DIST, 'agent/pipeline-orchestrator.js'));
-const { worktreeManager } = require(path.join(DIST, 'agent/worktree-manager.js'));
-const { ModeLoader } = require(path.join(DIST, 'core/mode-loader.js'));
+const { LLMClient } = require(mod('core/llm-client.js'));
+const { runAgentLoop } = require(mod('agent/agent-loop.js'));
+const { BASE_TOOLS, toolsForMode, isToolAllowedInMode, renderToolDocs } = require(mod('core/tools.js'));
+const { CommandPolicy } = require(mod('core/command-policy.js'));
+const { toTelemetryRecord, classifyError, TelemetrySink } = require(mod('core/telemetry-sink.js'));
+const { reconcileInterruptedRuns, mergeRunViews, capRunHistory, isTerminal } = require(mod('core/pipeline-runs.js'));
+const { scheduleTasks, toParallelWaves } = require(mod('core/task-scheduler.js'));
+const { nextAdrId, formatAdr, upsertFeatureStatus, KnowledgeBase } = require(mod('core/knowledge-base.js'));
+const { capSections, allocateBudget } = require(mod('core/text-cap.js'));
+const { selectExecutionWaves, formatDependencyGraph } = require(mod('agent/pipeline-orchestrator.js'));
+const { buildPrCommands, compareUrlFallback, shellQuote } = require(mod('core/git-pr.js'));
+const { CheckpointManager } = require(mod('core/checkpoint-manager.js'));
+const { ContextManager } = require(mod('core/context-manager.js'));
+const { PromptBuilder } = require(mod('core/prompt-builder.js'));
+const { EventBus } = require(mod('core/event-bus.js'));
+const { SessionManager } = require(mod('core/session-manager.js'));
+const { diffLines, applyHunks } = require(mod('core/diff.js'));
+const { PlanningEngine } = require(mod('agent/planning-engine.js'));
+const { selectExecutionPhases, resolveModelForPhase, PipelineOrchestrator, buildPipelineContextSummary, isOverTokenBudget } = require(mod('agent/pipeline-orchestrator.js'));
+const { worktreeManager } = require(mod('agent/worktree-manager.js'));
+const { ModeLoader } = require(mod('core/mode-loader.js'));
 const {
   BROWSER_TOOL_NAMES, browserRuntimeAvailable, parseAllowedDomains, hostOf,
   isNavigationAllowed, readBrowserSettings, isBrowserUsable, filterToolsForBrowser,
-} = require(path.join(DIST, 'tools/browser-capability.js'));
-const { detectProjectProfile, stackMindmapSection, upsertMarkdownSection } = require(path.join(DIST, 'core/project-profiler.js'));
-const { resolveSkills, renderSkills, roleForMode } = require(path.join(DIST, 'agent/skill-resolver.js'));
-const { SkillsManager } = require(path.join(DIST, 'agent/skills-manager.js'));
-const { installSkillPacks, listBundledPacks } = require(path.join(DIST, 'tools/skill-install.js'));
+} = require(mod('tools/browser-capability.js'));
+const { detectProjectProfile, stackMindmapSection, upsertMarkdownSection } = require(mod('core/project-profiler.js'));
+const { resolveSkills, renderSkills, roleForMode } = require(mod('agent/skill-resolver.js'));
+const { SkillsManager } = require(mod('agent/skills-manager.js'));
+const { installSkillPacks, listBundledPacks } = require(mod('tools/skill-install.js'));
 const BUNDLED_SKILLS_DIR = path.join(__dirname, '..', 'resources', 'skills');
 
 let pass = 0, fail = 0;
@@ -240,7 +254,7 @@ async function main() {
 
   console.log('\n[7b] Executor refuses forbidden tools before any side effect');
   {
-    const { AgentToolExecutor } = require(path.join(DIST, 'agent/tool-executor.js'));
+    const { AgentToolExecutor } = require(mod('agent/tool-executor.js'));
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-'));
     const target = path.join(dir, 'victim.txt');
     fs.writeFileSync(target, 'ORIGINAL');
@@ -1020,7 +1034,7 @@ async function main() {
 
   console.log('\n[34] Phase 0c: gitMutex serialization + liveness');
   {
-    const { GitMutex } = require(path.join(DIST, 'agent/git-mutex.js'));
+    const { GitMutex } = require(mod('agent/git-mutex.js'));
     // getInstance() is a singleton; reach the class directly so each case starts clean.
     const fresh = () => Reflect.construct(GitMutex, []);
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1087,7 +1101,7 @@ async function main() {
 
   console.log('\n[35] P1: repository-discovery scan');
   {
-    const { summarizeRepoStructure } = require(path.join(DIST, 'core/knowledge-base.js'));
+    const { summarizeRepoStructure } = require(mod('core/knowledge-base.js'));
     const files = [
       'src/extension.ts', 'src/core/knowledge-base.ts', 'src/core/tools.ts', 'src/agent/agent-loop.ts',
       'webview/src/main.tsx', 'webview/src/App.tsx', 'test/harness.js', 'README.md', 'package.json',
@@ -1126,7 +1140,7 @@ async function main() {
 
   console.log('\n[36] P3: per-task plan parsing + dependency edges');
   {
-    const { parsePlanTasks } = require(path.join(DIST, 'core/plan-parser.js'));
+    const { parsePlanTasks } = require(mod('core/plan-parser.js'));
     const GRAPH = {
       'Design Executor':   { tag: '[design]',   dependsOn: [] },
       'Backend Executor':  { tag: '[backend]',  dependsOn: [] },
@@ -1184,9 +1198,9 @@ async function main() {
 
   console.log('\n[37] P4: output-mode resolution + completion docs');
   {
-    const { resolveOutputMode } = require(path.join(DIST, 'core/git-pr.js'));
+    const { resolveOutputMode } = require(mod('core/git-pr.js'));
     const { summarizeRequest, formatChangelogEntry, prependChangelogEntry, formatReleaseNotes } =
-      require(path.join(DIST, 'core/completion-docs.js'));
+      require(mod('core/completion-docs.js'));
 
     // Anything unrecognised MUST degrade to 'apply': the failure mode of guessing wrong is
     // "the run silently did not touch the workspace and the user cannot find their work".
@@ -1294,7 +1308,7 @@ async function main() {
 
   console.log('\n[39] P2: knowledge-file compaction');
   {
-    const { capKnowledgeFile } = require(path.join(DIST, 'core/knowledge-base.js'));
+    const { capKnowledgeFile } = require(mod('core/knowledge-base.js'));
 
     let log = '# Decision Log (ADRs)\n';
     for (let i = 1; i <= 60; i++) log += `\n\n## ADR-${String(i).padStart(3, '0')}: decision ${i}\n` + 'd'.repeat(400) + '\n';
@@ -1340,7 +1354,7 @@ async function main() {
     // is the failure mode here: a setting still read, or a branch still reachable, would
     // leave the unverified git path live while the roadmap recorded it as gone.
     ok('the parallel-execution module is deleted',
-      !fs.existsSync(path.join(DIST, 'core/parallel-execution.js')));
+      !fs.existsSync(mod('core/parallel-execution.js')));
 
     const orchestrator = fs.readFileSync(path.join(SRC, 'agent/pipeline-orchestrator.ts'), 'utf8');
     ok('no parallel wave executor remains in the orchestrator',
@@ -1354,7 +1368,7 @@ async function main() {
 
     // The dependency-wave *analysis* stays: it renders dependency_graph.md, which
     // describes which phases are independent without running them that way.
-    const { selectExecutionWaves } = require(path.join(DIST, 'agent/pipeline-orchestrator.js'));
+    const { selectExecutionWaves } = require(mod('agent/pipeline-orchestrator.js'));
     ok('wave analysis survives for the dependency graph',
       typeof selectExecutionWaves === 'function');
   }

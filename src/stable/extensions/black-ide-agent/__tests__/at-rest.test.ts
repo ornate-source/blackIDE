@@ -6,10 +6,10 @@ import {
     ENCRYPTION_OFF, SEAL_PREFIX, SealingSink, deriveKey, encrypts, generateKey, isSealed,
     newSalt, open, openDocument, openIfSealed, openLines, readEncryptionSettings, sameKey,
     seal, sealDocument,
-} from '../src/core/at-rest';
-import { AuditTrail, parseAuditTrail } from '../src/core/audit-trail';
+} from '@blackide/agent-core/core/at-rest';
+import { AuditTrail, parseAuditTrail } from '@blackide/agent-core/core/audit-trail';
 import { MemoryStore } from '../src/memory/memory-store';
-import { parseMemoryMarkdown, renderMemoryMarkdown } from '../src/core/memory-markdown';
+import { parseMemoryMarkdown, renderMemoryMarkdown } from '@blackide/agent-core/core/memory-markdown';
 
 /**
  * Optional at-rest encryption (Phase 9, M58 · P9-7).

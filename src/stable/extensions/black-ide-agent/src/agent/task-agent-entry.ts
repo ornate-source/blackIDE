@@ -1,30 +1,30 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ChatMessage } from '../core/types';
-import { SecretManager } from '../core/secret-manager';
-import { CodebaseIndex } from '../core/codebase-index';
+import { ChatMessage } from '@blackide/agent-core/core/types';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { CodebaseIndex } from '@blackide/agent-core/core/codebase-index';
 import { ModeLoader } from '../core/mode-loader';
-import { ProjectProfile } from '../core/project-profiler';
+import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
 import { CheckpointManager } from '../core/checkpoint-manager';
 import { TokenTracker } from '../core/token-tracker';
-import { ContextManager } from '../core/context-manager';
+import { ContextManager } from '@blackide/agent-core/core/context-manager';
 import { loadModelRouter, providerHealth } from '../core/model-router-loader';
-import { toolsForMode } from '../core/tools';
+import { toolsForMode } from '@blackide/agent-core/core/tools';
 import { AgentToolExecutor, ExecutorDeps } from './tool-executor';
-import { runAgentLoop } from './agent-loop';
-import { TaskRunParams, TaskWorktreeOps } from './task-agent-registry';
-import { TaskAgentDiff, parseNumstat } from '../core/task-agents';
+import { runAgentLoop } from '@blackide/agent-core/agent/agent-loop';
+import { TaskRunParams, TaskWorktreeOps } from '@blackide/agent-core/agent/task-agent-registry';
+import { TaskAgentDiff, parseNumstat } from '@blackide/agent-core/core/task-agents';
 import { worktreeManager } from './worktree-manager';
 import { ToolRunner } from '../tools/tool-runner';
 import { BrowserTool } from '../tools/browser-tool';
 import { MCPClient } from '../tools/mcp-client';
-import { ArtifactManager } from './artifact-manager';
+import { ArtifactManager } from '@blackide/agent-core/agent/artifact-manager';
 import { KnowledgeStore } from '../memory/knowledge-store';
 import { ArtifactStore } from './artifact-store';
 import { runVerification } from './verify-runner';
 import { captureVisualEvidence } from './visual-capture';
 import { readBrowserSettings, browserRuntimeAvailable, isBrowserUsable } from '../tools/browser-capability';
-import { describeSteering } from '../core/steering';
+import { describeSteering } from '@blackide/agent-core/core/steering';
 
 // ─── Running one task agent (Phase 6, M31) ──────────────────────────────────
 //

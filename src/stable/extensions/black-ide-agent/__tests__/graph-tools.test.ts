@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CodeGraph } from '../src/core/code-graph';
+import { CodeGraph } from '@blackide/agent-core/core/code-graph';
 import { analyseImpact, formatImpact, findReferencesViaGraph } from '../src/tools/graph-tools';
 
 /**

@@ -1,5 +1,5 @@
-import { ExtractionCandidate, isWorthRemembering } from './memory-lifecycle';
-import { MEMORY_TYPES, MemoryType } from './memory-model';
+import { ExtractionCandidate, isWorthRemembering } from '@blackide/agent-core/core/memory-lifecycle';
+import { MEMORY_TYPES, MemoryType } from '@blackide/agent-core/core/memory-model';
 
 // ─── End-of-turn extraction: the producer (Phase 8, M41 · P8-1) ─────────────
 //

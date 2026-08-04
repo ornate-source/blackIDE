@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SecretManager } from './secret-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { performFetchModels } from '../agent/model-fetcher';
 
 /**

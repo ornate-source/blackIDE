@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { KNOWN_SKILL_ROLES } from '../src/agent/skills-manager';
+import { KNOWN_SKILL_ROLES } from '@blackide/agent-core/agent/skills-manager';
 
 /**
  * Structural guards on the golden-task set (Phase 0, M3 breadth — 2026-08-01).

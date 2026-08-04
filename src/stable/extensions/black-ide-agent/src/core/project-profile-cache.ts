@@ -3,8 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import {
     MANIFEST_FILENAMES, ProjectProfile, detectProjectProfile, formatProfileLine,
-} from './project-profiler';
-import { WorkspaceRoot, defaultRootFor, isWithin, normalizeRoot } from './workspace-roots';
+} from '@blackide/agent-core/core/project-profiler';
+import { WorkspaceRoot, defaultRootFor, isWithin, normalizeRoot } from '@blackide/agent-core/core/workspace-roots';
 
 // ─── Per-root project profiles (Phase 6, M36) ───────────────────────────────
 //

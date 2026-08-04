@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgentGovernor } from '../src/core/agent-governor';
+import { AgentGovernor } from '@blackide/agent-core/core/agent-governor';
 import {
     TaskAgentSummary, branchNameFor, canApply, canCancel, canDiscard, describeDiff,
     holdsWorktree, isTerminalStatus, newAgentId, parseNumstat, reconcileInterruptedAgents,
-} from '../src/core/task-agents';
-import { TaskAgentRegistry, TaskRunParams, TaskWorktreeOps } from '../src/agent/task-agent-registry';
+} from '@blackide/agent-core/core/task-agents';
+import { TaskAgentRegistry, TaskRunParams, TaskWorktreeOps } from '@blackide/agent-core/agent/task-agent-registry';
 
 /**
  * Phase 6, M31/M32 — task agents.

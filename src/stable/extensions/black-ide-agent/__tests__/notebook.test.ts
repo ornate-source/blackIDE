@@ -3,7 +3,7 @@ import {
     Notebook, NotebookError, cellText, deleteCell, editCell, insertCell, isNotebookPath,
     parseNotebook, renderNotebook, renderOutputs, restoreCell, roundTrip, serializeNotebook,
     snapshotCell, summarizeCells, toSourceArray, withCellText,
-} from '../src/core/notebook';
+} from '@blackide/agent-core/core/notebook';
 
 /**
  * Phase 10, M61 — notebooks.

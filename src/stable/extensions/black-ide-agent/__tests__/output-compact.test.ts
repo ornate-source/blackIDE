@@ -6,7 +6,7 @@ import {
     compactGrep,
     compactListing,
     withRawPointer,
-} from '../src/core/output-compact';
+} from '@blackide/agent-core/core/output-compact';
 
 /**
  * Phase 3, M18.

@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { RegistryEntry, validateEntry, validateRef, validateSource } from '../src/core/skill-registry';
+import { RegistryEntry, validateEntry, validateRef, validateSource } from '@blackide/agent-core/core/skill-registry';
 import { fetchPack, installPackFrom, readFrontmatter, sha256 } from '../src/tools/skill-fetch';
 
 /**

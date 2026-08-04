@@ -11,6 +11,7 @@ import {
 import {
     buildConfirmation, completionNotice, decideOutbound, findTaskReferences,
 } from '../src/core/task-sources';
+import { allSourceFiles, sourceExists } from './source-roots';
 
 /**
  * Phase 12 — the gate, which is four security clauses and nothing else:
@@ -146,24 +147,20 @@ describe('clause 1: the default build phones home to nobody', () => {
         // The register is an allowlist a test enforces, not documentation. A stale entry
         // makes the list a fiction, which is worse than no list.
         for (const point of EGRESS_REGISTER) {
-            const file = path.join(__dirname, '..', 'src', point.module);
-            expect(fs.existsSync(file), `${point.module} is registered but missing`).toBe(true);
+            // Resolved against both source roots since the package move (M62 · P11-2):
+            // half the registered modules now live in `packages/agent-core/src/`.
+            expect(sourceExists(point.module), `${point.module} is registered but missing`).toBe(true);
         }
     });
 
     it('every module that makes a network call is registered', () => {
         // The other direction, and the one that matters: adding egress without declaring
         // it must fail. Walks the source for outbound primitives.
-        const src = path.join(__dirname, '..', 'src');
         const declared = new Set(EGRESS_REGISTER.map(p => p.module));
         const offenders: string[] = [];
 
-        const walk = (dir: string) => {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) { walk(full); continue; }
-                if (!entry.name.endsWith('.ts')) continue;
-                const rel = path.relative(src, full).replace(/\\/g, '/');
+        const walk = () => {
+            for (const { file: full, rel } of allSourceFiles()) {
                 if (declared.has(rel)) continue;
                 const text = fs.readFileSync(full, 'utf8');
                 // `fetch(`, `https.request`, `axios`, `new WebSocket`. Comments mentioning
@@ -175,7 +172,7 @@ describe('clause 1: the default build phones home to nobody', () => {
                 }
             }
         };
-        walk(src);
+        walk();
         expect(offenders, `undeclared egress in: ${offenders.join(', ')}`).toEqual([]);
     });
 
@@ -195,17 +192,12 @@ describe('clause 1: the default build phones home to nobody', () => {
          * (M22) are local and must not appear here, or the check becomes noise and gets
          * an exemption list, which is how it stops holding.
          */
-        const src = path.join(__dirname, '..', 'src');
         const declared = new Set(EGRESS_REGISTER.map(p => p.module));
         const offenders: string[] = [];
         const networkCommands = /\b(?:git\s+(?:push|pull|clone|fetch|ls-remote)|gh\s+(?:pr|repo|api|issue)|npm\s+(?:install|i|publish)|npx\s|curl\s|wget\s|scp\s)/;
 
-        const walk = (dir: string) => {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) { walk(full); continue; }
-                if (!entry.name.endsWith('.ts')) continue;
-                const rel = path.relative(src, full).replace(/\\/g, '/');
+        const walk = () => {
+            for (const { file: full, rel } of allSourceFiles()) {
                 if (declared.has(rel)) continue;
                 // Comments discussing a command are fine; a string literal holding one,
                 // in a file that also spawns processes, is not.
@@ -223,7 +215,7 @@ describe('clause 1: the default build phones home to nobody', () => {
                 }
             }
         };
-        walk(src);
+        walk();
         expect(offenders, `undeclared subprocess egress in: ${offenders.join(', ')}`).toEqual([]);
     });
 
@@ -239,21 +231,16 @@ describe('clause 1: the default build phones home to nobody', () => {
          * it was noticed by hand, which is exactly the failure mode a register exists to
          * remove. Importing the builder is the honest signal.
          */
-        const src = path.join(__dirname, '..', 'src');
         const declared = new Set(EGRESS_REGISTER.map(p => p.module));
         const offenders: string[] = [];
 
-        const walk = (dir: string) => {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) { walk(full); continue; }
-                if (!entry.name.endsWith('.ts')) continue;
-                const rel = path.relative(src, full).replace(/\\/g, '/');
+        const walk = () => {
+            for (const { file: full, rel } of allSourceFiles()) {
                 if (declared.has(rel) || rel === 'core/git-pr.ts') continue;
                 if (/\bbuildPrCommands\b/.test(fs.readFileSync(full, 'utf8'))) offenders.push(rel);
             }
         };
-        walk(src);
+        walk();
         expect(offenders, `unregistered publish callers: ${offenders.join(', ')}`).toEqual([]);
     });
 });

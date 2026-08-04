@@ -1,17 +1,17 @@
 import * as vscode from 'vscode';
-import { AgentGovernor, GOVERNOR_DEFAULTS } from '../core/agent-governor';
-import { TaskAgentSummary } from '../core/task-agents';
-import { PipelineRunSummary } from '../core/pipeline-runs';
+import { AgentGovernor, GOVERNOR_DEFAULTS } from '@blackide/agent-core/core/agent-governor';
+import { TaskAgentSummary } from '@blackide/agent-core/core/task-agents';
+import { PipelineRunSummary } from '@blackide/agent-core/core/pipeline-runs';
 import {
     InboxItem, buildInbox, inboxCounts, newlyNotifiable, notificationKey, pruneNotified,
     summarizeForNotification,
-} from '../core/agent-inbox';
-import { RaceCandidate, planRace, pickWinner } from '../core/model-race';
-import { TaskAgentRegistry } from './task-agent-registry';
+} from '@blackide/agent-core/core/agent-inbox';
+import { RaceCandidate, planRace, pickWinner } from '@blackide/agent-core/core/model-race';
+import { TaskAgentRegistry } from '@blackide/agent-core/agent/task-agent-registry';
 import { TaskAgentEntryDeps, buildTaskRunner, buildWorktreeOps } from './task-agent-entry';
-import { SecretManager } from '../core/secret-manager';
-import { daemonInboxItems, mergeInbox } from '../core/daemon-protocol';
-import { markResultSeen, readResults } from '../agent-core/daemon';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { daemonInboxItems, mergeInbox } from '@blackide/agent-core/core/daemon-protocol';
+import { markResultSeen, readResults } from '@blackide/agent-core/agent-core/daemon';
 
 // ─── The task-agent lane, assembled (Phase 6) ───────────────────────────────
 //

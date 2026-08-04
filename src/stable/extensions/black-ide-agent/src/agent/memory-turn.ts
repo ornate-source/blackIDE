@@ -1,5 +1,5 @@
-import { ExtractionCandidate } from '../core/memory-lifecycle';
-import { MemoryEntry } from '../core/memory-model';
+import { ExtractionCandidate } from '@blackide/agent-core/core/memory-lifecycle';
+import { MemoryEntry } from '@blackide/agent-core/core/memory-model';
 import {
     buildExtractionPrompt, parseExtractionResponse, transcriptFrom, worthExtracting,
 } from '../core/memory-extract';

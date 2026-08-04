@@ -1,0 +1,35 @@
+{
+  "name": "@blackide/agent-core",
+  "version": "1.0.0",
+  "description": "The editor-free core of the Black IDE agent: the loop, the host interface, the headless runner and the CLI.",
+  "license": "MIT",
+  "main": "./dist/agent-core/index.js",
+  "types": "./dist/agent-core/index.d.ts",
+  "bin": {
+    "blackide-core": "./bin/blackide-core"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/agent-core/index.d.ts",
+      "default": "./dist/agent-core/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "js-yaml": "^4.3.0"
+  }
+}

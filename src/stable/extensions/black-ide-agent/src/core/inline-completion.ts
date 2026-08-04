@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { LLMConfigEntry } from '../core/types';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 import { loadModelRouter } from './model-router-loader';
-import { SecretManager } from '../core/secret-manager';
-import { LLMClient } from '../core/llm-client';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
 
 // Inline Completion Provider — extracted from extension.ts
 // Provides FIM-aware code completions using configured LLM models.

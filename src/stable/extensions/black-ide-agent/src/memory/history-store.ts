@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ChatMessage } from '../core/types';
+import { ChatMessage } from '@blackide/agent-core/core/types';
 
 export class HistoryStore {
     constructor(private readonly state: vscode.Memento) {}

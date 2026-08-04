@@ -1,9 +1,9 @@
-import { LLMClient } from './llm-client';
-import { ModelRouter } from './model-router';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
+import { ModelRouter } from '@blackide/agent-core/core/model-router';
 import {
     LexicalReranker, ModelReranker, RerankCandidate, RerankScorer, Reranker,
     buildRerankPrompt, parseRerankScores,
-} from './reranker';
+} from '@blackide/agent-core/core/reranker';
 
 // Assembly for the rerank stage (Phase 4 closing Phase 3's M17).
 //
@@ -14,7 +14,7 @@ import {
 /** Scores candidates with one model call. */
 export class LLMRerankScorer implements RerankScorer {
     constructor(
-        private readonly config: import('./types').LLMConfigEntry,
+        private readonly config: import('@blackide/agent-core/core/types').LLMConfigEntry,
         private readonly timeoutMs = 8_000,
     ) {}
 

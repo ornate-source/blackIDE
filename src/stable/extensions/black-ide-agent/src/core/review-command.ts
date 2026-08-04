@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
-import { LLMClient } from './llm-client';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
 import { loadModelRouter } from './model-router-loader';
-import { SecretManager } from './secret-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { ReviewFinding, offersFix } from './code-review';
 import {

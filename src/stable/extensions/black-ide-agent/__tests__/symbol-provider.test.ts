@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { CodebaseIndex, directoryFileSource } from '../src/core/codebase-index';
+import { CodebaseIndex, directoryFileSource } from '@blackide/agent-core/core/codebase-index';
 import { SymbolGraph, SymbolProvider } from '../src/core/context-providers';
 import { buildContextProviders } from '../src/core/context-provider-setup';
 

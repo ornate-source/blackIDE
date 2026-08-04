@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ChatSession } from './chat-session';
-import { ContextManager } from './context-manager';
-import { SecretManager } from './secret-manager';
+import { ContextManager } from '@blackide/agent-core/core/context-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { HistoryStore } from '../memory/history-store';
 import { loadModelRouter, providerHealth } from './model-router-loader';
 import { compactNow } from './summarizer';

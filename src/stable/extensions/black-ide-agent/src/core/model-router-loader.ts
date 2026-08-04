@@ -1,6 +1,6 @@
-import { LLMConfigEntry } from './types';
-import { SecretManager } from './secret-manager';
-import { ModelRouter, ProviderHealth, RouterSettings } from './model-router';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { ModelRouter, ProviderHealth, RouterSettings } from '@blackide/agent-core/core/model-router';
 
 // Loading half of the ModelRouter (Phase 4, M23/M24).
 //

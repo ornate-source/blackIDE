@@ -1,4 +1,4 @@
-import { CommandPolicy, PolicyDecision } from './command-policy';
+import { CommandPolicy, PolicyDecision } from '@blackide/agent-core/core/command-policy';
 
 // ─── Terminal Cmd+K (Phase 5, M29) ──────────────────────────────────────────
 //

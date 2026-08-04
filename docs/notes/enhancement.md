@@ -30,7 +30,7 @@ for what is open. See [`README.md`](./README.md) for who owns what.
 | 8 — Memory v2 | ✅ | M41–M46 | Typed tiered entries beside a markdown projection that **round-trips byte-for-byte** · extraction in three confidence bands with a content filter · contradiction detection that **asks and never overwrites** · decay that demotes then archives and never deletes · idempotent consolidation · mindmap read-back. **The loop is closed:** `agent/memory-turn.ts` injects before a turn and extracts after it, and M45's panel shows what is believed, at what confidence, from where. Until now none of the five pure modules was imported by the editor — four correct algorithms and no loop. |
 | 9 — Review automation, MCP parity & hardening | ✅ | M47–M58 | **Security spine:** redaction · untrusted-content posture · one central workspace-boundary guard · circuit breakers · append-only audit trail, redacted on the way in. **Closed 2026-08-04:** sandbox tiers that **refuse rather than degrade** when nothing can enforce them, asserted against a real socket (M57) · Reviewer mode, read-only at the executor *and* confined (M47) · MCP streamable-HTTP/SSE/OAuth where a failure names a cause and a next action instead of timing out (M49–M51) · opt-in `gh` PR review through the per-action gate (M48) · at-rest encryption that breaks neither the append-only trail nor the byte-stable round-trip (M58). |
 | 10 — Skill breadth, distribution & notebooks | ✅ | M59–M61 | **16 → 47 bundled packs** with an eval task each · a registry with pinned refs and checksums, and **load-time enforcement that a pack can never widen a capability** · notebook read/edit/checkpointing that preserves nbformat's `source` array shape. |
-| 11 — Headless core, CLI & SDK | 🟡 | M62–M65 | The core boundary **declared and transitively enforced** (zero `vscode` reachable), a Node host, a CLI with a JSON event stream and CI exit codes, and now a **local daemon whose results reach the inbox** (M65). `codebase-index` and `artifact-manager` crossed the boundary — the reachable floor rose 45 → 60. **Outstanding: the physical package move only** (§4.7 records what it actually costs, which is more than "mechanical"). |
+| 11 — Headless core, CLI & SDK | ✅ | M62–M65 | `packages/agent-core/` is a **real package**: 64 modules, own manifest and `tsconfig`, subpath exports, zero `vscode` — consumable by name with the extension nowhere in sight. Plus a Node host, a CLI with a JSON event stream and CI exit codes, and a local daemon whose results reach the inbox (M65). The reachable floor went 45 → 60 → **64**, rising at each step as the clause asked. |
 | 12 — Remote execution, integrations, analytics | ✅ | M66–M71 | **All four gate clauses met:** the default build phones home to nobody (source-walking egress accounting) · an org policy can only **tighten** · nothing is posted externally without a per-action confirmation that *cannot* be granted in advance · disabling the sink removes its egress. **Closed 2026-08-04:** the three tracker fetchers (M67), the Slack forward (M68), and BYO-runner execution with **no default endpoint of ours** (M66). M70 and M71 are ⏸️ deliberate positions rather than debt — see their rows. |
 
 **Re-verified 2026-08-04 by running everything:** harness **418/418** · vitest **1 629 / 62
@@ -634,7 +634,7 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M59 | Skill library Wave 2 (16 → full catalog) | P1 | E9 | 10 ✅ | **16 → 47.** Frameworks, testing and the cross-cutting packs, each with ≥1 golden task; the eval corpus grew 74 → 112 tasks and 13 → 21 fixtures to hold that property |
 | M60 | Skill/rule registry + `addSkillFrom` + checksums | P2 | E9 | 10 ✅ | `core/skill-registry.ts` — pinned refs (a moving ref is **refused**, since it makes the checksum meaningless), SHA-256 verification before content is examined, and a forbidden-key deny list so a pack cannot declare `tools`/`autoApprove`/`policy`. `tools/skill-fetch.ts` + the command wired 2026-08-03, with an https-only transport check that runs **before** git sees the URL — `ext::` executes a shell command, and no checksum undoes code that already ran |
 | M61 | Notebook (`.ipynb`) read/edit/checkpoint | P2 | E21 | 10 ✅ | `core/notebook.ts` — byte-stable round-trip, per-cell edit preserving the `source` array shape Jupyter writes, outputs excluded from prompts by default, cell-granular snapshot/restore. `read_notebook`/`edit_notebook_cell` registered 2026-08-03 across twelve mode allowlists — and `read_file`/`edit_file` now **refuse** a `.ipynb`, which is where the real defect was |
-| M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 🟡 | boundary declared (`src/agent-core/index.ts`) and **transitively enforced** by `__tests__/agent-core-boundary.test.ts`; four dependency edges cut to make it hold. **Partial:** the modules are named, not yet physically moved into a package |
+| M62 | `@blackide/agent-core` extracted (zero `vscode` imports) | P1 | E14 | 11 ✅ | A real package at `packages/agent-core/` — own manifest, own `tsconfig`, subpath `exports`, consumable by name with the extension nowhere in sight. 64 modules moved; the boundary is now enforced **by the build as well as by the walk**, since a path back into the extension does not resolve. `__tests__/agent-core-boundary.test.ts` stays because the compiler only catches a *broken* import, not a working one that drags `vscode` in through a new dependency |
 | M63 | Headless CLI | P1 | E14 | 11 ✅ | `agent-core/cli.ts` + `agent-core/node-host.ts` — argument parsing, a JSON-per-line stdout protocol, human output on stderr, and six distinct CI exit codes. `agent-core/host-executor.ts` (the second implementation of the executor shape, on `AgentHost`) + `headless-run.ts` + `bin/blackide` 2026-08-03; a fixture-repo run branches, commits and verifies, and `--output pr` that cannot push exits 1 rather than 0 |
 | M64 | SDK entry point | P2 | E14 | 11 ✅ | the barrel *is* the SDK surface: `AgentHost` plus the loop, router, retrieval, memory and safety exports, with `silentNotifier`/`denyingApproval` baselines for embedding |
 | M65 | Background (local daemon) agents | P2 | E14 | 11 ✅ | `agent-core/daemon.ts` + `core/daemon-protocol.ts`, `blackide daemon` / `blackide queue`. File-based queue (a socket-less daemon loses requests; a file waits), **claim-by-rename** so two daemons cannot run one task twice, and results that land in the **inbox** — the phase's fourth gate clause |
@@ -2777,34 +2777,53 @@ for reasons nobody can reproduce. A gate that fails randomly gets switched off, 
 guarded. Separate tiers, separate baselines, and the honest ⚠ marks stay in §4.2 until the tier
 exists.
 
-### 4.7 The package move (M62's second half) — what it actually costs
+### 4.7 The package move (M62's second half) — ✅ delivered 2026-08-04
 
-*Added 2026-08-04, after the boundary refactor it was sequenced behind was finished.*
+*Costed 2026-08-04 after the boundary refactor it was sequenced behind; built the same
+day. Kept as a record of what "mechanical" hid.*
 
-The roadmap has described this as "mechanical, once the boundary is known to hold". The boundary
-now holds — transitively enforced, 60 modules reachable, zero `vscode` among them — so the
-mechanical part is unblocked and the estimate can be replaced with a measurement.
+The roadmap called this "mechanical, once the boundary is known to hold". It was
+mechanical, and the estimate still understated it — which is the reason to write the
+measurement down rather than the outcome.
 
-**It is mechanical and it is not small.** The reachable set is 60 files, and 50 of them are in
-`src/core/`, which holds about 90. A physical move therefore *splits that directory in half*: the
-40 core modules that stay behind would import their moved neighbours across a package boundary, and
-`core/` would stop being a place you can read top to bottom. That is a real cost the word
-"mechanical" hides.
+**What it actually was.** 64 modules moved to `packages/agent-core/src/`, 160 import
+specifiers rewritten in 52 extension files, 93 more in 52 test files, and 45
+`path.join(DIST, …)` requires in the harness and eval repointed. `src/core/` did split
+in half — 51 files moved, 55 stayed — and the ones that stayed now import their old
+neighbours by package name. The other 13 that moved are 4 from `agent/` and the 9 of
+`agent-core/`.
 
-The rest of the blast radius, measured rather than guessed:
+**The three things the estimate missed:**
 
-- **45 `path.join(DIST, …)` requires** in `test/harness.js` and `eval/*.js`, each pointing at a
-  compiled path that moves.
-- **`package.json`'s `main`**, `bin/blackide`, and the `dist/` layout every one of those depends
-  on — because covering two roots changes `rootDir`, and `dist/core/x.js` becomes `dist/src/core/x.js`.
-- Every extension-side import of a moved module.
+1. **A type-only import is still a compile-time edge.** M62 made `agent-loop`'s import of
+   `AgentToolExecutor` type-only, which fixed the *runtime* graph and was recorded as
+   done. The loop still *named* a type living on the editor side, so the package could not
+   compile without it. The fix was the one M62's own comment implied: the shape is a single
+   method, and it now lives in `core/types.ts` as `ToolExecutor`, where both
+   implementations can satisfy it structurally and neither owns it.
+2. **An inline `import('./types')` type expression** is not a `from` clause and no
+   import-rewriting regex sees it. One existed, in `rerank-setup.ts`. The compiler caught
+   it; a less strict setup would have shipped it.
+3. **Resolution has to be by *looking*, not by a list.** The harness, the eval and a dozen
+   structural tests all had `../src/...` hardcoded. Both now resolve a source-relative
+   path against whichever root has it (`mod()` in `test/harness.js`,
+   `__tests__/source-roots.ts` for the suites), so the next module to cross the boundary —
+   in either direction — needs no change to any of them. A hardcoded list would have to be
+   kept in step by hand, and getting it wrong surfaces as an ENOENT in an unrelated suite.
 
-**Why it is still worth doing, and what it needs.** The payoff is a publishable SDK, which is the
-entire point of Phase 11. It should be done as an npm **workspace** (`packages/agent-core` with its
-own `package.json` and `tsconfig`, resolved through `node_modules` so runtime `require` works
-without a bundler or a path-alias shim), in one change, with the harness green at each step. What it
-must not be is a half-move: a repository with some of `core/` in a package and some outside it is
-worse than either end state, and that is the failure mode a "mechanical" estimate invites.
+**What the move bought that the logical boundary alone did not.** Before it, "the core
+does not import `vscode`" was a property of files sitting in the same tree as the editor,
+one careless relative import away from each other, asserted by one test. Now the package
+is a separate compilation unit with no path back: `../../../src/core/x` does not resolve,
+so a stray import is a *compile error*. The walk stays, because the compiler only catches
+a broken import — not a working one that drags `vscode` in through a new and entirely
+reasonable-looking dependency.
+
+**Resolution mechanics, for the next person who touches the build.** `moduleResolution` is
+node10, which ignores `exports`. So TypeScript finds the package through `paths` in the
+extension's `tsconfig` (compile-time only, no effect on emit) while Node finds it at
+runtime through the `exports` map and the workspace symlink. Vitest aliases the package to
+its **source**, not its `dist`, so a unit test never silently exercises yesterday's build.
 
 ### 4.3 Coverage check
 

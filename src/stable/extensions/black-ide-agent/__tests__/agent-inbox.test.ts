@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { PipelineRunSummary } from '../src/core/pipeline-runs';
-import { TaskAgentSummary } from '../src/core/task-agents';
+import { PipelineRunSummary } from '@blackide/agent-core/core/pipeline-runs';
+import { TaskAgentSummary } from '@blackide/agent-core/core/task-agents';
 import {
     DEFAULT_IDLE_TIMEOUT_MS, buildInbox, inboxCounts, newlyNotifiable, notificationKey,
     pruneNotified, summarizeForNotification,
-} from '../src/core/agent-inbox';
+} from '@blackide/agent-core/core/agent-inbox';
 
 /**
  * Phase 6, M34 — the agent inbox.

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
     FORBIDDEN_PACK_KEYS, RegistryEntry, admitPack, findPackViolations, installPathFor,
     parseRegistry, validateEntry,
-} from '../src/core/skill-registry';
+} from '@blackide/agent-core/core/skill-registry';
 
 /**
  * Phase 10, M60 — skill distribution.

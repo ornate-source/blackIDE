@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
     MemoryEntry, bandFor, createMemory, injectable, memoryId, normalizeForIdentity,
     renderForPrompt, touch,
-} from '../src/core/memory-model';
+} from '@blackide/agent-core/core/memory-model';
 import {
     parseMemoryMarkdown, renderEntryLine, renderMemoryMarkdown, roundTrip, withEntries,
-} from '../src/core/memory-markdown';
+} from '@blackide/agent-core/core/memory-markdown';
 import {
     applyDecay, consolidate, decideWrite, findContradictions, isNegated,
     isWorthRemembering, sortCandidates, supersede,
-} from '../src/core/memory-lifecycle';
+} from '@blackide/agent-core/core/memory-lifecycle';
 
 /**
  * Phase 8, M41–M44 — Memory v2.

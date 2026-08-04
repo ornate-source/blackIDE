@@ -5,9 +5,10 @@ import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_RESULT_MAX_AGE_MS, DaemonResult, QUEUE_DIR, RESULTS_DIR,
     daemonInboxItems, mergeInbox, parseRequest, resultFilename,
-} from '../src/core/daemon-protocol';
-import { enqueue, markResultSeen, readResults, runDaemon } from '../src/agent-core/daemon';
-import { InboxItem } from '../src/core/agent-inbox';
+} from '@blackide/agent-core/core/daemon-protocol';
+import { enqueue, markResultSeen, readResults, runDaemon } from '@blackide/agent-core/agent-core/daemon';
+import { InboxItem } from '@blackide/agent-core/core/agent-inbox';
+import { readSource } from './source-roots';
 
 /**
  * The local daemon (Phase 11, M65 · P11-3).
@@ -257,7 +258,7 @@ describe('a daemon run\'s results appear in the inbox', () => {
 });
 
 describe('wiring', () => {
-    const src = (...parts: string[]) => fs.readFileSync(path.join(__dirname, '..', 'src', ...parts), 'utf8');
+    const src = (...parts: string[]) => readSource(...parts);
 
     it('the editor lane merges daemon results into its inbox', () => {
         // The gate clause is about the editor's inbox, so the assertion is about the

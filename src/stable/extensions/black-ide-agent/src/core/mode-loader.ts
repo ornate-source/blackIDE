@@ -2,7 +2,7 @@ import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CODE_INTEL_READ_TOOLS, NOTEBOOK_EDIT_TOOLS, NOTEBOOK_READ_TOOLS } from './tools';
+import { CODE_INTEL_READ_TOOLS, NOTEBOOK_EDIT_TOOLS, NOTEBOOK_READ_TOOLS } from '@blackide/agent-core/core/tools';
 import { REVIEW_TOOLS } from './code-review';
 
 /** Schema version for mode definitions */

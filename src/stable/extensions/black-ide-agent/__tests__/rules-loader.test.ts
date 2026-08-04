@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { RulesLoader, TEAM_RULES_ENV } from '../src/core/rules-loader';
-import { selectRules, renderRules } from '../src/core/rules';
+import { selectRules, renderRules } from '@blackide/agent-core/core/rules';
 
 /**
  * Phase 2 (M9/M11) loader behaviour: discovery, precedence, `AGENTS.md` back-compat

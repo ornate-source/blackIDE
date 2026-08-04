@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { CodebaseIndex, directoryFileSource } from '../src/core/codebase-index';
+import { CodebaseIndex, directoryFileSource } from '@blackide/agent-core/core/codebase-index';
 import { analyseImpact } from '../src/tools/graph-tools';
 
 /**

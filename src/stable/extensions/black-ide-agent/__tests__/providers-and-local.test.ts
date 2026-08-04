@@ -1,15 +1,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { MODEL_ROLES } from '../src/core/model-router';
+import { MODEL_ROLES } from '@blackide/agent-core/core/model-router';
 import {
     PROVIDER_PRESETS, authHeaders, endpointFor, isOpenAICompatible, presetFor,
-} from '../src/core/providers';
-import { supportsNativeTools } from '../src/core/llm-client';
+} from '@blackide/agent-core/core/providers';
+import { supportsNativeTools } from '@blackide/agent-core/core/llm-client';
 import {
     LOCAL_RUNTIMES, configFor, noModelGuidance, probeLocalRuntimes,
 } from '../src/core/local-models';
-import { LLMConfigEntry } from '../src/core/types';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 
 /**
  * Phase 4, M26 (provider breadth) and M27 (zero-config first run).

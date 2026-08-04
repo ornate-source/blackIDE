@@ -7,9 +7,9 @@ import {
     languageOf,
     maskLiterals,
     planChunks,
-} from '../src/core/symbol-chunker';
+} from '@blackide/agent-core/core/symbol-chunker';
 // Tokenisation lives with the index that consumes it, not with the chunker.
-import { splitIdentifier, stem } from '../src/core/codebase-index';
+import { splitIdentifier, stem } from '@blackide/agent-core/core/codebase-index';
 
 /**
  * Phase 3, M14. The assertions are ordered by what would hurt most if it broke:

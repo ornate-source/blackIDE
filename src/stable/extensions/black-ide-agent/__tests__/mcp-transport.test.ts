@@ -7,6 +7,7 @@ import {
     requestHeaders, serverIdentity, tokenExpired,
 } from '../src/tools/mcp-transport';
 import { EGRESS_REGISTER } from '../src/core/egress';
+import { readSource } from './source-roots';
 
 /**
  * MCP transports (M49 · P9-3), vetting (M51 · P9-5).
@@ -287,7 +288,7 @@ describe('vetting: identity is what runs, not what it is called', () => {
 
 describe('the lanes ask for vetting the way their audience implies', () => {
     const src = (...parts: string[]) =>
-        readFileSync(join(__dirname, '..', 'src', ...parts), 'utf8');
+        readSource(...parts);
 
     it('the pipeline lane connects unattended, against the vetted list', () => {
         // Structural, and worth defending. Before this the pipeline constructed an

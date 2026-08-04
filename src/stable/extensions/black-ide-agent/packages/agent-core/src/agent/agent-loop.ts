@@ -1,15 +1,19 @@
-import { LLMConfigEntry, ChatMessage, ToolDefinition, ToolCall, ToolResult } from '../core/types';
+import { LLMConfigEntry, ChatMessage, ToolDefinition, ToolCall, ToolExecutor, ToolResult } from '../core/types';
 import { ProviderHealth, Substitution, runWithFailover } from '../core/model-router';
 import { LLMClient, isAbortError } from '../core/llm-client';
 import { ContextManager } from '../core/context-manager';
-/**
- * Type-only (Phase 11, M62). The loop needs the executor's *shape*, and importing the
- * class dragged `tool-executor.ts` — and through it the LSP bridge, the codebase index and
- * the artifact manager — into anything that imported the loop. A type-only import is
- * erased at compile time, so this is a contract rather than a dependency.
- */
-import type { AgentToolExecutor } from './tool-executor';
 import { SteeringNote, applySteering } from '../core/steering';
+
+/*
+ * The loop takes a `ToolExecutor` — one method — rather than the editor's executor class.
+ *
+ * M62 made this a type-only import, which stopped the class dragging the LSP bridge, the
+ * codebase index and the artifact manager into everything that imported the loop. That
+ * fixed the runtime graph and left a compile-time edge: the loop still *named* a type
+ * living on the editor side, so the core could not compile without it. P11-2 finished the
+ * job by moving the shape into `core/types.ts`, where both implementations can see it and
+ * neither owns it.
+ */
 
 export interface LoopCallbacks {
     onTurn?: (n: number, maxTurns: number) => void;
@@ -83,7 +87,7 @@ export async function runAgentLoop(opts: {
     /** Prior turns replayed into this task, so the agent remembers the conversation. */
     priorMessages?: ChatMessage[];
     tools: ToolDefinition[];
-    executor: AgentToolExecutor;
+    executor: ToolExecutor;
     maxLoops: number;
     signal?: AbortSignal;
     callbacks?: LoopCallbacks;

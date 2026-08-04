@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentGovernor, GOVERNOR_DEFAULTS, clampConcurrency } from '../src/core/agent-governor';
+import { AgentGovernor, GOVERNOR_DEFAULTS, clampConcurrency } from '@blackide/agent-core/core/agent-governor';
 
 /**
  * Phase 6, M33 — the concurrency and spend governor.

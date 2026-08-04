@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { SecretManager } from './secret-manager';
-import { PipelineRunSummary } from './pipeline-runs';
-import { TaskAgentSummary } from './task-agents';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { PipelineRunSummary } from '@blackide/agent-core/core/pipeline-runs';
+import { TaskAgentSummary } from '@blackide/agent-core/core/task-agents';
 import { ArtifactRecord, ArtifactType } from './artifacts';
 import { buildReviewView, reviewCounts, routeComment } from './artifact-review';
 import { buildMemoryView } from './memory-view';
-import { MemoryEntry } from './memory-model';
-import { ExtractionCandidate } from './memory-lifecycle';
+import { MemoryEntry } from '@blackide/agent-core/core/memory-model';
+import { ExtractionCandidate } from '@blackide/agent-core/core/memory-lifecycle';
 
 /**
  * The ✦ Pipeline Manager webview panel — launches and monitors concurrent

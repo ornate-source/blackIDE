@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { KNOWN_SKILL_ROLES, validateSkill } from '../src/agent/skills-manager';
-import { findPackViolations } from '../src/core/skill-registry';
+import { KNOWN_SKILL_ROLES, validateSkill } from '@blackide/agent-core/agent/skills-manager';
+import { findPackViolations } from '@blackide/agent-core/core/skill-registry';
 
 /**
  * Phase 10, M59 — the bundled skill catalog.

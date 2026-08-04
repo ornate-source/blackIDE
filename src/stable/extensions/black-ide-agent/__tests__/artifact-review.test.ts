@@ -5,7 +5,8 @@ import {
     MAX_REGION_CHARS, buildReviewView, clipRegion, reviewCounts, routeComment,
 } from '../src/core/artifact-review';
 import { ArtifactRecord, addComment } from '../src/core/artifacts';
-import { SteeringQueue, applySteering, renderSteering } from '../src/core/steering';
+import { SteeringQueue, applySteering, renderSteering } from '@blackide/agent-core/core/steering';
+import { readSource } from './source-roots';
 
 /**
  * The artifact review panel (Phase 7, M38's outstanding half).
@@ -214,7 +215,7 @@ describe('comments outlive the run they were left on', () => {
 // ─── The wiring ─────────────────────────────────────────────────────────────
 
 describe('the panel is actually reachable', () => {
-    const src = (...parts: string[]) => fs.readFileSync(path.join(__dirname, '..', 'src', ...parts), 'utf8');
+    const src = (...parts: string[]) => readSource(...parts);
     const web = (...parts: string[]) => fs.readFileSync(path.join(__dirname, '..', 'webview', 'src', ...parts), 'utf8');
     const panel = src('core', 'manager-panel.ts');
 

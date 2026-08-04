@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { LLMClient } from './llm-client';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
 import { loadModelRouter } from './model-router-loader';
-import { SecretManager } from './secret-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { MemoryTurn } from '../agent/memory-turn';
 import { MemoryStore } from '../memory/memory-store';
 

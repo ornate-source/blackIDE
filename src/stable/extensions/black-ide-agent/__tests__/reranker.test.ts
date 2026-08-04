@@ -8,7 +8,7 @@ import {
     buildRerankPrompt,
     parseRerankScores,
     proximityScore,
-} from '../src/core/reranker';
+} from '@blackide/agent-core/core/reranker';
 
 /**
  * Phase 3, M17.

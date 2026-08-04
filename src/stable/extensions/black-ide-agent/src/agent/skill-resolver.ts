@@ -5,8 +5,8 @@
 // even when the word "django" never appears in the prompt. Backward compatible: legacy skills with
 // no roles/stacks still resolve on their trigger keywords.
 
-import { Skill } from './skills-manager';
-import { FRAMEWORK_IDENTITY_TOKENS, ProjectProfile, Role } from '../core/project-profiler';
+import { Skill } from '@blackide/agent-core/agent/skills-manager';
+import { FRAMEWORK_IDENTITY_TOKENS, ProjectProfile, Role } from '@blackide/agent-core/core/project-profiler';
 
 // Weights: the detected stack is the strongest signal, then role affinity, then prompt keywords.
 //

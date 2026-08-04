@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { SecretManager } from './secret-manager';
-import { LLMClient } from './llm-client';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
 import { loadModelRouter } from './model-router-loader';
-import { CodeGraph } from './code-graph';
-import { EditHistory } from './edit-history';
+import { CodeGraph } from '@blackide/agent-core/core/code-graph';
+import { EditHistory } from '@blackide/agent-core/core/edit-history';
 import { agentIsWriting, withinAgentEditGrace } from './edit-origin';
 import {
     DocumentStamp, NextEditCandidate, NextEditPrediction, NextEditStats,
     budgetSignal, buildNextEditPrompt, isStale, normalizePath, parseProposal,
     selectCandidates, validateProposal,
-} from './next-edit';
+} from '@blackide/agent-core/core/next-edit';
 
 // ─── Next-edit: the editor surface (Phase 5, M28) ───────────────────────────
 //

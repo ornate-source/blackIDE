@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { WorkspaceRoot } from '../src/core/workspace-roots';
-import { collapse, guardPath } from '../src/core/workspace-guard';
-import { ToolBreaker } from '../src/core/tool-breaker';
+import { WorkspaceRoot } from '@blackide/agent-core/core/workspace-roots';
+import { collapse, guardPath } from '@blackide/agent-core/core/workspace-guard';
+import { ToolBreaker } from '@blackide/agent-core/core/tool-breaker';
 
 /**
  * Phase 9, M55 + M52 — the workspace boundary and tool circuit breakers.

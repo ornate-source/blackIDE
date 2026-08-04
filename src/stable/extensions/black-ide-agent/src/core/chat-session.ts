@@ -1,5 +1,5 @@
-import { ChatMessage } from './types';
-import { RuleActivationReason } from './rules';
+import { ChatMessage } from '@blackide/agent-core/core/types';
+import { RuleActivationReason } from '@blackide/agent-core/core/rules';
 
 /**
  * Mutable state for the chat sidebar's single conversation lane.

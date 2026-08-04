@@ -1,7 +1,7 @@
-import { LLMClient } from './llm-client';
-import { ModelRouter } from './model-router';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
+import { ModelRouter } from '@blackide/agent-core/core/model-router';
 import { ToolRunner } from '../tools/tool-runner';
-import { Verification, buildApplyPrompt, extractBlocks, verifyFastApply } from './fast-apply';
+import { Verification, buildApplyPrompt, extractBlocks, verifyFastApply } from '@blackide/agent-core/core/fast-apply';
 
 // Assembly for fast-apply (Phase 4, M25). The pure half — prompt, extraction,
 // verification — is `fast-apply.ts`; this is the part that calls a model.

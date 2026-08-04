@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AuditTrail, auditRelativePath, parseAuditTrail } from '../src/core/audit-trail';
+import { AuditTrail, auditRelativePath, parseAuditTrail } from '@blackide/agent-core/core/audit-trail';
 
 /**
  * Phase 9, M53 — the append-only audit trail.

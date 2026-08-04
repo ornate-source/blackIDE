@@ -1,4 +1,4 @@
-import { selectRules, renderRules, Rule, RuleActivationReason } from '../src/core/rules';
+import { selectRules, renderRules, Rule, RuleActivationReason } from '@blackide/agent-core/core/rules';
 
 /**
  * The Phase 2 gate: what the session panel reports as "applied" must be what was

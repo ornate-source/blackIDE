@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ChatMessage } from '../src/core/types';
+import { ChatMessage } from '@blackide/agent-core/core/types';
 import {
     SteeringQueue, applySteering, describeSteering, renderSteering,
-} from '../src/core/steering';
+} from '@blackide/agent-core/core/steering';
 
 /**
  * Phase 7, M39 — mid-run steering.

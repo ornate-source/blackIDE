@@ -1,6 +1,6 @@
 import { resolveSkills } from '../src/agent/skill-resolver';
-import { Skill } from '../src/agent/skills-manager';
-import { ProjectProfile } from '../src/core/project-profiler';
+import { Skill } from '@blackide/agent-core/agent/skills-manager';
+import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
 
 /**
  * Regression cover for eval finding F1: role affinity alone must not qualify a

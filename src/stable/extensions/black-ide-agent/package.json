@@ -25,7 +25,7 @@
     "commands": [
       {
         "command": "black-ide.openSettings",
-        "title": "✦ Black IDE Settings",
+        "title": "\u2726 Black IDE Settings",
         "icon": "$(gear)"
       },
       {
@@ -40,70 +40,70 @@
       },
       {
         "command": "black-ide.openPipelineManager",
-        "title": "✦ Black IDE: Pipeline Manager",
+        "title": "\u2726 Black IDE: Pipeline Manager",
         "icon": "$(run-all)"
       },
       {
         "command": "black-ide.exportDiagnostics",
-        "title": "✦ Black IDE: Export Agent Diagnostics",
+        "title": "\u2726 Black IDE: Export Agent Diagnostics",
         "icon": "$(output)"
       },
       {
         "command": "black-ide.installBrowserSupport",
-        "title": "✦ Black IDE: Install Browser Support",
+        "title": "\u2726 Black IDE: Install Browser Support",
         "icon": "$(cloud-download)"
       },
       {
         "command": "black-ide.installSkillPacks",
-        "title": "✦ Black IDE: Install Skill Packs",
+        "title": "\u2726 Black IDE: Install Skill Packs",
         "icon": "$(book)"
       },
       {
         "command": "black-ide.reviewChanges",
-        "title": "✦ Black IDE: Review Working Changes",
+        "title": "\u2726 Black IDE: Review Working Changes",
         "icon": "$(search-fuzzy)"
       },
       {
         "command": "black-ide.postReviewToPr",
-        "title": "✦ Black IDE: Post Review to Pull Request",
+        "title": "\u2726 Black IDE: Post Review to Pull Request",
         "icon": "$(git-pull-request)"
       },
       {
         "command": "black-ide.addSkillFrom",
-        "title": "✦ Black IDE: Add Skill Pack From URL",
+        "title": "\u2726 Black IDE: Add Skill Pack From URL",
         "icon": "$(cloud-download)"
       },
       {
         "command": "black-ide.addDocs",
-        "title": "✦ Black IDE: Add Docs",
+        "title": "\u2726 Black IDE: Add Docs",
         "icon": "$(book)"
       },
       {
         "command": "black-ide.manageDocs",
-        "title": "✦ Black IDE: Manage Docs",
+        "title": "\u2726 Black IDE: Manage Docs",
         "icon": "$(library)"
       },
       {
         "command": "black-ide.nextEdit.jump",
-        "title": "✦ Black IDE: Jump to Next Edit",
+        "title": "\u2726 Black IDE: Jump to Next Edit",
         "icon": "$(arrow-right)"
       },
       {
         "command": "black-ide.nextEdit.dismiss",
-        "title": "✦ Black IDE: Dismiss Next Edit"
+        "title": "\u2726 Black IDE: Dismiss Next Edit"
       },
       {
         "command": "black-ide.nextEdit.showStats",
-        "title": "✦ Black IDE: Next-Edit Statistics"
+        "title": "\u2726 Black IDE: Next-Edit Statistics"
       },
       {
         "command": "black-ide.terminalCommand",
-        "title": "✦ Black IDE: Generate Terminal Command",
+        "title": "\u2726 Black IDE: Generate Terminal Command",
         "icon": "$(terminal)"
       },
       {
         "command": "black-ide.compactConversation",
-        "title": "✦ Black IDE: Compact Conversation"
+        "title": "\u2726 Black IDE: Compact Conversation"
       }
     ],
     "keybindings": [
@@ -190,7 +190,8 @@
     "test:integration": "npm run compile && npm run compile-integration && node test/integration/out/runTest.js"
   },
   "dependencies": {
-    "js-yaml": "^4.3.0"
+    "js-yaml": "^4.3.0",
+    "@blackide/agent-core": "*"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
@@ -205,5 +206,8 @@
     "stylelint-no-unsupported-browser-features": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.10"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

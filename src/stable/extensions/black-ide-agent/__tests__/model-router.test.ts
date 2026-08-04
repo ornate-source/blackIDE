@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     MODEL_ROLES, ModelRouter, ProviderHealth, runWithFailover,
-} from '../src/core/model-router';
-import { LLMConfigEntry } from '../src/core/types';
+} from '@blackide/agent-core/core/model-router';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 
 /**
  * Phase 4, M23 + M24 — per-role models and cross-provider failover.

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ChatMessage } from '../src/core/types';
-import { ContextManager } from '../src/core/context-manager';
+import { ChatMessage } from '@blackide/agent-core/core/types';
+import { ContextManager } from '@blackide/agent-core/core/context-manager';
 import {
     applySummary, buildSummaryPrompt, hasSummary, selectForSummary, stripSummary,
-} from '../src/core/rolling-summary';
+} from '@blackide/agent-core/core/rolling-summary';
 
 /**
  * Phase 5, M30 — rolling summarization.

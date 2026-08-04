@@ -3,7 +3,10 @@
     "module": "commonjs",
     "target": "ES2022",
     "outDir": "./dist",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "sourceMap": true,
     "strict": true,
     "rootDir": "./src",
@@ -11,7 +14,26 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true
+    "declaration": true,
+    "paths": {
+      "@blackide/agent-core": [
+        "./packages/agent-core/src/agent-core/index.ts"
+      ],
+      "@blackide/agent-core/*": [
+        "./packages/agent-core/src/*"
+      ]
+    },
+    "baseUrl": "."
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "./packages/agent-core"
+    }
+  ],
+  "exclude": [
+    "packages"
+  ]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeFindings, redact, redactDeep, shannonBits } from '../src/core/redaction';
+import { describeFindings, redact, redactDeep, shannonBits } from '@blackide/agent-core/core/redaction';
 
 /**
  * Phase 9, M54 (P0) — secret redaction.

@@ -14,13 +14,13 @@ import {
     TerminalHistory,
     TerminalProvider,
 } from './context-providers';
-import { Rule } from './rules';
-import { SecretManager } from './secret-manager';
+import { Rule } from '@blackide/agent-core/core/rules';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { DocsStore, searchDocs } from './docs-index';
 import { WebSearchTool } from '../tools/web-search';
 import { SearchSettings, pickSearchSettings } from '../tools/search-providers';
 import { HistoryStore } from '../memory/history-store';
-import { Skill } from '../agent/skills-manager';
+import { Skill } from '@blackide/agent-core/agent/skills-manager';
 
 // Assembly for the `@`-mention providers (Phase 3, M19).
 //

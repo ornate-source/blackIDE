@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ToolDefinition } from '../core/types';
+import { ToolDefinition } from '@blackide/agent-core/core/types';
 import { HttpMcpConnection, JsonRpcResponse, McpTransportError } from './mcp-http';
 import {
     McpServerConfig, McpStdioConfig, classifyFailure, describeFailure, isRemote,

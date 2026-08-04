@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { CommandResult, GrepResult } from '../core/types';
+import { CommandResult, GrepResult } from '@blackide/agent-core/core/types';
 import { asAgentEdit, markAgentWrite } from '../core/edit-origin';
-import { applySearchReplace } from '../core/search-replace';
+import { applySearchReplace } from '@blackide/agent-core/core/search-replace';
 
 // Local File System & Terminal Tool Runners
 // Enhanced with: terminal output capture (Feature 1), grep search (Feature 3), list directory (Feature 4)

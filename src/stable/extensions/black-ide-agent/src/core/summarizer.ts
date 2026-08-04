@@ -1,7 +1,7 @@
-import { ChatMessage } from './types';
-import { LLMClient } from './llm-client';
-import { ModelRouter, ProviderHealth, runWithFailover } from './model-router';
-import { applySummary, buildSummaryPrompt, selectForSummary, stripSummary } from './rolling-summary';
+import { ChatMessage } from '@blackide/agent-core/core/types';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
+import { ModelRouter, ProviderHealth, runWithFailover } from '@blackide/agent-core/core/model-router';
+import { applySummary, buildSummaryPrompt, selectForSummary, stripSummary } from '@blackide/agent-core/core/rolling-summary';
 
 // ─── The summarizer, wired to a model (Phase 5, M30) ────────────────────────
 //

@@ -3,10 +3,10 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
     UNTRUSTED_CONTENT_POSTURE, describeInjection, fenceUntrusted, scanForInjection,
-} from '../src/core/untrusted-content';
-import { CommandPolicy } from '../src/core/command-policy';
-import { isToolAllowedInMode, toolsForMode } from '../src/core/tools';
-import { applyToolToggles } from '../src/core/tool-toggles';
+} from '@blackide/agent-core/core/untrusted-content';
+import { CommandPolicy } from '@blackide/agent-core/core/command-policy';
+import { isToolAllowedInMode, toolsForMode } from '@blackide/agent-core/core/tools';
+import { applyToolToggles } from '@blackide/agent-core/core/tool-toggles';
 
 /**
  * Phase 9, M56 (P0) — untrusted content and injection fixtures.

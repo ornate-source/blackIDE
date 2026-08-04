@@ -1,4 +1,4 @@
-import { CodeGraph, GraphSymbol } from '../core/code-graph';
+import { CodeGraph, GraphSymbol } from '@blackide/agent-core/core/code-graph';
 
 // ─── Graph-backed analysis tools (Phase 3, M16) ─────────────────────────────
 //

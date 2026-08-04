@@ -1,5 +1,5 @@
 import { AgentEvent, EventBus, Envelope, EventMeta } from './event-bus';
-import { AgentMode } from './types';
+import { AgentMode } from '@blackide/agent-core/core/types';
 
 // ─── Session Manager ────────────────────────────────────────────────────────
 // Owns identity and lifecycle: one Session per activation, a Conversation per

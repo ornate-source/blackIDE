@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SkillProblem } from './skills-manager';
+import { SkillProblem } from '@blackide/agent-core/agent/skills-manager';
 
 /**
  * Publishes skill-pack authoring problems into the Problems panel — the same UX

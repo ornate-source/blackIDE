@@ -1,4 +1,4 @@
-import { LLMConfigEntry } from './types';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 
 // ─── Zero-config first run (Phase 4, M27) ───────────────────────────────────
 //

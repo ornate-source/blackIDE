@@ -27,7 +27,7 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import {
     InstallVerdict, RegistryEntry, admitPack, installPathFor, validateRef, validateSource,
-} from '../core/skill-registry';
+} from '@blackide/agent-core/core/skill-registry';
 
 /** A SKILL.md larger than this is not a skill pack. */
 export const MAX_PACK_BYTES = 512 * 1024;

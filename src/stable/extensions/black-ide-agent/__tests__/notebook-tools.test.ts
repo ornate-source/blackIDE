@@ -3,9 +3,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AgentToolExecutor, ExecutorDeps } from '../src/agent/tool-executor';
-import { BASE_TOOLS, NOTEBOOK_EDIT_TOOLS, NOTEBOOK_READ_TOOLS, isToolAllowedInMode, toolsForMode } from '../src/core/tools';
+import { BASE_TOOLS, NOTEBOOK_EDIT_TOOLS, NOTEBOOK_READ_TOOLS, isToolAllowedInMode, toolsForMode } from '@blackide/agent-core/core/tools';
 import { ModeLoader } from '../src/core/mode-loader';
-import { parseNotebook, roundTrip } from '../src/core/notebook';
+import { parseNotebook, roundTrip } from '@blackide/agent-core/core/notebook';
 
 /**
  * Notebook tools reaching the agent (Phase 10, M61).

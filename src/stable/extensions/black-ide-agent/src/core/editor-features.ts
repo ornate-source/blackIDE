@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { SecretManager } from './secret-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { BlackIdeInlineCompletionProvider } from './inline-completion';
 import { NextEditController } from './next-edit-controller';
-import { CodeGraph } from './code-graph';
+import { CodeGraph } from '@blackide/agent-core/core/code-graph';
 
 // ─── Editor-surface registration ────────────────────────────────────────────
 //

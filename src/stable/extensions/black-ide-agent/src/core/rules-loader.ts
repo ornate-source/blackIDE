@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { Rule, RuleProblem, RuleScope, parseRuleFile } from './rules';
+import { Rule, RuleProblem, RuleScope, parseRuleFile } from '@blackide/agent-core/core/rules';
 
 // Rules loader — Phase 2 (M9/M11). The I/O half of rules.ts.
 //

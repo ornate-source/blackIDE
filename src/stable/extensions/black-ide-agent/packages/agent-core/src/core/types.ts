@@ -80,6 +80,22 @@ export interface ToolResult {
     images?: ImagePart[]; // e.g. a browser screenshot fed back as vision
 }
 
+/**
+ * The only thing the agent loop needs from an executor (Phase 11, M62 · P11-2).
+ *
+ * M62 made `agent-loop`'s import of `AgentToolExecutor` type-only, which stopped the class
+ * dragging the LSP bridge and the codebase index into everything importing the loop. That
+ * fixed the *runtime* graph and left a compile-time edge: the loop still named a type that
+ * lives on the editor side, so the core could not be compiled without it.
+ *
+ * The shape turns out to be one method. Declaring it here — where both implementations can
+ * see it and neither owns it — is what lets `AgentToolExecutor` (editor) and `HostExecutor`
+ * (headless) satisfy it structurally without either importing the other.
+ */
+export interface ToolExecutor {
+    execute(call: ToolCall): Promise<ToolResult>;
+}
+
 export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;

@@ -29,8 +29,8 @@
 // allowlist, under the tier-2 sandbox from M57. Same argument as M56's — a gate that
 // content can talk its way past is not a gate.
 
-import { SandboxTier } from './sandbox';
-import { CODE_INTEL_READ_TOOLS, NOTEBOOK_READ_TOOLS } from './tools';
+import { SandboxTier } from '@blackide/agent-core/core/sandbox';
+import { CODE_INTEL_READ_TOOLS, NOTEBOOK_READ_TOOLS } from '@blackide/agent-core/core/tools';
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 

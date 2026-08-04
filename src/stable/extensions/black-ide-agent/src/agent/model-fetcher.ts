@@ -1,4 +1,4 @@
-import { LLMConfigEntry } from '../core/types';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 
 // Model Discovery — extracted from extension.ts
 // Fetches available models from various LLM providers.

@@ -1,15 +1,15 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { SecretManager } from './secret-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { InlineChatController } from './inline-chat-controller';
 import { browserRuntimeAvailable } from '../tools/browser-capability';
 import { installBrowserSupport } from '../tools/browser-install';
 import { installSkillPacks, listBundledPacks } from '../tools/skill-install';
 import { installPackFrom } from '../tools/skill-fetch';
-import { validateEntry, validateRef, validateSource } from './skill-registry';
+import { validateEntry, validateRef, validateSource } from '@blackide/agent-core/core/skill-registry';
 import { CRAWL_DEFAULTS, DocsStore, crawlDocs, suggestDocSets } from './docs-index';
-import { CommandPolicy } from './command-policy';
-import { LLMClient } from './llm-client';
+import { CommandPolicy } from '@blackide/agent-core/core/command-policy';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
 import { loadModelRouter } from './model-router-loader';
 import { buildTerminalPrompt, isSafeToInsert, judgeCommand, sanitizeCommand } from './terminal-command';
 

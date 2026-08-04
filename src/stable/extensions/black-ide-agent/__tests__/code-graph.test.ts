@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CodeGraph, resolveSpecifier } from '../src/core/code-graph';
+import { CodeGraph, resolveSpecifier } from '@blackide/agent-core/core/code-graph';
 
 /**
  * Phase 3, M15. The graph is deliberately approximate — resolution is by symbol

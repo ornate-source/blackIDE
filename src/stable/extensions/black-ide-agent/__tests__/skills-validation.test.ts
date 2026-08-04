@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { validateSkill, SkillsManager, KNOWN_SKILL_ROLES } from '../src/agent/skills-manager';
+import { validateSkill, SkillsManager, KNOWN_SKILL_ROLES } from '@blackide/agent-core/agent/skills-manager';
 import { skillsFiredEvent, resolveSkills } from '../src/agent/skill-resolver';
 
 /**

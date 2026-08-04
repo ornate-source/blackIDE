@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CommandPolicy } from '../src/core/command-policy';
+import { CommandPolicy } from '@blackide/agent-core/core/command-policy';
 import {
     NO_COMMAND, buildTerminalPrompt, isSafeToInsert, judgeCommand, sanitizeCommand,
 } from '../src/core/terminal-command';

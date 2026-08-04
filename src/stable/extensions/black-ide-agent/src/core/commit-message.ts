@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { LLMClient } from './llm-client';
-import { LLMConfigEntry } from './types';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 import { loadModelRouter } from './model-router-loader';
-import { SecretManager } from './secret-manager';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 
 /**
  * Commit-message generation from the working tree.

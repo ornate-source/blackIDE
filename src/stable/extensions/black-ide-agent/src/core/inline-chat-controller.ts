@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { SecretManager } from './secret-manager';
-import { LLMClient } from './llm-client';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
+import { LLMClient } from '@blackide/agent-core/core/llm-client';
 import { loadModelRouter } from './model-router-loader';
 import { diffLines, Hunk } from './diff';
 

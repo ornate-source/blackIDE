@@ -1,4 +1,4 @@
-import { BASE_TOOLS, CODE_INTEL_READ_TOOLS, toolsForMode, isToolAllowedInMode } from '../src/core/tools';
+import { BASE_TOOLS, CODE_INTEL_READ_TOOLS, toolsForMode, isToolAllowedInMode } from '@blackide/agent-core/core/tools';
 import { ModeLoader } from '../src/core/mode-loader';
 
 /**

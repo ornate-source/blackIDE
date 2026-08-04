@@ -1,9 +1,9 @@
-import { ProjectProfile } from '../core/project-profiler';
-import { parseTestOutput, selectTestCommand } from '../core/test-report';
+import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
+import { parseTestOutput, selectTestCommand } from '@blackide/agent-core/core/test-report';
 import {
     Evidence, VerificationResult, evaluateVerification, planVerification,
     renderVerificationReport, selfCorrectionPrompt,
-} from '../core/verification';
+} from '@blackide/agent-core/core/verification';
 import { ArtifactStore } from './artifact-store';
 import { ToolRunner } from '../tools/tool-runner';
 

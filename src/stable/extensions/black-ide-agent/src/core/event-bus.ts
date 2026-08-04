@@ -1,4 +1,4 @@
-import { AgentMode } from './types';
+import { AgentMode } from '@blackide/agent-core/core/types';
 
 // ─── Typed Event Bus ────────────────────────────────────────────────────────
 // Every subsystem publishes here instead of reaching for the webview. The UI is

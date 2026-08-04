@@ -6,9 +6,10 @@ import {
     buildCompletionMessage, buildSlackRequest, interpretSlackResponse, maskWebhook,
     slackOutboundAction, validateTarget,
 } from '../src/core/slack-transport';
-import { remoteProcess, validateRemoteResponse, validateRunnerConfig } from '../src/agent-core/remote-runner';
+import { remoteProcess, validateRemoteResponse, validateRunnerConfig } from '@blackide/agent-core/agent-core/remote-runner';
 import { decideOutbound, findTaskReferences } from '../src/core/task-sources';
 import { EGRESS_REGISTER } from '../src/core/egress';
+import { readSource } from './source-roots';
 
 /**
  * Phase 12's three integrations: tracker fetchers (M67), the Slack transport (M68) and
@@ -155,7 +156,7 @@ describe('Slack: no standing grant is expressible', () => {
          * request only after `decideOutbound` has allowed *this* action, and there is no
          * field in `OutboundContext` a remembered answer could live in.
          */
-        const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'slack-transport.ts'), 'utf8');
+        const source = readSource('core', 'slack-transport.ts');
         const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
         expect(code).not.toMatch(/alwaysAllow|dontAsk|rememberChoice|autoPost/i);
         expect(code).not.toMatch(/await fetch\(/);
@@ -232,7 +233,7 @@ describe('the runner is bring-your-own by construction', () => {
     });
 
     it('there is no hardcoded endpoint anywhere in the module', () => {
-        const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'agent-core', 'remote-runner.ts'), 'utf8');
+        const source = readSource('agent-core', 'remote-runner.ts');
         const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
         // Slack's and GitHub's hosts are legitimately hardcoded in their own modules; a
         // runner host is not, because the whole clause is that we operate none.

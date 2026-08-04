@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     MAX_RACE_CANDIDATES, RaceCandidate, losersOf, pickWinner, planRace, rankCandidates,
-} from '../src/core/model-race';
+} from '@blackide/agent-core/core/model-race';
 
 /**
  * Phase 6, M37 — the multi-model race.

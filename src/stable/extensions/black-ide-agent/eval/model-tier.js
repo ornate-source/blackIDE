@@ -32,14 +32,28 @@ const fs = require('fs');
 const path = require('path');
 
 const DIST = path.join(__dirname, '..', 'dist');
+/*
+ * Where a compiled module lives, now that the core is a package (M62 · P11-2).
+ *
+ * Two output trees: the extension's `dist/`, and `packages/agent-core/dist/` for the 64
+ * modules that moved. Resolved by looking rather than by a hardcoded list, so the next
+ * module to cross the boundary — in either direction — needs no change here. A list would
+ * have to be kept in step with the package by hand, and the failure mode of getting it
+ * wrong is a `MODULE_NOT_FOUND` in a test suite rather than anywhere useful.
+ */
+const AGENT_CORE_DIST = path.join(__dirname, '..', 'packages', 'agent-core', 'dist');
+const mod = (rel) => {
+    const inCore = path.join(AGENT_CORE_DIST, rel);
+    return fs.existsSync(inCore) ? inCore : path.join(DIST, rel);
+};
 const {
     BudgetLedger, approxTokens, gateModelMetrics, pricingFor, scoreExtraction,
     scoreLspOverGrep, scoreReview, summarise,
-} = require(path.join(DIST, 'core/eval-model-tier.js'));
-const { LLMClient } = require(path.join(DIST, 'core/llm-client.js'));
-const { BASE_TOOLS } = require(path.join(DIST, 'core/tools.js'));
-const { buildExtractionPrompt, parseExtractionResponse } = require(path.join(DIST, 'core/memory-extract.js'));
-const { buildReviewPrompt, parseFindings } = require(path.join(DIST, 'core/code-review.js'));
+} = require(mod('core/eval-model-tier.js'));
+const { LLMClient } = require(mod('core/llm-client.js'));
+const { BASE_TOOLS } = require(mod('core/tools.js'));
+const { buildExtractionPrompt, parseExtractionResponse } = require(mod('core/memory-extract.js'));
+const { buildReviewPrompt, parseFindings } = require(mod('core/code-review.js'));
 
 const modelTasks = require('./model-tasks');
 

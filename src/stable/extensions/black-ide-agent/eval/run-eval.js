@@ -44,12 +44,26 @@ Module._resolveFilename = function (request, ...rest) {
 require.cache['vscode'] = { id: 'vscode', filename: 'vscode', loaded: true, exports: vscodeStub };
 
 const DIST = path.join(__dirname, '..', 'dist');
-const { detectProjectProfile } = require(path.join(DIST, 'core/project-profiler.js'));
-const { SkillsManager } = require(path.join(DIST, 'agent/skills-manager.js'));
-const { resolveSkills } = require(path.join(DIST, 'agent/skill-resolver.js'));
+/*
+ * Where a compiled module lives, now that the core is a package (M62 · P11-2).
+ *
+ * Two output trees: the extension's `dist/`, and `packages/agent-core/dist/` for the 64
+ * modules that moved. Resolved by looking rather than by a hardcoded list, so the next
+ * module to cross the boundary — in either direction — needs no change here. A list would
+ * have to be kept in step with the package by hand, and the failure mode of getting it
+ * wrong is a `MODULE_NOT_FOUND` in a test suite rather than anywhere useful.
+ */
+const AGENT_CORE_DIST = path.join(__dirname, '..', 'packages', 'agent-core', 'dist');
+const mod = (rel) => {
+    const inCore = path.join(AGENT_CORE_DIST, rel);
+    return fs.existsSync(inCore) ? inCore : path.join(DIST, rel);
+};
+const { detectProjectProfile } = require(mod('core/project-profiler.js'));
+const { SkillsManager } = require(mod('agent/skills-manager.js'));
+const { resolveSkills } = require(mod('agent/skill-resolver.js'));
 
-const CodebaseIndexModule = require(path.join(DIST, 'core/codebase-index.js'));
-const OutputCompactModule = require(path.join(DIST, 'core/output-compact.js'));
+const CodebaseIndexModule = require(mod('core/codebase-index.js'));
+const OutputCompactModule = require(mod('core/output-compact.js'));
 
 const fixtures = require('./fixtures');
 const tasks = require('./tasks');

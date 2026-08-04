@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     WorkspaceRoot, defaultRootFor, groupByRoot, isWithin, normalizeRoot, relativeToRoot,
     resolveAgainstRoot, rootFor, rootId,
-} from '../src/core/workspace-roots';
+} from '@blackide/agent-core/core/workspace-roots';
 
 /**
  * Phase 6, M36 — multi-root correctness.

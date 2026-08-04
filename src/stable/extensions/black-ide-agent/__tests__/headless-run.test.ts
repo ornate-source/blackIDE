@@ -2,12 +2,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { createNodeHost } from '../src/agent-core/node-host';
-import { createHostExecutor, headlessTools } from '../src/agent-core/host-executor';
-import { modelFromEnv, runHeadless } from '../src/agent-core/headless-run';
-import { CliEvent, CliOptions, EXIT, parseArgs } from '../src/agent-core/cli';
-import { BASE_TOOLS } from '../src/core/tools';
-import { LLMConfigEntry } from '../src/core/types';
+import { createNodeHost } from '@blackide/agent-core/agent-core/node-host';
+import { createHostExecutor, headlessTools } from '@blackide/agent-core/agent-core/host-executor';
+import { modelFromEnv, runHeadless } from '@blackide/agent-core/agent-core/headless-run';
+import { CliEvent, CliOptions, EXIT, parseArgs } from '@blackide/agent-core/agent-core/cli';
+import { BASE_TOOLS } from '@blackide/agent-core/core/tools';
+import { LLMConfigEntry } from '@blackide/agent-core/core/types';
 
 /**
  * The headless run, end to end (Phase 11, M63).
@@ -313,7 +313,7 @@ describe('the executor does the file work it claims to', () => {
         const spy = { ...host, approval: { request: async () => { asked = true; return true; } } };
         const executor = createHostExecutor({
             host: spy as any, mode: 'agent', root,
-            policy: new (await import('../src/core/command-policy')).CommandPolicy({ autoApprove: true }),
+            policy: new (await import('@blackide/agent-core/core/command-policy')).CommandPolicy({ autoApprove: true }),
         });
         const r = await executor.execute(call('run_command', { command: 'rm -rf /' }));
         expect(r.isError).toBe(true);

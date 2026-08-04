@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { TestReport } from '../src/core/test-report';
+import { TestReport } from '@blackide/agent-core/core/test-report';
 import {
     Evidence, evaluateVerification, isUiFile, planVerification, renderVerificationReport,
     selfCorrectionPrompt,
-} from '../src/core/verification';
+} from '@blackide/agent-core/core/verification';
 
 /**
  * Phase 7, M40 — the verify contract.

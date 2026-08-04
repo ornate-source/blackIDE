@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { tokenize } from './text-tokens';
+import { tokenize } from '@blackide/agent-core/core/text-tokens';
 
 // ─── External docs indexing (Phase 3, M20) ──────────────────────────────────
 //

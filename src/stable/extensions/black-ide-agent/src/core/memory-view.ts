@@ -1,5 +1,5 @@
-import { ExtractionCandidate } from './memory-lifecycle';
-import { MemoryEntry, MemoryStatus, MemoryType, bandFor } from './memory-model';
+import { ExtractionCandidate } from '@blackide/agent-core/core/memory-lifecycle';
+import { MemoryEntry, MemoryStatus, MemoryType, bandFor } from '@blackide/agent-core/core/memory-model';
 
 // ─── The memory panel's decision layer (Phase 8, M45 · P8-2) ───────────────
 //

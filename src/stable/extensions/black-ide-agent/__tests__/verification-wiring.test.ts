@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readSource } from './source-roots';
 
 /**
  * Verification reaches every lane (Phase 7, M40's first two gate clauses).
@@ -21,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  * missing from two lanes in the first place.
  */
 
-const src = (...parts: string[]) => fs.readFileSync(path.join(__dirname, '..', 'src', ...parts), 'utf8');
+const src = (...parts: string[]) => readSource(...parts);
 
 describe('every lane that can change a file verifies', () => {
     it('the task lane calls runVerification — the one that already did', () => {

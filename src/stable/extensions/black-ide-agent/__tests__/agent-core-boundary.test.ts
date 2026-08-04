@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { allSourceFiles } from './source-roots';
 
 /**
  * Phase 11, M62 — the agent-core boundary.
@@ -18,8 +19,21 @@ import { describe, expect, it } from 'vitest';
  * counted too.
  */
 
-const SRC = path.join(__dirname, '..', 'src');
+/*
+ * The core is a package now (M62 · P11-2), so the walk starts inside it.
+ *
+ * This is the strongest form the boundary check has taken. Before the move it proved
+ * "nothing *reachable from* the barrel imports vscode" while the modules sat in the same
+ * tree as the editor, one careless relative import away from each other. Now the package
+ * is a separate compilation unit that does not depend on the extension at all — a
+ * `../../../src/core/x` would not resolve — so the property is enforced by the build as
+ * well as by this file. The test stays because the build only catches a *broken* import,
+ * not a working one that drags `vscode` in through a new dependency.
+ */
+const SRC = path.join(__dirname, '..', 'packages', 'agent-core', 'src');
 const ENTRY = path.join(SRC, 'agent-core', 'index.ts');
+/** The editor's tree, for the assertions about what the core must NOT reach into. */
+const EXT_SRC = path.join(__dirname, '..', 'src');
 
 /** Resolve a relative import specifier to a file on disk. */
 function resolveImport(fromFile: string, specifier: string): string | undefined {
@@ -97,15 +111,17 @@ describe('the agent-core boundary', () => {
         // is what makes "zero vscode imports" a claim about the *core* rather than about a
         // stub, and shrinking it should be a deliberate act rather than a side effect.
         //
-        // 60 since P11-1 (2026-08-04), up from 45: `codebase-index` and `artifact-manager`
-        // crossed the boundary, bringing the retrieval stack — the chunker, the graph, the
-        // reranker, the embeddings client — with them.
+        // 64 since P11-2 (2026-08-04): 60 after P11-1's boundary refactor, plus the
+        // daemon, the remote runner, the daemon protocol and the CLI entry, which the
+        // barrel now exports so they fall inside the graph this test walks. Before that
+        // they were `agent-core` modules nothing reached — free to acquire a `vscode`
+        // import with nothing to object until somebody ran the CLI.
         //
         // The floor is a floor, not a target, and it has moved in both directions. It
         // *fell* to 45 when `agent-loop` switched to a type-only import of the executor,
         // which correctly stopped dragging the LSP bridge into everything importing the
         // loop. A drop is sometimes right; it should just never be silent.
-        expect(reachable.size).toBeGreaterThanOrEqual(60);
+        expect(reachable.size).toBeGreaterThanOrEqual(64);
     });
 
     it('nothing reachable from the core imports vscode', () => {
@@ -116,9 +132,9 @@ describe('the agent-core boundary', () => {
     it('does not reach the extension entry point', () => {
         // The direction of dependency is the architecture: the extension consumes the core.
         // A core that reaches back into `extension.ts` is a circular dependency wearing a
-        // barrel, and it would compile.
-        const files = [...reachable].map(f => path.relative(SRC, f));
-        expect(files).not.toContain('extension.ts');
+        // barrel. Since P11-2 it would also not compile — but asserting it costs a line and
+        // the property is the point, not the mechanism that currently happens to enforce it.
+        expect([...reachable].some(f => f.startsWith(EXT_SRC))).toBe(false);
     });
 
     it('does not reach a webview panel or a provider', () => {
@@ -127,10 +143,54 @@ describe('the agent-core boundary', () => {
             'core/manager-panel.ts', 'core/command-registry.ts', 'core/inline-completion.ts',
             'core/next-edit-controller.ts', 'core/inline-chat-controller.ts', 'core/editor-features.ts',
         ];
-        const files = new Set([...reachable].map(f => path.relative(SRC, f)));
+        const files = new Set([...reachable].map(f => path.relative(SRC, f).replace(/\\/g, '/')));
         for (const host of hostOnly) {
             expect(files.has(host), `${host} is host code and must not be in the core`).toBe(false);
         }
+    });
+});
+
+describe('the core is a real package (M62 · P11-2)', () => {
+    const PKG_ROOT = path.join(__dirname, '..', 'packages', 'agent-core');
+    const manifest = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
+
+    it('has its own manifest, entry point and subpath exports', () => {
+        expect(manifest.name).toBe('@blackide/agent-core');
+        expect(manifest.main).toMatch(/agent-core\/index\.js$/);
+        // The subpath map is what lets a consumer write
+        // `@blackide/agent-core/core/sandbox` instead of reaching into `dist/`.
+        expect(manifest.exports['./*']).toBeTruthy();
+    });
+
+    it('does not depend on the extension — in either direction', () => {
+        /*
+         * The property the physical move buys over the logical boundary alone. Before it,
+         * "the core does not import vscode" was true of files sitting in the same tree as
+         * the editor, one careless relative import away. Now a path back into the
+         * extension does not resolve, so the build enforces what the walk above asserts.
+         */
+        expect(manifest.dependencies?.vscode).toBeUndefined();
+        expect(Object.keys(manifest.dependencies || {})).not.toContain('@types/vscode');
+        for (const { file } of allSourceFiles().filter(f => f.file.startsWith(SRC))) {
+            const text = fs.readFileSync(file, 'utf8');
+            expect(text, `${path.relative(SRC, file)} reaches back into the extension`)
+                .not.toMatch(/from\s+['"](?:\.\.\/){3,}src\//);
+        }
+    });
+
+    it('the extension consumes it by name, never by relative path', () => {
+        // A single `../packages/agent-core/src/...` import would re-couple the two trees
+        // and make the package unpublishable without anybody noticing.
+        const offenders = allSourceFiles()
+            .filter(f => !f.file.startsWith(SRC))
+            .filter(f => /from\s+['"][^'"]*packages\/agent-core/.test(fs.readFileSync(f.file, 'utf8')))
+            .map(f => f.rel);
+        expect(offenders, `import the package by name: ${offenders.join(', ')}`).toEqual([]);
+    });
+
+    it('the built package is what the CLI shim points at', () => {
+        const bin = fs.readFileSync(path.join(__dirname, '..', 'bin', 'blackide'), 'utf8');
+        expect(bin).toMatch(/packages\/agent-core\/dist\/agent-core\/main\.js/);
     });
 });
 

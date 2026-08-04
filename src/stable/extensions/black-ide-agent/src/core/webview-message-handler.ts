@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { AgentMode, LLMConfigEntry, ChatMessage } from './types';
-import { SecretManager } from './secret-manager';
+import { AgentMode, LLMConfigEntry, ChatMessage } from '@blackide/agent-core/core/types';
+import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { ModeLoader } from './mode-loader';
 import { SessionManager } from './session-manager';
@@ -11,10 +11,10 @@ import { HistoryStore } from '../memory/history-store';
 import { PlanningEngine } from '../agent/planning-engine';
 import { performFetchModels } from '../agent/model-fetcher';
 import { PromptLibrary } from './prompt-library-loader';
-import { parseSlashInvocation, expandPrompt, resolveWorkflow } from './prompt-library';
-import { Rule } from './rules';
+import { parseSlashInvocation, expandPrompt, resolveWorkflow } from '@blackide/agent-core/core/prompt-library';
+import { Rule } from '@blackide/agent-core/core/rules';
 import { ContextProviderRegistry } from './context-providers';
-import { advertisedTools, applyToggle, toolPanelEntries } from './tool-toggles';
+import { advertisedTools, applyToggle, toolPanelEntries } from '@blackide/agent-core/core/tool-toggles';
 import { compactSession } from './compact-session';
 
 /**

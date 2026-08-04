@@ -8,9 +8,9 @@ import {
     isDeniedByUser,
     isDisablable,
     toolPanelEntries,
-} from '../src/core/tool-toggles';
+} from '@blackide/agent-core/core/tool-toggles';
 import { AgentToolExecutor, ExecutorDeps } from '../src/agent/tool-executor';
-import { toolsForMode } from '../src/core/tools';
+import { toolsForMode } from '@blackide/agent-core/core/tools';
 
 /**
  * Session tool toggles (Phase 2, M10) — the tools half of the session panel.

@@ -1,4 +1,4 @@
-import { globToRegExp, matchGlobs, parseRuleFile, selectRules, renderRules, renderRequestableRules, Rule } from '../src/core/rules';
+import { globToRegExp, matchGlobs, parseRuleFile, selectRules, renderRules, renderRequestableRules, Rule } from '@blackide/agent-core/core/rules';
 
 /** Phase 2 (M9/M11) — the activation semantics that decide what the model is told. */
 

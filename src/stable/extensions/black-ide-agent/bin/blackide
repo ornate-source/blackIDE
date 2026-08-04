@@ -1,8 +1,12 @@
 #!/usr/bin/env node
-// The `blackide` binary. A three-line shim over `dist/agent-core/main.js` so that the
-// compiled entry point stays an ordinary module the tests can import and call, rather
+// The `blackide` binary. A three-line shim over the core package's compiled entry, so
+// that the entry point stays an ordinary module the tests can import and call, rather
 // than a file that runs work as a side effect of being loaded.
-require('../dist/agent-core/main.js').main(process.argv.slice(2)).then(
+//
+// Points into `packages/agent-core/` since M62's package move (P11-2). Resolved by path
+// rather than by `require('@blackide/agent-core/agent-core/main')` because a bin script
+// runs before any install step could have linked the workspace.
+require('../packages/agent-core/dist/agent-core/main.js').main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (err) => { process.stderr.write(`${(err && err.stack) || err}\n`); process.exit(1); },
 );

@@ -55,6 +55,31 @@ export type { IndexFileSource } from '../core/codebase-index';
 export { ArtifactManager } from '../agent/artifact-manager';
 export type { Artifact, ArtifactManagerOptions } from '../agent/artifact-manager';
 
+/*
+ * The daemon (M65) and the remote runner (M66) are SDK surface, not internals.
+ *
+ * Exported here as much for the boundary test as for consumers: a module that is not
+ * reachable from this barrel is not walked, so it could acquire a `vscode` import and
+ * nothing would object until somebody tried to run the CLI. Everything in `agent-core/`
+ * belongs in the graph the test enforces.
+ */
+/*
+ * The CLI's own entry, exported so an SDK consumer can invoke a run the way the binary
+ * does — and so the boundary walk covers it. `bin/blackide` is a three-line shim over
+ * this; a module the shim needs but the graph never reaches is one free to acquire a
+ * `vscode` import with nothing to object until somebody runs the CLI.
+ */
+export { main } from './main';
+
+export { runDaemon, readResults, markResultSeen, enqueue } from './daemon';
+export type { DaemonOptions, DaemonRunSummary } from './daemon';
+export { remoteProcess, withRemoteRunner, validateRunnerConfig, validateRemoteResponse } from './remote-runner';
+export type { RemoteRunnerConfig, RemoteExecRequest, RemoteExecResponse } from './remote-runner';
+export {
+    DAEMON_DIR, QUEUE_DIR, RESULTS_DIR, parseRequest, daemonInboxItems, mergeInbox,
+} from '../core/daemon-protocol';
+export type { DaemonRequest, DaemonResult } from '../core/daemon-protocol';
+
 export { createHostExecutor, headlessTools } from './host-executor';
 export type { HostExecutor, HostExecutorDeps } from './host-executor';
 export { runHeadless, modelFromEnv } from './headless-run';

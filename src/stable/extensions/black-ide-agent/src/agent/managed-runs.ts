@@ -4,7 +4,7 @@ import {
     reconcileInterruptedRuns,
     capRunHistory,
     mergeRunViews,
-} from '../core/pipeline-runs';
+} from '@blackide/agent-core/core/pipeline-runs';
 
 /**
  * The Manager panel's concurrency lane: every pipeline run the user launches from

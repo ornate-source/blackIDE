@@ -7,6 +7,7 @@ import {
 } from '../src/core/gh-review';
 import { buildConfirmation, decideOutbound } from '../src/core/task-sources';
 import { EGRESS_REGISTER } from '../src/core/egress';
+import { readSource } from './source-roots';
 
 /**
  * Posting a review to a pull request (Phase 9, M48 · P9-6).
@@ -135,7 +136,7 @@ describe('never ambient', () => {
          * three weeks ago on a different repository. There is no field for it, so adding
          * one means changing a type a reviewer sees.
          */
-        const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'task-sources.ts'), 'utf8');
+        const source = readSource('core', 'task-sources.ts');
         const context = source.match(/export interface OutboundContext \{[\s\S]*?\n\}/)?.[0] || '';
         expect(context).toBeTruthy();
         expect(context).toMatch(/confirmedNow/);
@@ -151,7 +152,7 @@ describe('never ambient', () => {
         // Chaining "review, then offer to post" would put the posting decision inside the
         // flow of a local action taken for the user's own benefit, which is how a
         // per-action confirmation becomes a dialogue people click through.
-        const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'review-command.ts'), 'utf8');
+        const source = readSource('core', 'review-command.ts');
         expect(source).toMatch(/registerCommand\('black-ide\.postReviewToPr'/);
 
         // A *call*, not a mention — `reviewChanges` comments explain why the two are not

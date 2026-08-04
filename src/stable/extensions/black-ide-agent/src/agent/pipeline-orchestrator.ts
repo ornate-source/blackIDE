@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { runAgentLoop, LoopCallbacks } from './agent-loop';
+import { runAgentLoop, LoopCallbacks } from '@blackide/agent-core/agent/agent-loop';
 import { providerHealth } from '../core/model-router-loader';
 import { AgentToolExecutor } from './tool-executor';
-import { LLMConfigEntry, ToolDefinition, ChatMessage } from '../core/types';
+import { LLMConfigEntry, ToolDefinition, ChatMessage } from '@blackide/agent-core/core/types';
 import { CustomMode } from '../core/mode-loader';
 import { worktreeManager } from './worktree-manager';
 import { scheduleTasks, toParallelWaves } from '../core/task-scheduler';
 import { capSections } from '../core/text-cap';
 import { parsePlanTasks, PlanTask } from '../core/plan-parser';
-import { OutputMode } from '../core/git-pr';
+import { OutputMode } from '@blackide/agent-core/core/git-pr';
 
 export interface PipelinePhase {
     modeId: string;

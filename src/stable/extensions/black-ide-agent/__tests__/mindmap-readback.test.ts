@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { STACK_MINDMAP_HEADING } from '../src/core/project-profiler';
+import { STACK_MINDMAP_HEADING } from '@blackide/agent-core/core/project-profiler';
 import {
     describeMindmap, isAutoSync, parseMindmap, renderMindmapContext,
-} from '../src/core/mindmap-readback';
+} from '@blackide/agent-core/core/mindmap-readback';
 
 /**
  * Phase 8, M46 — mindmap read-back.
