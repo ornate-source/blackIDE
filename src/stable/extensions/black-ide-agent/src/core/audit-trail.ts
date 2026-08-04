@@ -1,4 +1,5 @@
 import { redact, redactDeep } from './redaction';
+import { openIfSealed } from './at-rest';
 
 // ─── Append-only audit trail (Phase 9, M53) ─────────────────────────────────
 //
@@ -146,15 +147,25 @@ function cap(text: string, max: number): string {
  * behind — and refusing to read a trail because its last line is half-written would throw
  * away the record in the one situation it exists for.
  */
-export function parseAuditTrail(text: string): AuditEntry[] {
+export function parseAuditTrail(text: string, key?: Buffer): AuditEntry[] {
     const out: AuditEntry[] = [];
     for (const line of String(text || '').split('\n')) {
         if (!line.trim()) continue;
         try {
-            const parsed = JSON.parse(line);
+            /*
+             * Sealed and plaintext lines coexist in one file (M58 · P9-7).
+             *
+             * Not an edge case. Enabling encryption does not rewrite what is already on
+             * disk, so a long-lived run's trail can hold plaintext lines written before
+             * the setting changed and sealed ones after it. `openIfSealed` passes
+             * plaintext through untouched, so a build with encryption switched off still
+             * reads every trail it wrote before.
+             */
+            const parsed = JSON.parse(openIfSealed(line, key));
             if (parsed && typeof parsed.seq === 'number') out.push(parsed);
         } catch {
-            // A partial trailing line from an interrupted write. Skipped, not fatal.
+            // A partial trailing line from an interrupted write, or a line sealed with a
+            // key we do not have. Skipped, not fatal.
         }
     }
     return out;

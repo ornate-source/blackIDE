@@ -64,6 +64,11 @@
         "icon": "$(search-fuzzy)"
       },
       {
+        "command": "black-ide.postReviewToPr",
+        "title": "✦ Black IDE: Post Review to Pull Request",
+        "icon": "$(git-pull-request)"
+      },
+      {
         "command": "black-ide.addSkillFrom",
         "title": "✦ Black IDE: Add Skill Pack From URL",
         "icon": "$(cloud-download)"

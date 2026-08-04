@@ -73,6 +73,17 @@ export const EGRESS_REGISTER: EgressPoint[] = [
         disabledBy: 'the web_search tool being unavailable in the mode',
     },
     {
+        id: 'gh-pr-review',
+        destination: 'github.com (via the `gh` CLI)',
+        trigger: 'user-action',
+        module: 'core/review-command.ts',
+        why: 'Posting a Reviewer artifact to a pull request (M48), from `black-ide.postReviewToPr` '
+            + 'and nowhere else. Every post goes through M67/M68\'s per-action confirmation, which '
+            + 'shows the payload verbatim and cannot be granted in advance — `OutboundContext` has '
+            + 'no field for a remembered answer.',
+        disabledBy: 'allowExternalPosting, and by simply not running the command',
+    },
+    {
         id: 'mcp-remote',
         destination: 'configured',
         trigger: 'agent-run',

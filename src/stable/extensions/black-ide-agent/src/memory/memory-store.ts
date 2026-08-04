@@ -8,6 +8,7 @@ import {
     ExtractionCandidate, WriteDecision, applyDecay, consolidate, decideWrite, sortCandidates,
     supersede,
 } from '../core/memory-lifecycle';
+import { openDocument, sealDocument } from '../core/at-rest';
 
 // ─── The durable memory store (Phase 8) ─────────────────────────────────────
 //
@@ -33,23 +34,42 @@ const SCAFFOLD = [
 ].join('\n');
 
 export class MemoryStore {
-    constructor(private readonly rootPath: string) {}
+    /**
+     * At-rest encryption key (M58 · P9-7). Absent means the file is plaintext, which is
+     * the default and the shape ADR 007 assumes — see `at-rest.ts` for what encrypting a
+     * user-editable file costs and why it is the user's call.
+     */
+    constructor(private readonly rootPath: string, private readonly key?: Buffer) {}
 
     get filePath(): string {
         return path.join(this.rootPath, MEMORY_FILE);
     }
 
-    /** Read the document. A missing file is an empty document with the scaffold. */
-    read(): MemoryDocument {
+    /**
+     * Read the document. A missing file is an empty document with the scaffold.
+     *
+     * "Missing" and "present but unreadable" are deliberately different states, and
+     * `unreadable` exists only because collapsing them is a data-loss bug: a file
+     * encrypted with a key this process does not have would parse as *empty*, and the
+     * next `mutate` would render an empty document over it. `mutate` refuses to write
+     * when this flag is set — see there.
+     */
+    read(): { document: MemoryDocument; unreadable: boolean } {
+        let raw: string;
         try {
-            return parseMemoryMarkdown(fs.readFileSync(this.filePath, 'utf8'));
+            raw = fs.readFileSync(this.filePath, 'utf8');
         } catch {
-            return { ...EMPTY_DOCUMENT, preamble: SCAFFOLD };
+            return { document: { ...EMPTY_DOCUMENT, preamble: SCAFFOLD }, unreadable: false };
+        }
+        try {
+            return { document: parseMemoryMarkdown(openDocument(raw, this.key)), unreadable: false };
+        } catch {
+            return { document: { ...EMPTY_DOCUMENT, preamble: SCAFFOLD }, unreadable: true };
         }
     }
 
     entries(): MemoryEntry[] {
-        return this.read().entries;
+        return this.read().document.entries;
     }
 
     /**
@@ -61,17 +81,41 @@ export class MemoryStore {
      * a modification in the user's editor and their git status.
      */
     private mutate(change: (entries: MemoryEntry[]) => MemoryEntry[]): MemoryDocument {
-        const document = this.read();
+        const { document, unreadable } = this.read();
+        /*
+         * Refuse to write over a file we could not read (M58 · P9-7).
+         *
+         * The case is a memory file encrypted with a key this process does not have —
+         * the user changed their passphrase, or opened the repo on a second machine.
+         * `read` returns an empty document for it, and without this line the next
+         * mutation would render that empty document straight over their memories. It is
+         * the same class of mistake as the cache the read-modify-write cycle already
+         * exists to avoid, arriving by a different door.
+         */
+        if (unreadable) return document;
+
         const updated = withEntries(document, change(document.entries));
         const rendered = renderMemoryMarkdown(updated);
+        const onDisk = this.key ? sealDocument(rendered, this.key) : rendered;
 
         let existing = '';
         try { existing = fs.readFileSync(this.filePath, 'utf8'); } catch { /* new file */ }
-        if (rendered === existing) return updated;
+        /*
+         * Compare the *plaintext*, not the bytes, when encrypting.
+         *
+         * A fresh IV per seal means the ciphertext differs on every call even when the
+         * document has not changed — so a byte comparison would rewrite the file on every
+         * idle consolidation pass, defeating the mtime guard this check exists to provide
+         * and filling the user's git status with churn.
+         */
+        const unchanged = this.key
+            ? (() => { try { return openDocument(existing, this.key) === rendered; } catch { return false; } })()
+            : existing === rendered;
+        if (unchanged) return updated;
 
         try {
             fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-            fs.writeFileSync(this.filePath, rendered, 'utf8');
+            fs.writeFileSync(this.filePath, onDisk, 'utf8');
         } catch { /* a memory write must never break a run */ }
         return updated;
     }

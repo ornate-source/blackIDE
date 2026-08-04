@@ -7,6 +7,10 @@ import { loadModelRouter } from './model-router-loader';
 import { SecretManager } from './secret-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { ReviewFinding, offersFix } from './code-review';
+import {
+    PrTarget, buildGhReviewCommand, buildReviewPayload, parsePrTarget, reviewOutboundAction,
+} from './gh-review';
+import { buildConfirmation, decideOutbound } from './task-sources';
 import { ArtifactStore } from '../agent/artifact-store';
 import { REVIEWER_CONSTRAINTS, applyFix, runReview } from '../agent/review-runner';
 
@@ -42,8 +46,134 @@ export function registerReviewCommand(
 ): void {
     context.subscriptions.push(
         vscode.commands.registerCommand('black-ide.reviewChanges', () => reviewChanges(deps)),
+        vscode.commands.registerCommand('black-ide.postReviewToPr', () => postReviewToPr(deps)),
     );
 }
+
+/**
+ * Post the last review to the current branch's pull request (M48 · P9-6).
+ *
+ * A separate command from `reviewChanges`, deliberately. Chaining them — "review, then
+ * offer to post" — would put the posting decision inside the flow of a local action the
+ * user took for their own benefit, which is how a per-action confirmation becomes a
+ * dialogue people click through. Posting is its own thing they went and asked for.
+ */
+async function postReviewToPr(deps: ReviewCommandDeps): Promise<void> {
+    const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!rootPath) { vscode.window.showErrorMessage('No workspace folder open.'); return; }
+
+    const findings = lastFindings.get(rootPath);
+    if (!findings) {
+        vscode.window.showInformationMessage(
+            'Run “Black IDE: Review Working Changes” first — there is no review to post.');
+        return;
+    }
+
+    const target = await currentPrTarget(rootPath);
+    if (!target) {
+        vscode.window.showWarningMessage(
+            'Could not find a pull request for this branch. Open one first, or check that `gh` is installed and authenticated.');
+        return;
+    }
+
+    const payload = buildReviewPayload(findings, { model: lastModel.get(rootPath) });
+    const action = reviewOutboundAction(target, payload);
+
+    /*
+     * The gate. Three things about this are load-bearing:
+     *
+     * 1. `allowExternalPosting` comes from the org policy (M69), which can forbid this
+     *    outright and cannot be widened from here.
+     * 2. `confirmedNow` is the answer to *this* dialogue. `OutboundContext` has no field
+     *    for a remembered answer, so no amount of code here can express "always allow".
+     * 3. The confirmation shows the payload **verbatim** — every inline comment, in full.
+     *    A dialogue saying "post 9 comments to #123?" asks the user to approve something
+     *    they have not read.
+     */
+    const confirmation = buildConfirmation(action);
+    const answer = await vscode.window.showWarningMessage(
+        confirmation.prompt,
+        { modal: true, detail: action.body.slice(0, 4_000) },
+        'Post it',
+    );
+
+    const decision = decideOutbound(action, {
+        allowExternalPosting: await externalPostingAllowed(deps.secretManager),
+        confirmedNow: answer === 'Post it',
+    });
+    if (!decision.allowed) {
+        // Silent only when the user simply closed the dialogue; a policy refusal is said
+        // out loud, because it is not their choice and they should know it happened.
+        if (answer === 'Post it') vscode.window.showWarningMessage(decision.reason);
+        return;
+    }
+
+    const command = buildGhReviewCommand(target);
+    try {
+        await ghInput(rootPath, command.argv, command.stdin(payload));
+        vscode.window.showInformationMessage(
+            `Posted the review to ${target.owner}/${target.repo}#${target.number}.`);
+    } catch (error: any) {
+        vscode.window.showErrorMessage(`The review was not posted: ${error?.message || error}`);
+    }
+}
+
+/** The PR for the current branch, or undefined. */
+async function currentPrTarget(rootPath: string): Promise<PrTarget | undefined> {
+    const json = await gh(rootPath, ['pr', 'view', '--json', 'number,title,headRepository,headRepositoryOwner']);
+    if (!json.trim()) return undefined;
+
+    // `headRepository` carries only the repo name on some `gh` versions, so the owner is
+    // resolved separately and the two are combined rather than trusted from one field.
+    let owner = '';
+    try { owner = String(JSON.parse(json)?.headRepositoryOwner?.login || ''); } catch { /* handled below */ }
+    let repo = '';
+    try { repo = String(JSON.parse(json)?.headRepository?.name || ''); } catch { /* handled below */ }
+    return parsePrTarget(json, owner && repo ? `${owner}/${repo}` : undefined);
+}
+
+function gh(cwd: string, args: string[]): Promise<string> {
+    return new Promise(resolve => {
+        execFile('gh', args, { cwd, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+            resolve(error ? '' : String(stdout || ''));
+        });
+    });
+}
+
+/** `gh` with a JSON payload on stdin. See `buildGhReviewCommand` for why not a shell string. */
+function ghInput(cwd: string, args: string[], input: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const child = execFile('gh', args, { cwd, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) reject(new Error(String(stderr || error.message).slice(0, 500)));
+            else resolve(String(stdout || ''));
+        });
+        child.stdin?.end(input);
+    });
+}
+
+/** The org policy's outbound switch (M69). Absent settings mean the default, which is on. */
+async function externalPostingAllowed(secretManager: SecretManager): Promise<boolean> {
+    try {
+        const raw = await secretManager.getKey('general-settings');
+        if (!raw) return true;
+        return JSON.parse(raw).allowExternalPosting !== false;
+    } catch {
+        // Unreadable settings are not a licence to post. Failing closed here costs a user
+        // one confusing refusal; failing open costs somebody a comment on their PR.
+        return false;
+    }
+}
+
+/**
+ * The findings from the last review in each workspace, so the post command has something
+ * to post.
+ *
+ * In memory and per root, not persisted. A review is a snapshot of a diff, and offering
+ * to post one from a previous session — against a branch that has since moved — is the
+ * way this feature would post something wrong.
+ */
+const lastFindings = new Map<string, ReviewFinding[]>();
+const lastModel = new Map<string, string>();
 
 async function reviewChanges(deps: ReviewCommandDeps): Promise<void> {
     const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -100,6 +230,11 @@ async function reviewChanges(deps: ReviewCommandDeps): Promise<void> {
         if (result.artifact) void vscode.window.showTextDocument(vscode.Uri.file(result.artifact.path));
         return;
     }
+
+    // Held for `black-ide.postReviewToPr`, which is a separate command the user has to
+    // go and ask for. See `postReviewToPr` for why the two are not chained.
+    lastFindings.set(rootPath, result.findings);
+    if (modelConfig.model) lastModel.set(rootPath, modelConfig.model);
 
     await presentFindings(result.findings, result.artifact.path, rootPath, deps.checkpoints);
 }
