@@ -112,6 +112,15 @@ export interface ChatTaskDeps {
      * surprising line on a bill.
      */
     resolveRole?: (role: ModelRole) => LLMConfigEntry | undefined;
+    /**
+     * Read a recorded run log, for the `read_run_log` tool (M84).
+     *
+     * Optional: a host with no journal wired still runs a turn, and the executor reports
+     * the absence as a host configuration rather than as a run that did nothing.
+     */
+    readRunLog?: (params: {
+        runId?: string; depth?: string; filter?: string; problemsOnly?: boolean; limit?: number;
+    }) => string | undefined;
 }
 
 /**
@@ -514,6 +523,10 @@ These tools degrade to a text search when no language server is available for a 
             // The user's session toggles, enforced here rather than only unadvertised —
             // a model that calls a tool it saw two turns ago must still be refused.
             deniedTools: deps.session.disabledTools,
+            // `read_run_log` (M84). The run id is this task's, so an agent asking "what
+            // have I already tried?" after a compaction reads its own record by default.
+            readRunLog: deps.readRunLog,
+            runId: task?.meta.taskId,
             scheduleTask: (tc) => deps.scheduleAgentTask(tc, modelId, webview, effectiveMode),
             cancelTask: (id) => deps.scheduler.cancel(id),
             spawnSubagent,

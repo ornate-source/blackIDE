@@ -26,6 +26,19 @@ export class ContextManager {
 
     constructor(private readonly maxTokens: number = 128_000) {}
 
+    /**
+     * The window this manager is fitting to.
+     *
+     * Exposed because "72% of context used" is a number a user can act on — an agent about
+     * to compact is one to steer *now*, since compaction is when runs lose the thread — and
+     * the percentage is meaningless without the denominator. The alternative, having the UI
+     * re-derive it with a second call to `getModelLimit`, is a second answer to the same
+     * question that drifts from this one the moment failover moves the run to another model.
+     */
+    get limit(): number {
+        return this.maxTokens;
+    }
+
     /** Tokens for a full message, including tool calls and results — not just prose. */
     estimateMessageTokens(m: ChatMessage): number {
         let n = estimateTokens(m.content);

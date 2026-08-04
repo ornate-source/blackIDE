@@ -24,6 +24,15 @@ export interface LoopCallbacks {
     onUsage?: (promptChars: number, response: string) => void;
     /** Fired when the window filled up and older turns were compacted away. */
     onCompaction?: (droppedCount: number, totalTokens: number) => void;
+    /**
+     * Context usage after fitting, every turn — not only when something was dropped.
+     *
+     * `onCompaction` fires once the window has *already* overflowed, which is too late to
+     * be a warning: compaction is when a run loses the thread, so the actionable moment is
+     * the turn before it. This reports the fill level on every turn so a surface can show
+     * an agent approaching the wall while there is still a decision to make.
+     */
+    onContext?: (usedTokens: number, limitTokens: number) => void;
     /** Fired when older turns were folded into prose by the summarizer (M30). */
     onSummarized?: (foldedCount: number) => void;
     /** Fired when the user's mid-run corrections reached the model (M39). */
@@ -180,6 +189,7 @@ export async function runAgentLoop(opts: {
 
         const fitted = context.fit(messages, system);
         if (fitted.droppedCount > 0) callbacks.onCompaction?.(fitted.droppedCount, fitted.totalTokens);
+        callbacks.onContext?.(fitted.totalTokens, context.limit);
 
         let turn;
         let emitted = false;

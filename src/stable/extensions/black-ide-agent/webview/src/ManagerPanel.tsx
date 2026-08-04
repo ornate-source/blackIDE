@@ -3,6 +3,11 @@ import { agentReducer, initialAgentState, AgentState } from './agent-store';
 import { PipelineLogPanel } from './AgentPanels';
 import ArtifactReview, { ReviewGroup } from './ArtifactReview';
 import { MemoryPanel, MemoryView } from './MemoryPanel';
+import { OfficeFile, OfficeView } from './OfficeView';
+import { LogPage, LogRun, LogsTab } from './LogsTab';
+import type { JournalLine } from '@blackide/agent-core/core/run-journal';
+import type { OfficeSnapshot } from '@blackide/agent-core/core/office-model';
+import type { GovernorSnapshot } from '@blackide/agent-core/core/agent-governor';
 import { rawVscode } from './webview-bridge';
 
 const vscode = rawVscode || {
@@ -127,7 +132,22 @@ export default function ManagerPanel() {
   const [startError, setStartError] = useState('');
   const [agents, setAgents] = useState<TaskAgentSummary[]>([]);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  const [lane, setLane] = useState<'pipeline' | 'agent' | 'review' | 'memory'>('pipeline');
+  // The Office leads, because "what is everything doing" is the question this panel is
+  // opened to answer; the per-lane tabs behind it are how you act on one of them.
+  const [lane, setLane] = useState<'office' | 'logs' | 'pipeline' | 'agent' | 'review' | 'memory'>('office');
+  const [logRuns, setLogRuns] = useState<LogRun[]>([]);
+  const [logPage, setLogPage] = useState<LogPage | undefined>();
+  const [logTail, setLogTail] = useState<JournalLine[]>([]);
+  const [logPayloads, setLogPayloads] = useState<Record<number, string>>({});
+  const [selectedRun, setSelectedRun] = useState<string | undefined>();
+  /*
+   * The Office's state, held here for the reason the review and memory state is: one
+   * message listener serves the whole panel. A second listener inside `OfficeView` would
+   * receive `officePatch` messages while the tab is unmounted and drop them, so the desks
+   * would be stale for up to a full sync every time the user came back to the tab.
+   */
+  const [office, setOffice] = useState<OfficeSnapshot | undefined>();
+  const [officeFiles, setOfficeFiles] = useState<OfficeFile[]>([]);
   // The review surface (M38). Held here rather than in the component so one message
   // listener serves the whole panel, as it already does for runs, agents and the inbox.
   const [artifactGroups, setArtifactGroups] = useState<ReviewGroup[]>([]);
@@ -142,6 +162,7 @@ export default function ManagerPanel() {
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
+    vscode.postMessage({ type: 'listOffice' });
     vscode.postMessage({ type: 'listPipelineRuns' });
     vscode.postMessage({ type: 'listTaskAgents' });
     vscode.postMessage({ type: 'listArtifacts' });
@@ -188,6 +209,66 @@ export default function ManagerPanel() {
           break;
         case 'memorySync':
           setMemory(message.value);
+          break;
+        // ── The Agent Office (M74–M77) ────────────────────────────────────
+        case 'officeSync':
+          setOffice(message.value);
+          break;
+        /*
+         * A patch carries only the fields that changed for one item.
+         *
+         * Merged rather than replacing the item, because the patch channel deliberately
+         * omits everything it did not touch — an item's title, branch and affordances come
+         * from the roster and would be lost by a wholesale swap. `fields` is spread last so
+         * an explicit `activity: undefined` (the run's tool finished) actually clears it,
+         * which a `{...item, ...defined-only}` merge would silently ignore.
+         */
+        case 'officePatch':
+          setOffice(prev => prev && ({
+            ...prev,
+            items: prev.items.map(item =>
+              item.id === message.value.id ? { ...item, ...message.value.fields } : item),
+            desks: prev.desks.map(desk =>
+              desk.item?.id === message.value.id
+                ? { ...desk, item: { ...desk.item, ...message.value.fields } }
+                : desk),
+          }));
+          break;
+        case 'officeGovernor':
+          // Arrives on its own cadence from the inbox poll, so it must not wait for a full
+          // sync: the header's spend tile is the one number that moves while nothing else does.
+          setOffice(prev => prev && ({ ...prev, governor: message.value as GovernorSnapshot }));
+          break;
+        case 'officeFiles':
+          setOfficeFiles(message.value || []);
+          break;
+        case 'officePrefill':
+          // A retry fills the launcher rather than relaunching. The decision stays the
+          // user's; the button only removes the retyping.
+          setPrompt(message.value?.prompt || '');
+          setModelId(message.value?.modelId || '');
+          setLane('agent');
+          break;
+        // ── The Logs tab (M83) ────────────────────────────────────────────
+        case 'runLogList':
+          setLogRuns(message.value || []);
+          break;
+        case 'runLogPage':
+          // A page arriving for a run the user has since switched away from is dropped
+          // rather than rendered under the new run's header.
+          setSelectedRun(current => {
+            if (message.value?.runId === current) { setLogPage(message.value); setLogTail([]); }
+            return current;
+          });
+          break;
+        case 'runLogPayload':
+          setLogPayloads(prev => ({ ...prev, [message.value.seq]: message.value.body }));
+          break;
+        case 'journalLine':
+          // The live tail. Bounded: a running agent at verbose depth emits faster than
+          // anyone reads, and an unbounded array here is the memory leak that makes the
+          // panel unusable an hour into a long run.
+          setLogTail(prev => (prev.length > 500 ? [...prev.slice(-400), message.value] : [...prev, message.value]));
           break;
         case 'setLlmConfig':
           try {
@@ -253,21 +334,27 @@ export default function ManagerPanel() {
       </div>
 
       <div className="px-3 pt-2 flex gap-1 shrink-0">
-        {(['pipeline', 'agent', 'review', 'memory'] as const).map(tab => (
+        {(['office', 'logs', 'pipeline', 'agent', 'review', 'memory'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => {
               setLane(tab);
+              // Re-read on every visit rather than trusting the mount sync. For the Office
+              // because a lane may have retired while the tab was hidden and a patch
+              // channel cannot express "this row is gone"; for memory because `memory.md`
+              // is a file the user may have edited in the next tab.
+              if (tab === 'office') vscode.postMessage({ type: 'listOffice' });
+              if (tab === 'logs') vscode.postMessage({ type: 'listRunLogs' });
               if (tab === 'review') vscode.postMessage({ type: 'listArtifacts' });
-              // Re-read on every visit rather than trusting the mount sync: memory.md is
-              // a file the user may have edited in the next tab since this panel opened.
               if (tab === 'memory') vscode.postMessage({ type: 'listMemory' });
             }}
             className={`px-3 py-1.5 rounded-t text-[11px] font-medium cursor-pointer transition-colors ${
               lane === tab ? 'bg-panel/50 text-foreground border-b-2 border-accentBlue'
                            : 'text-muted/60 hover:text-foreground'}`}
           >
-            {tab === 'pipeline' ? `Pipelines (${runs.length})`
+            {tab === 'office' ? `Office${office ? ` (${office.running}/${office.capacity})` : ''}`
+              : tab === 'logs' ? `Logs${logRuns.length ? ` (${logRuns.length})` : ''}`
+              : tab === 'pipeline' ? `Pipelines (${runs.length})`
               : tab === 'agent' ? `Task Agents (${visibleAgents.length})`
               : tab === 'review' ? `Review (${artifactCounts.total})`
               // The pending count is surfaced on the tab itself: a confirm queue nobody
@@ -277,9 +364,10 @@ export default function ManagerPanel() {
         ))}
       </div>
 
-      {/* The launcher belongs to the two lanes that launch things. Review reads what they
-          produced, and a prompt box above it would suggest it starts something. */}
-      <div className={`p-3 border-b border-border/40 shrink-0 ${lane === 'review' ? 'hidden' : ''}`}>
+      {/* The launcher belongs to the two lanes that launch things. Review, memory and the
+          Office read what they produced, and a prompt box above them would suggest they
+          start something. */}
+      <div className={`p-3 border-b border-border/40 shrink-0 ${lane === 'review' || lane === 'office' ? 'hidden' : ''}`}>
         <div className="flex gap-2">
           <input
             value={prompt}
@@ -306,6 +394,34 @@ export default function ManagerPanel() {
           </button>
         </div>
         {startError && <div className="mt-2 text-[10.5px] text-red-400">{startError}</div>}
+      </div>
+
+      <div className={`flex-1 overflow-y-auto p-3 ${lane === 'office' ? 'block' : 'hidden'}`}>
+        <OfficeView
+          office={office}
+          files={officeFiles}
+          post={vscode.postMessage}
+          onOpenLogs={(runId) => {
+            setSelectedRun(runId);
+            setLogPage(undefined); setLogTail([]); setLogPayloads({});
+            setLane('logs');
+            vscode.postMessage({ type: 'listRunLogs' });
+          }}
+        />
+      </div>
+
+      {/* Not `hidden`, because the Logs tab owns a scroll position and a follow-the-tail
+          effect — keeping it mounted means coming back to it lands where you left it. */}
+      <div className={`flex-1 min-h-0 p-3 ${lane === 'logs' ? 'flex flex-col' : 'hidden'}`}>
+        <LogsTab
+          runs={logRuns}
+          page={logPage}
+          tail={logTail}
+          payloads={logPayloads}
+          selectedRun={selectedRun}
+          post={vscode.postMessage}
+          onSelectRun={(id) => { setSelectedRun(id); setLogPage(undefined); setLogTail([]); setLogPayloads({}); }}
+        />
       </div>
 
       <div className={`flex-1 overflow-y-auto p-3 flex-col gap-2 ${lane === 'pipeline' ? 'flex' : 'hidden'}`}>

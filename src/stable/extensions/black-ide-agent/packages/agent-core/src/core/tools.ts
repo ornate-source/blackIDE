@@ -423,6 +423,33 @@ export const BASE_TOOLS: ToolDefinition[] = [
         },
     },
     {
+        name: 'read_run_log',
+        /*
+         * The agent-readable half of the run journal (M84).
+         *
+         * The payoff is concrete and was not previously possible: a run that follows a
+         * failed one can read *why* the first failed, and a user can ask "why did the last
+         * run take nine minutes" and be answered from the record rather than from a guess.
+         *
+         * The description steers hard towards `summary` and towards the caller's own run,
+         * because the common case is "what did I already try?" after a compaction, and
+         * returning two thousand verbose lines into a context window solves nothing.
+         */
+        description: 'Read the recorded log of an agent run — every tool it called, with targets, durations and outcomes. Use it to find out what an earlier run did or why it failed, or to recall your own earlier steps after the conversation was compacted. Defaults to your own run at summary depth; ask for "normal" to see individual tool calls and "verbose" only when you need arguments and output.',
+        risk: 'safe',
+        parameters: {
+            type: 'object',
+            properties: {
+                runId: s('The run to read. Omit for your own run.'),
+                depth: s('"summary" (default), "normal", or "verbose"'),
+                filter: s('Only lines mentioning this text, e.g. a filename'),
+                problemsOnly: { type: 'boolean', description: 'Only warnings and errors' },
+                limit: { type: 'number', description: 'Lines to return, newest last. Default 60.' },
+            },
+            required: [],
+        },
+    },
+    {
         name: 'impact_analysis',
         description: 'Find every file affected by changing a symbol, split into files that directly use it and files reached indirectly. Use BEFORE editing anything shared — a function, type, constant or config key — to see the blast radius. Works without a language server and covers the whole indexed repo, but matches by name, so confirm with find_references when two symbols could share a name.',
         risk: 'safe',

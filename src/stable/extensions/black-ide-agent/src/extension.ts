@@ -8,7 +8,6 @@ import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { AgentMode, ToolCall } from '@blackide/agent-core/core/types';
 import { registerEditorFeatures } from './core/editor-features';
 import { compactSession } from './core/compact-session';
-import { TaskAgentLane } from './agent/task-agent-lane';
 import { ArtifactStore } from './agent/artifact-store';
 import { MemoryTurn } from './agent/memory-turn';
 import { buildMemoryTurn } from './core/memory-setup';
@@ -29,11 +28,12 @@ import { generateCommitMessage as generateCommitMessageCore } from './core/commi
 import { getHtmlForWebview as buildWebviewHtml } from './core/webview-html';
 import { SettingsPanel } from './core/settings-panel';
 import { ManagerPanel } from './core/manager-panel';
+import { Office, OfficeHub, createOffice } from './core/office-setup';
 import { registerCommands } from './core/command-registry';
 import { registerReviewCommand } from './core/review-command';
 import { runPipelineCore, runChatPipeline, PipelineCoreDeps } from './agent/pipeline-entry';
 import { ManagedRunRegistry } from './agent/managed-runs';
-import { generateConversationTitle } from './core/conversation-title';
+import { buildChatTaskDeps } from './core/chat-task-setup';
 import { SkillDiagnostics } from './agent/skill-diagnostics';
 import { ChatSession } from './core/chat-session';
 import { RulesLoader } from './core/rules-loader';
@@ -129,8 +129,8 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     /** Recent agent-run commands, feeding the `@terminal` provider (Phase 3, M19). */
     private readonly _terminalHistory = new TerminalHistory();
 
-    /** Task agents, the governor, the inbox and the race (Phase 6). See task-agent-lane.ts. */
-    private _taskAgents!: TaskAgentLane;
+    /** Task agents, the governor, the inbox and the Office watching them (Phase 6 · M74–M77). */
+    private _office!: Office;
 
     /** Typed artifacts and their review comments (Phase 7, M38). */
     private readonly _artifacts: ArtifactStore;
@@ -210,12 +210,14 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         });
         this._refreshTelemetryEnabled();
 
-        // The single place the runtime meets the UI. Every subsystem publishes to the
-        // bus; the webview is just one subscriber, so adding a consumer (telemetry, a
-        // log file) never means threading a callback through the agent loop again.
+        // The single place the runtime meets the UI. Every subsystem publishes to the bus;
+        // the webview is one subscriber, so adding a consumer never means threading a
+        // callback through the loop. The journal is the newest (M82) — and is what stops a
+        // closed panel destroying the evidence of a run.
         this._bus.onAny((event) => {
             this._view?.webview.postMessage({ type: 'agentEvent', value: event });
             this._telemetry.record(event);
+            this._office?.hub.journalEvent(event.taskId, 'chat', event);
         });
 
         // Reads and reconciles the persisted run history in its constructor, so runs a
@@ -223,19 +225,18 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         this._managedRuns = new ManagedRunRegistry({
             context: this._context,
             runPipelineCore: (params) => runPipelineCore(this._pipelineCoreDeps, params),
+            onRunEvent: (runId, e) => this._office?.hub.journalEvent(runId, 'pipeline', e),
         });
 
-        // Phase 6. Constructed after `_managedRuns` because the inbox reads both lanes.
-        this._taskAgents = new TaskAgentLane({
+        // Phase 6 and the Office watching it, after `_managedRuns`: the inbox reads both lanes.
+        this._office = createOffice({
             context: _context, secretManager: _secretManager,
             codebaseIndex: this._index, modeLoader: this._modeLoader,
             artifacts: this._artifacts,
             getProjectProfile: () => this._getProjectProfile(),
             log: (m) => console.log(m),
             listPipelineRuns: () => this._managedRuns.list(),
-            postToManager: (message) => ManagerPanel.post(message),
         });
-        _context.subscriptions.push(this._taskAgents);
 
         this._contextProviders = buildContextProviders({
             getRules: () => this._rulesLoader.getRules(),
@@ -337,7 +338,8 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     }
 
     /** The Phase 6 lane: task agents, governor, inbox, race. */
-    public get taskAgents(): TaskAgentLane { return this._taskAgents; }
+    public get taskAgents(): Office['lane'] { return this._office.lane; }
+    public get office(): OfficeHub { return this._office.hub; } // desks + journal (M74–M82)
 
     /** Typed artifacts, for the review surface (Phase 7, M38). */
     public get artifacts(): ArtifactStore { return this._artifacts; }
@@ -564,7 +566,6 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
     public listManagedPipelineRuns(): PipelineRunSummary[] { return this._managedRuns.list(); }
 
-
     /** Re-read settings-derived caches after the user saves settings (from either panel). */
     public async onSettingsSaved(): Promise<void> {
         await this._refreshTelemetryEnabled();
@@ -593,7 +594,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
     // honored auto-approve + activated hooks + semantic index + real subagents.
 
     private async _runAgentTask(userPrompt: string, modelId: string, attachments?: any[], mode?: string) {
-        return runAgentTask({
+        return runAgentTask(buildChatTaskDeps({
             context: this._context,
             secretManager: this._secretManager,
             historyStore: this._historyStore,
@@ -606,16 +607,15 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
             bundledSkillsDir: this._bundledSkillsDir,
             session: this._session,
             rules: this._rulesLoader.getRules(),
-            recordTerminal: (command, output) => this._terminalHistory.record(command, output),
+            terminalHistory: this._terminalHistory,
             contextProviders: this._contextProviders,
             view: this._view,
-            getProjectProfile: () => this._getProjectProfile(),
-            generateConversationTitle: (p, m) => generateConversationTitle(
-                { historyStore: this._historyStore, activeThreadId: this._session.activeThreadId, view: this._view }, p, m),
-            scheduleAgentTask: (tc, id, wv, m) => this._scheduleAgentTask(tc, id, wv, m),
             artifacts: this._artifacts,
             memoryTurn: this._memory,
-        }, userPrompt, modelId, attachments, mode);
+            office: this._office?.hub,
+            getProjectProfile: () => this._getProjectProfile(),
+            scheduleAgentTask: (tc, id, wv, m) => this._scheduleAgentTask(tc, id, wv, m),
+        }), userPrompt, modelId, attachments, mode);
     }
 
     /**

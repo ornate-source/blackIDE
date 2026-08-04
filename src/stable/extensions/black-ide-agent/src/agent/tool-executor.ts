@@ -77,6 +77,19 @@ export interface ExecutorDeps {
     onFileChanged?: (path: string, kind: 'created' | 'modified' | 'deleted') => void;
     scheduleTask?: (tc: ToolCall) => void;
     cancelTask?: (id: string) => void;
+    /**
+     * Read a recorded run log (M84).
+     *
+     * Injected rather than reached for, because the store lives on the editor side and
+     * this executor is the piece Phase 11's vscode-free extraction is built around.
+     * Absent means the tool refuses with a reason — a run whose host has no journal wired
+     * must say so, not return an empty log that reads as "nothing happened".
+     */
+    readRunLog?: (params: {
+        runId?: string; depth?: string; filter?: string; problemsOnly?: boolean; limit?: number;
+    }) => string | undefined;
+    /** This run's own id, so `read_run_log` can default to it. */
+    runId?: string;
     /** Provided by the main loop; undefined inside a subagent to prevent recursion. */
     spawnSubagent?: (name: string, task: string) => Promise<string>;
     /**
@@ -281,6 +294,22 @@ export class AgentToolExecutor {
                 case 'expand_output': {
                     const raw = this.rawOutputs.get(String(a.id));
                     return this.ok(tc, raw ?? `No stored output with id "${a.id}". Ids expire once ${this.rawOutputs.size} newer results have been produced; re-run the original tool.`);
+                }
+                case 'read_run_log': {
+                    if (!this.d.readRunLog) {
+                        return this.ok(tc, 'Run logs are not available in this session, so there is nothing to read. '
+                            + 'This is a host configuration, not a missing run.');
+                    }
+                    const runId = String(a.runId || this.d.runId || '').trim();
+                    if (!runId) return this.ok(tc, 'No run id: this session has no journal of its own, so name a run to read.');
+                    const text = this.d.readRunLog({
+                        runId,
+                        depth: a.depth ? String(a.depth) : 'summary',
+                        filter: a.filter ? String(a.filter) : undefined,
+                        problemsOnly: !!a.problemsOnly,
+                        limit: Number(a.limit) || 60,
+                    });
+                    return this.ok(tc, text || `No log found for run "${runId}".`);
                 }
                 case 'codebase_search': {
                     const hits = await this.d.codebaseIndex.search(a.query, 6);

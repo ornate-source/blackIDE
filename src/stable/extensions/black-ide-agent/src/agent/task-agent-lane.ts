@@ -11,6 +11,7 @@ import { TaskAgentRegistry } from '@blackide/agent-core/agent/task-agent-registr
 import { TaskAgentEntryDeps, buildTaskRunner, buildWorktreeOps } from './task-agent-entry';
 import { SecretManager } from '@blackide/agent-core/core/secret-manager';
 import { daemonInboxItems, mergeInbox } from '@blackide/agent-core/core/daemon-protocol';
+import { DaemonResultSummary } from '@blackide/agent-core/core/office-model';
 import { markResultSeen, readResults } from '@blackide/agent-core/agent-core/daemon';
 
 // ─── The task-agent lane, assembled (Phase 6) ───────────────────────────────
@@ -36,6 +37,15 @@ export interface TaskAgentLaneDeps extends TaskAgentEntryDeps {
     listPipelineRuns(): PipelineRunSummary[];
     /** Pushes state to the Manager panel when it is open. */
     postToManager(message: any): void;
+    /**
+     * Every event a running agent publishes (M76), for the Office's live telemetry.
+     *
+     * Optional so the lane runs unchanged without an Office attached — the tests construct
+     * it that way, and a telemetry surface must never be a launch prerequisite.
+     */
+    onAgentEvent?(agentId: string, event: any): void;
+    /** Fired when the roster's shape changed, so the Office can re-sync rather than patch. */
+    onRosterChanged?(): void;
 }
 
 export class TaskAgentLane implements vscode.Disposable {
@@ -53,8 +63,10 @@ export class TaskAgentLane implements vscode.Disposable {
             save: (agents) => { void d.context.globalState.update(STORAGE_KEY, agents); },
             onChanged: (agents) => {
                 d.postToManager({ type: 'taskAgentListSync', value: agents });
+                d.onRosterChanged?.();
                 this.refreshInbox();
             },
+            onEvent: (agentId, event) => d.onAgentEvent?.(agentId, event),
         });
 
         // Polled rather than purely event-driven, because two of the four inbox reasons
@@ -174,6 +186,38 @@ export class TaskAgentLane implements vscode.Disposable {
         }
     }
 
+    /**
+     * Daemon results as Office work items (M77).
+     *
+     * The inbox already projects these into *reasons*; the Office needs them as *rows*, so
+     * a run that happened overnight gets a desk with a branch and a delta rather than one
+     * line of prose. Same source, same seen-flag, different projection — and deliberately
+     * not derived from the inbox items, because those have already been truncated for a
+     * notification and lost the branch.
+     */
+    daemonWork(): DaemonResultSummary[] {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) return [];
+        try {
+            return readResults(root).map(result => ({
+                id: `daemon:${result.id}`,
+                title: result.prompt,
+                status: result.status,
+                seen: result.seen,
+                startedAt: result.startedAt,
+                endedAt: result.endedAt,
+                rootPath: root,
+                branch: result.branch,
+                // Files only: a daemon result records *which* files changed, never how many
+                // lines, so reporting `+0/−0` would be a measured zero standing in for a
+                // measurement nobody took. R1.
+                delta: { files: result.changed.length, insertions: 0, deletions: 0 },
+            }));
+        } catch {
+            return [];
+        }
+    }
+
     /** The user has seen a daemon result, so it stops appearing. */
     acknowledgeDaemonResult(id: string): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -192,6 +236,17 @@ export class TaskAgentLane implements vscode.Disposable {
         const items = this.inbox();
         const counts = inboxCounts(items);
         this.d.postToManager({ type: 'agentInboxSync', value: { items, counts } });
+        /*
+         * The governor snapshot, pushed for the first time (M72).
+         *
+         * It has been computed on every admission decision since Phase 6 and thrown away
+         * every time — `active`, `maxConcurrent`, `tokensSpent`, `costSpent` and
+         * `exhausted` all exist in `agent-governor.ts` and no webview has ever seen one.
+         * It rides the inbox poll rather than getting a timer of its own because the two
+         * answer the same question at the same cadence, and a second 3-second interval to
+         * carry six numbers is a second thing to get wrong.
+         */
+        this.d.postToManager({ type: 'officeGovernor', value: this.governor.snapshot() });
 
         this.notified = pruneNotified(this.notified, items);
         const fresh = newlyNotifiable(items, this.notified);

@@ -6,10 +6,10 @@ this file owns *capabilities*. Where they disagree, this file wins — it is reg
 code, not against the previous revision.
 
 **Verified against the tree on 2026-08-04 by running it,** not by reading the last revision:
-`tsc -b` clean · harness **418/418** · vitest **1 629 / 62 suites** · eval gate green with no
+`tsc -b` clean · harness **418/418** · vitest **2 058 / 77 suites** · eval gate green with no
 regression vs `eval/baseline.json` (112 tasks / 21 fixtures · stack detection 100% 21/21 ·
 skill exact-match 100% · wrong-idiom 0% of 38 guarded tasks · recall@5 91.2 / @10 97.2 / @20 100 ·
-compaction 36.9% at realistic path depth) · webview builds · `extension.ts` **699 LOC** (≤700 gate).
+compaction 36.9% at realistic path depth) · webview builds · `extension.ts` **698 LOC** (≤700 gate).
 
 Paths are relative to `src/stable/extensions/black-ide-agent/`.
 
@@ -52,11 +52,14 @@ Two axes, the same two `enhancement.md` §1 used, so one vocabulary covers every
 | 6 | **Task agents — N independent user-launched agents** | ✅ | 🟢 | Each with its own worktree, mode, model and workspace root; kill-one isolation and untouched-until-apply both asserted. `core/task-agents.ts`, `agent/task-agent-registry.ts` |
 | 7 | **Mid-run steering** | ✅ | 🟢 | A correction reaches the running agent on its next turn without restarting it, and never lands between a `tool_use` and its result. `core/steering.ts` |
 | 8 | **Concurrency and spend governor** | ✅ | 🟢 | One admission gate across both lanes; a reservation is claimed atomically, so two clicks in a tick cannot both win the last slot. `core/agent-governor.ts` |
-| 9 | **Agent inbox with parking and notifications** | ✅ | 🟢 | Blocked / parked / failed / finished-unreviewed surfaced with badge counts, notified once per (item, reason). `core/agent-inbox.ts` |
+| 9 | **Agent inbox with parking and notifications** | ✅ | 🟢 | Blocked / parked / failed / finished-unreviewed surfaced with badge counts, notified once per (item, reason). Its surface is the Office's header and desks (#81). `core/agent-inbox.ts` |
 | 10 | **Multi-model race** | ✅ | 🟢 | The same prompt to N models in N worktrees, ranked on real verification evidence then diff size, willing to report no winner. Nothing auto-applies. `core/model-race.ts` |
 | 11 | **Request classification / auto-orchestrate** | ✅ | 🟡 | Decides when a prompt deserves a plan or a pipeline — **keyword heuristics, not a model**, so an unusually phrased request can be misrouted. `agent/planning-engine.ts` |
 | 12 | **Background / off-machine agents** | ✅ | ✅ | `blackide daemon` / `blackide queue` — a file-based queue anything can fill, claim-by-rename so two daemons cannot run one task twice, and results that reach the **inbox** (M65). Off-machine execution is the BYO runner (#13). `agent-core/daemon.ts` |
 | 13 | **Remote / BYO-runner execution** | ✅ | ✅ | Commands run on a machine the user operates, as a `HostProcess` swap — the filesystem stays local, so only the slow, isolation-worthy part moves (M66). **No default endpoint and no service of ours.** The sandbox tier travels with each command and a runner that will not say which tier it enforced is refused; an unreachable one never falls back to running locally. `agent-core/remote-runner.ts` |
+| 105 | **The Agent Office — graphical floor** | ✅ | 🟢 | One desk per live agent across all four lanes (task · pipeline · chat · daemon), each showing what it is doing as a sentence — `Frontend · opened apiSlice.tsx · 1.4s` — with turn-against-cap, context-against-limit, a stall badge, the branch, and a files-in-play table. Header tiles source from `GovernorSnapshot`, which was computed and discarded before this. Every button derives from a `can*` predicate and every absent measurement renders `—`, both asserted. `core/office-model.ts`, `core/office-narrate.ts`, `webview/src/OfficeView.tsx` |
+| 106 | **Run journal and the Logs tab** | ✅ | 🟢 | Every run writes a durable JSONL record as it happens — tools with targets, durations and outcomes; the whole pre-flight; steering; verification — readable at three depths, filterable, live-tailing, and **complete whether or not any panel is open**. Redacted on write, bounded four ways, and never leaves the machine. Distinct from the privacy-scrubbed `TelemetrySink` by design. `core/run-journal.ts`, `agent/journal-store.ts`, `webview/src/LogsTab.tsx` |
+| 107 | **Agent-readable run logs** | ✅ | 🟢 | `read_run_log` lets a run read an earlier run's record — what a failed predecessor tried, or its own steps after a compaction. Defaults to the caller's run at summary depth and states its own truncation, so a model cannot mistake 60 lines for the whole run. `core/tools.ts`, `core/office-hub.ts` |
 
 ## 2. The fleet — agents and modes
 

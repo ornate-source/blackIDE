@@ -23,22 +23,78 @@ eval green, no regression vs `eval/baseline.json` · webview builds · CLI runs 
 | **11** | ✅ | **0** | P11-1 (M62 boundary) · **P11-2 (M62 package move)** · P11-3 (M65 daemon) |
 | **12** | ✅ | **0** | P12-1 (M67) · P12-2 (M68) · P12-3 (M66); P12-4/P12-5 resolved as positions |
 | — | — | — | **X-1** — the model tier, named in sixteen revisions and blocking five phases |
+| **Office** | 🟡 | **2** | **M72 · M74 · M76 · M77 · M82 · M83 · M84** — the Agent Office and the run journal. **M80 and M81 remain open** — see §1 |
 
-**Nothing is open.** Eighteen tasks were open at the last audit; all eighteen are closed.
+**Two tasks are open**, both P0 defect work rather than features. Eighteen were open at the
+previous audit and all eighteen are closed.
 
 Every phase, 0 through 12, is ✅. Nothing claimed as delivered was found missing. Two items
 previously carried as ❌ are now recorded as **deliberate positions** rather than debt — see §4.
 
-> **This document has done its job.** It exists to name open work, and there is none. Keep it as
-> the place the next wave is written down; §3's corrections and §5's defect list are the parts
-> worth carrying forward, because they record what the roadmap got *wrong*, which is the thing a
-> plan cannot learn from its own successes.
+> §3's corrections and §5's defect list are the parts worth carrying forward, because they record
+> what the roadmap got *wrong*, which is the thing a plan cannot learn from its own successes.
 
 ---
 
-## 1. No open tasks
+## 1. Open — the "thinking, but doing nothing" defect
 
-The last one closed on 2026-08-04. **P11-2 — the physical package move** — is done:
+Two tasks, both **P0**, both defect work rather than features. They are open because the Agent
+Office wave (`implementation_plan.md` §10) delivered its surfaces first and the runtime fixes
+second; the analysis is `implementation_plan.md` §9 and it is specific.
+
+**The symptom.** The user sends a prompt. Within a second the chat shows three bouncing dots and
+*"Agent is thinking..."*. It stays there — ten seconds, sometimes minutes — with no tool call, no
+text, no progress and no error.
+
+**It is one missing surface and three unbounded waits.** The state was always right: seven
+pre-flight steps between `beginTask` (`agent/chat-task.ts:260`) and the first model call each call
+`log()`, and every one of those lines reaches the webview and is rendered **only** as
+`agentLogs.slice(-2)` inside a panel that is collapsed by default (`webview/src/App.tsx:3343-3349`).
+
+| # | M | Task | Pri | Acceptance |
+|:--:|:--:|---|:--:|---|
+| O-B1 | **M80** | **The pre-flight speaks.** A `Progress` event, and a status line under the dots carrying `phaseLabel(state)`, the newest log line, and an elapsed counter. The counter is the load-bearing part: it is the difference between "this is slow" and "this is stuck" | **P0** | No gap over **2 s** between webview posts from submit to first token, asserted against a stubbed slow pre-flight. This is R6 as a test |
+| O-B2 | **M81** | **Bound every wait, and make Stop stop.** Batch and cap the per-chunk embedding fetches in `CodebaseIndex.build` (`core/codebase-index.ts:233-242` — sequential, one HTTP call per chunk, no signal, no budget); an overall deadline on `MCPClient.connectAll`; a connect timeout and an **idle-stream deadline** in `fetchWithRetry` (`core/llm-client.ts:22-44` — today a provider that returns 200 and then sends nothing hangs forever, and `runWithFailover` cannot help because nothing throws); a visible line per 429 backoff; and `signal` threaded through the pre-flight so Stop is not ignored where it is most likely to be pressed | **P0** | Each bound has a default, a setting and a test. A provider stub that accepts and sends nothing fails over within the idle deadline. Stop during the index build ends the run in ≤ 1 s |
+
+**What is already in place for them.** M82's journal captures every one of those pre-flight lines
+at `verbose` depth and writes them whether or not a panel is open — so from now on "it hung and I
+closed the window" no longer destroys the evidence, which is what makes the *next* report of this
+actionable rather than anecdotal.
+
+A third, smaller item is filed with them: an empty final turn (`agent/agent-loop.ts:226-230` sets
+`completed` with `finalText: ''`) renders an empty bubble with no explanation. **M85**, P3.
+
+---
+
+## 1b. Closed: the Agent Office
+
+`implementation_plan.md` is the design record; what landed:
+
+| M | Delivered | Gate |
+|:--:|---|---|
+| **M72** | `GovernorSnapshot` and `inboxCounts` pushed to the panel — both were computed and discarded before this | Every header number traces to a field that existed beforehand |
+| **M74** | `office-model.ts` + `office-narrate.ts` — four lanes onto one ordered roster, and the verb table that turns a tool call into `opened apiSlice.tsx` | Pure, vscode-free, 34 assertions. R1 and R2 asserted rather than conventional |
+| **M76** | The task lane onto real telemetry: tool `arguments` forwarded, turn and context reported out of the loop, `FileChanged` emitted, and a coalesced patch channel | ≤ 4 patches per second per item and ≤ 1 git-mutex acquisition per agent per 10 s, both measured |
+| **M77** | The Office tab — desks, empty seats, files-in-play, phase strip, budget-spent state | Renders with `—` in every genuinely absent cell |
+| **M82** | The run journal — content-bearing, redacted on write, bounded four ways, local only, and complete with no panel open | A killed run's partial file still parses; a live run is never pruned |
+| **M83** | The Logs tab — three depths, filter, problems-only, live tail with pause, open-as-file | A page is a page: the webview never receives the whole file |
+| **M84** | `read_run_log` — a run can read an earlier run's record | Defaults to the caller's run at summary depth and states its own truncation |
+
+**Deviation from the plan, stated:** §6.6 specified `read_run_log` as Agent-mode-only. It ships as
+`risk: 'safe'`, so Ask and Plan get it too. *"Why did that run fail?"* is an Ask-mode question, the
+tool is read-only, and Ask can already read the files the log quotes — the prompt-budget argument
+did not survive contact with the actual use.
+
+**Still open from the plan's §10:** M73 (status bar item, sidebar view, entry points), M75 (the
+Front Desk as a sidebar view), M78 (the Desk drill-in with a steering textarea and history), M79
+(the honesty-gate lint and deleting `ParallelSubagents.tsx`). None blocks the two P0s.
+
+---
+
+## 1c. Previously closed
+
+The last task before this wave closed on 2026-08-04. **P11-2 — the physical package move** — is
+done:
 `packages/agent-core/` is a real package with its own manifest, its own `tsconfig`, subpath
 exports, and no path back into the extension.
 
@@ -173,6 +229,8 @@ and are asserted.
 | 2026-08-04 | 12 | **P12-1/2/3 (M66–M68)**. **Phase 12 → ✅** | vitest 1 946/72 |
 | 2026-08-04 | 1 | **P1-1** — the LSP-over-grep gate, with an absolute floor rather than a ratchet. **Phase 1 → ✅** | vitest 1 952/72 |
 | 2026-08-04 | 11 | **P11-2 (M62)** — the package move. **Phase 11 → ✅, and the roadmap with it** | vitest 1 956/72 · harness 418/418 · eval green · the package imports standalone by name |
+| 2026-08-04 | Office | **M72 · M74 · M76 · M77** — the Agent Office: the work-item model, the narrator, the telemetry contract, the desks | vitest 2 003/75 · harness 418/418 · webview builds · `extension.ts` 698 (≤700) |
+| 2026-08-04 | Office | **M82 · M83 · M84** — the run journal, the Logs tab, and `read_run_log` | vitest 2 058/77 · harness 418/418 · `lint:css` clean |
 
 **Found while closing this wave, and fixed here rather than filed:**
 
@@ -204,3 +262,20 @@ and are asserted.
 9. **`extension.ts` hit its 700-line gate, as the last audit predicted.** Answered by extracting
    `architecture-seed.ts` rather than by raising the gate. 698 now — the same warning applies to the
    next feature that needs a field.
+10. **The gate fired again during the Office wave, exactly as predicted in (9) — twice.** Answered
+    the way the gate's own failure message says to: `core/office-setup.ts` took the lane and hub
+    construction, and `core/chat-task-setup.ts` took `runAgentTask`'s eighteen-line dependency
+    literal. The second extraction is the better one, and it was not on anyone's list until a
+    one-line telemetry addition could not fit. **A size gate is a design prompt, not an obstacle** —
+    but note that the first two attempts to satisfy it were comment-trimming, which is the failure
+    mode the gate is *most* vulnerable to and which its message anticipates.
+11. **The webview had been hand-copying every shape it renders.** `RunSummary`, `TaskAgentSummary`
+    and `InboxItem` are all declared a second time in `ManagerPanel.tsx`, tolerable while they were
+    four fields each. The Office renders a *projection* whose entire purpose is that one place
+    decides what a run is doing, so a second hand-maintained copy of that shape would have been the
+    drift it exists to prevent. `webview/` now resolves `@blackide/agent-core/*` to source, the
+    same target `vitest.config.ts` uses. Bundle cost, measured: **320.5 KB → 328.1 KB**.
+12. **`TelemetrySink` looked like the obvious home for the run journal, and is exactly wrong.** Its
+    allow-list drops prompts, tool arguments, output, paths and `Log` lines *by design*, with the
+    privacy reasoning written into the file — it is the file that may one day be exported. Widening
+    it would have destroyed that property to save writing a second sink. Two sinks, two postures.

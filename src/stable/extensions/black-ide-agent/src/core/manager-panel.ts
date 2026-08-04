@@ -5,6 +5,7 @@ import { PipelineRunSummary } from '@blackide/agent-core/core/pipeline-runs';
 import { TaskAgentSummary } from '@blackide/agent-core/core/task-agents';
 import { ArtifactRecord, ArtifactType } from './artifacts';
 import { buildReviewView, reviewCounts, routeComment } from './artifact-review';
+import { openAgentWorktree, retryPrompt, showAgentDiff, steerAgent } from './office-actions';
 import { buildMemoryView } from './memory-view';
 import { MemoryEntry } from '@blackide/agent-core/core/memory-model';
 import { ExtractionCandidate } from '@blackide/agent-core/core/memory-lifecycle';
@@ -42,6 +43,23 @@ export interface ManagerPanelHost {
         configureFromSettings(): Promise<void>;
         /** Ids of agents that still have a turn left to steer (Phase 7, M38/M39). */
         liveIds(): string[];
+        /** The user has read a background run's result, so it stops appearing (P11-3). */
+        acknowledgeDaemonResult(id: string): void;
+    };
+    /**
+     * The Agent Office's live telemetry (M74–M77).
+     *
+     * Optional for the same reason `memory` is: a host that has not wired one still opens
+     * a working Manager panel, it simply has no Office tab. A monitoring surface must
+     * never be a prerequisite for the thing it monitors.
+     */
+    readonly office?: {
+        sync(): void;
+        filesInPlay(): unknown[];
+        listLogs(limit?: number): unknown[];
+        readLog(runId: string, query: any): unknown;
+        logPayload(runId: string, ref: string): string | undefined;
+        logFile(runId: string): string | undefined;
     };
     /**
      * The durable-memory loop (Phase 8, M45). Structurally typed for the same reason
@@ -83,6 +101,19 @@ export class ManagerPanel {
 
     static post(message: any): void {
         ManagerPanel._live?._panel?.webview.postMessage(message);
+    }
+
+    /**
+     * Whether anything is listening.
+     *
+     * `post` already drops a message with no panel, which is correct for a state push that
+     * is re-sent on mount. It is not enough for the Office: its producers build a snapshot,
+     * may take the git mutex, and serialise a message *before* calling `post`, so a
+     * consumer that silently declines still costs everything except the IPC. Producers ask
+     * this first.
+     */
+    static isOpen(): boolean {
+        return !!ManagerPanel._live?._panel;
     }
 
     constructor(
@@ -277,6 +308,106 @@ export class ManagerPanel {
                     this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
                     this._panel.webview.postMessage({ type: 'agentInboxSync', value: { items: this._host.taskAgents.inbox() } });
                     break;
+                // ── The Agent Office (M74–M77) ──────────────────────────────
+                /*
+                 * One message serves the whole surface on mount.
+                 *
+                 * The Office is a projection of four lanes plus the governor plus live
+                 * telemetry, and asking for them separately would render a floor with
+                 * desks but no capacity, or capacity but no desks, for however long the
+                 * round trips took. `officeSync` carries the lot; everything after it is
+                 * a patch.
+                 */
+                case 'listOffice':
+                    this._host.office?.sync();
+                    this._panel.webview.postMessage({ type: 'officeFiles', value: this._host.office?.filesInPlay() ?? [] });
+                    break;
+                case 'acknowledgeDaemonResult':
+                    this._host.taskAgents.acknowledgeDaemonResult(String(data.value?.id || ''));
+                    this._host.office?.sync();
+                    break;
+                /*
+                 * The Office's per-item verbs.
+                 *
+                 * Every affordance `office-model.ts` can emit is handled here or above. A
+                 * rendered button with no case is the same defect R2 exists to prevent,
+                 * approached from the wiring side rather than the state-machine side —
+                 * `office-actions.test.ts` asserts the two halves agree.
+                 */
+                case 'officeSteer':
+                    await steerAgent({
+                        findAgent: (id) => this._host.taskAgents.list().find(a => a.id === id),
+                        steer: (id, text) => this._host.taskAgents.steer(id, text),
+                    }, String(data.value?.agentId || ''));
+                    break;
+                case 'officeDiff':
+                    await showAgentDiff(this._host.taskAgents.list().find(a => a.id === data.value?.agentId));
+                    break;
+                case 'officeWorktree':
+                    await openAgentWorktree(this._host.taskAgents.list().find(a => a.id === data.value?.agentId));
+                    break;
+                case 'officeRetry': {
+                    // Fills the launcher rather than relaunching. A failed run failed for a
+                    // reason, and a one-click repeat of the identical request is most often
+                    // a second identical failure that also costs money.
+                    const failed = retryPrompt(this._host.taskAgents.list().find(a => a.id === data.value?.agentId));
+                    if (failed) this._panel.webview.postMessage({ type: 'officePrefill', value: failed });
+                    break;
+                }
+                case 'officeReadPlan': {
+                    const plan = this._host.artifacts.list()
+                        .find(a => a.runId === data.value?.runId && a.type === 'plan');
+                    if (plan) await this._host.artifacts.open(plan);
+                    else vscode.window.showInformationMessage(
+                        'This run has not written a plan artifact yet. The Review tab lists everything it has produced.');
+                    break;
+                }
+                case 'openSettings':
+                    await vscode.commands.executeCommand('black-ide.openSettings');
+                    break;
+                // ── The Logs tab (M83) ──────────────────────────────────────
+                case 'listRunLogs':
+                    this._panel.webview.postMessage({ type: 'runLogList', value: this._host.office?.listLogs(100) ?? [] });
+                    break;
+                /*
+                 * Filtering happens here, not in the webview.
+                 *
+                 * The host has the file; the webview has a structured-clone budget. Sending
+                 * a 10 MB log across so React can drop 95% of it costs the clone, the parse
+                 * and the memory on both sides of the boundary to answer a question one
+                 * `Array.filter` on this side already answers.
+                 */
+                case 'readRunLog': {
+                    const page = this._host.office?.readLog(String(data.value?.runId || ''), {
+                        depth: data.value?.depth,
+                        filter: data.value?.filter,
+                        problemsOnly: data.value?.problemsOnly,
+                        after: data.value?.after,
+                        limit: data.value?.limit,
+                    });
+                    this._panel.webview.postMessage({
+                        type: 'runLogPage',
+                        value: { runId: data.value?.runId, ...(page ?? { lines: [], matched: 0, total: 0 }) },
+                    });
+                    break;
+                }
+                case 'readRunLogPayload': {
+                    const body = this._host.office?.logPayload(String(data.value?.runId || ''), String(data.value?.ref || ''));
+                    this._panel.webview.postMessage({
+                        type: 'runLogPayload',
+                        value: { seq: data.value?.seq, body: body ?? '(this payload is no longer on disk)' },
+                    });
+                    break;
+                }
+                case 'openRunLog': {
+                    // The raw file, deliberately. The tab is a reader; a user who wants to
+                    // grep, diff or attach the log needs the artefact, not a rendering of it
+                    // — and the journal is redacted on write precisely so this is safe.
+                    const file = this._host.office?.logFile(String(data.value?.runId || ''));
+                    if (!file) { vscode.window.showInformationMessage('That run has no log on disk.'); break; }
+                    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file), { preview: false });
+                    break;
+                }
                 case 'loadLlmConfig': {
                     const config = await this._secretManager.getKey('llm-config');
                     this._panel.webview.postMessage({ type: 'setLlmConfig', value: config });

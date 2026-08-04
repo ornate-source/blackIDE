@@ -68,6 +68,17 @@ export interface TaskAgentDeps {
     save(agents: TaskAgentSummary[]): void;
     /** Fired on every state change, so the panel can re-render. */
     onChanged?(agents: TaskAgentSummary[]): void;
+    /**
+     * Every event the run publishes, forwarded verbatim (M76).
+     *
+     * Separate from `onChanged` because these are two different cadences carrying two
+     * different things: `onChanged` is a *state* change and re-pushes the whole summary
+     * array, while this is a *stream* — a tool starting, a turn beginning, a file moving —
+     * which the Office coalesces into per-item patches. Routing the stream through
+     * `onChanged` would mean persisting the agent history to `globalState` on every tool
+     * call, which is the cost §2.1 of the design record exists to avoid.
+     */
+    onEvent?(agentId: string, event: any): void;
     now?(): number;
 }
 
@@ -356,6 +367,10 @@ export class TaskAgentRegistry {
         if (event?.type === 'ToolCallStarted' && event.name) {
             this.update(id, { currentAction: String(event.name) });
         }
+        // Forwarded whole, and after the summary update rather than before: a subscriber
+        // that reacts by reading `find(id)` must not see a summary one event behind the
+        // event it was just handed.
+        try { this.d.onEvent?.(id, event); } catch { /* a telemetry subscriber must never fail a run */ }
     }
 
     // ── State bookkeeping ───────────────────────────────────────────────────

@@ -49,6 +49,16 @@ export interface ManagedRunDeps {
         emit: (e: any) => void;
         requestApproval: (planContent: string, planPath: string) => Promise<boolean>;
     }): Promise<boolean>;
+    /**
+     * Every event a run publishes, for the journal and the Office (M76/M82).
+     *
+     * A pipeline run's events go straight to the Manager webview and have never touched
+     * the `EventBus`, so this is the only place a durable record of one can be taken. It
+     * is a hook rather than a bus migration because moving the lane onto the bus would
+     * change the delivery semantics of the approval gate, which is a much larger change
+     * than making the run loggable.
+     */
+    onRunEvent?(runId: string, event: any): void;
 }
 
 const RUN_HISTORY_KEY = 'pipeline-run-history';
@@ -179,6 +189,9 @@ export class ManagedRunRegistry {
             // snapshot (reconcileInterruptedRuns handles the "was still running" case).
             if (mutated) this._persist();
             managerWebview.postMessage({ type: 'pipelineRunEvent', runId, value: e });
+            // Journalled after the panel post, never before: a subscriber that throws must
+            // not be able to stop the surface from hearing about the run.
+            try { this._d.onRunEvent?.(runId, e); } catch { /* the journal is best-effort */ }
         };
 
         try {

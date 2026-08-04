@@ -48,6 +48,16 @@ export interface TaskAgentEntryDeps {
     modeLoader: ModeLoader;
     getProjectProfile: (rootPath: string) => Promise<ProjectProfile>;
     log: (message: string) => void;
+    /**
+     * Read a recorded run log, for the `read_run_log` tool (M84).
+     *
+     * Worth more here than in the chat lane: a task agent runs unattended, so when one
+     * fails the next thing that happens is usually another agent being launched at the
+     * same problem — and this is how the second one can find out what the first tried.
+     */
+    readRunLog?: (params: {
+        runId?: string; depth?: string; filter?: string; problemsOnly?: boolean; limit?: number;
+    }) => string | undefined;
 }
 
 /**
@@ -123,10 +133,19 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
             approve: async (request) => request.kind === 'edit' || request.kind === 'create',
             signal: params.signal,
             commandTimeoutMs: 120_000,
+            readRunLog: deps.readRunLog,
+            runId: params.agentId,
             onPlan: () => {},
             onArtifact: () => {},
             onTerminalChunk: () => {},
-            onFileChanged: (file) => { touched.add(file); },
+            // Reported as well as collected (M76). The set is what `planVerification` reads;
+            // the event is what puts the file on the Office's "files in play" table, which
+            // is how a user learns that a background agent is editing the file they have
+            // open — the one question a roster of prompts cannot answer.
+            onFileChanged: (file, kind) => {
+                touched.add(file);
+                params.emit({ type: 'FileChanged', path: file, kind });
+            },
             getProjectProfile: () => deps.getProjectProfile(params.rootPath),
         };
 
@@ -152,7 +171,35 @@ export function buildTaskRunner(deps: TaskAgentEntryDeps) {
             // Mid-run steering (M39). The loop drains this at the top of each turn.
             steering: params.steering,
             callbacks: {
-                onToolCall: (tc) => params.emit({ type: 'ToolCallStarted', name: tc.name }),
+                /*
+                 * Telemetry for the Agent Office (M76).
+                 *
+                 * Before this the lane published *one* field — the tool's name — through a
+                 * private three-event channel, and everything else the Office wanted (the
+                 * tool's target, the turn, the context fill, which files moved) was
+                 * computed inside the run and thrown away. None of it costs a model call
+                 * or a git operation; it is all already in hand at the callback.
+                 *
+                 * `arguments` is forwarded because a verb without a target is a spinner
+                 * with a name on it: "editing" tells the user nothing that "running" did
+                 * not, and "editing NavHeader.tsx" tells them whether to intervene.
+                 */
+                onTurn: (turn, maxTurns) => params.emit({ type: 'TurnStarted', turn, maxTurns }),
+                onContext: (usedTokens, limitTokens) => params.emit({ type: 'ContextUsed', usedTokens, limitTokens }),
+                onToolCall: (tc) => params.emit({
+                    type: 'ToolCallStarted',
+                    toolCallId: tc.id,
+                    name: tc.name,
+                    arguments: tc.arguments,
+                    ts: Date.now(),
+                }),
+                onToolResult: (tc, result) => params.emit({
+                    type: 'ToolCallFinished',
+                    toolCallId: tc.id,
+                    name: tc.name,
+                    ok: !result.isError,
+                    ts: Date.now(),
+                }),
                 onSteering: (notes) => {
                     for (const note of notes) deps.log(`[${params.agentId}] ${describeSteering(note)}`);
                     params.emit({ type: 'SteeringApplied', count: notes.length });
