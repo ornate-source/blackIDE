@@ -1487,12 +1487,13 @@ async function main() {
     const selectable = loader.getSelectableModes().map(m => m.name).sort();
     const all = loader.getAllModes().map(m => m.name);
 
-    // Nine since Phase 2 added Learn (M13). Kept as an exact set rather than a
-    // minimum: a mode silently appearing in the picker is a regression, and the
-    // count is quoted in the README and the wiki, which must be updated together.
-    const expectedSelectable = ['Agent', 'Ask', 'Backend', 'DevOps', 'Frontend', 'Learn', 'Manager', 'Plan', 'Sr Architect'];
-    ok('exactly nine user-selectable modes', selectable.length === 9, selectable);
-    ok('the nine selectable modes are the documented set',
+    // Ten since Phase 9 added Reviewer (M47); nine before that, from Phase 2's Learn
+    // (M13). Kept as an exact set rather than a minimum: a mode silently appearing in
+    // the picker is a regression, and the count is quoted in the README and the wiki,
+    // which must be updated together.
+    const expectedSelectable = ['Agent', 'Ask', 'Backend', 'DevOps', 'Frontend', 'Learn', 'Manager', 'Plan', 'Reviewer', 'Sr Architect'];
+    ok('exactly ten user-selectable modes', selectable.length === 10, selectable);
+    ok('the ten selectable modes are the documented set',
       JSON.stringify(selectable) === JSON.stringify(expectedSelectable), selectable);
 
     const internalNames = ['Sr Architect HLD', 'Sr Engineer LLD', 'Planner', 'Design Executor', 'Backend Executor', 'Frontend Executor', 'Testing Executor'];

@@ -23,10 +23,19 @@ export type ArtifactType =
     | 'walkthrough'
     | 'screenshot'
     | 'recording'
-    | 'test-report';
+    | 'test-report'
+    /**
+     * A code review of a working diff (Phase 9, M47).
+     *
+     * Its own type rather than a `walkthrough`, because the panel filters by type and
+     * "show me the reviews" is the question this surface exists to answer. Folding it
+     * into an existing type would make the Reviewer's output findable only by reading
+     * every artifact a run produced — which is the state M38 was built to end.
+     */
+    | 'review';
 
 export const ARTIFACT_TYPES: readonly ArtifactType[] = [
-    'plan', 'task-list', 'diff', 'walkthrough', 'screenshot', 'recording', 'test-report',
+    'plan', 'task-list', 'diff', 'walkthrough', 'screenshot', 'recording', 'test-report', 'review',
 ];
 
 /** Which types are readable as text, and which are files to open with something else. */

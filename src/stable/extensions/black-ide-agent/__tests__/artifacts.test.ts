@@ -22,7 +22,9 @@ const record = (over: Partial<ArtifactRecord> = {}): ArtifactRecord => ({
 describe('the type model', () => {
     it('covers every type the milestone names', () => {
         expect([...ARTIFACT_TYPES].sort()).toEqual(
-            ['diff', 'plan', 'recording', 'screenshot', 'task-list', 'test-report', 'walkthrough'],
+            // `review` joined in Phase 9 (M47) — the Reviewer's output needs its own
+            // type so the panel can filter to it. See core/artifacts.ts.
+            ['diff', 'plan', 'recording', 'review', 'screenshot', 'task-list', 'test-report', 'walkthrough'],
         );
     });
 

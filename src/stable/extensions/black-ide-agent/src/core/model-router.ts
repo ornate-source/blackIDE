@@ -20,10 +20,21 @@ import { LLMConfigEntry } from './types';
 // one should be skipped for a while. That is routing, and splitting it from resolution
 // would mean two components each holding half of "which model runs next".
 
-export type ModelRole = 'chat' | 'plan' | 'edit' | 'apply' | 'autocomplete' | 'embed' | 'rerank';
+/**
+ * `review` (Phase 9, M47) is its own role rather than reusing `edit` or `plan`.
+ *
+ * The distinction is real and points the opposite way from the usual reason to add a
+ * role. Most roles exist so a cheap task can be pointed at a cheap model; `review` exists
+ * because reviewing is the task where a cheaper model costs the most — a reviewer that
+ * misses defects and volunteers style opinions is worse than no reviewer, and its whole
+ * acceptance clause is a precision number. Routing it through `edit` would have quietly
+ * put reviews on whichever model somebody chose for commit messages.
+ */
+export type ModelRole =
+    'chat' | 'plan' | 'edit' | 'apply' | 'autocomplete' | 'embed' | 'rerank' | 'review';
 
 export const MODEL_ROLES: readonly ModelRole[] = [
-    'chat', 'plan', 'edit', 'apply', 'autocomplete', 'embed', 'rerank',
+    'chat', 'plan', 'edit', 'apply', 'autocomplete', 'embed', 'rerank', 'review',
 ];
 
 /** The subset of general settings the router reads. */

@@ -30,6 +30,7 @@
 // content can talk its way past is not a gate.
 
 import { SandboxTier } from './sandbox';
+import { CODE_INTEL_READ_TOOLS, NOTEBOOK_READ_TOOLS } from './tools';
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
@@ -72,12 +73,19 @@ export interface ReviewRequest {
  * is a review that can run `npm install` on a diff it is reading, and the diff is
  * untrusted content by M56's definition. If a review needs test results, the caller runs
  * the tests and passes them in.
+ *
+ * Spread from the shared read-only constants rather than hand-listed. The first draft of
+ * this array *was* hand-listed and immediately missed `get_diagnostics` and
+ * `code_actions` — precisely the failure `tools.ts` documents at
+ * `CODE_INTEL_READ_TOOLS`: "a tool missing from one of thirteen hand-written allowlists
+ * is silently never offered, and that failure is invisible because the tool still exists
+ * and still passes its own tests." `tool-surface.test.ts` caught it, which is the system
+ * working; using the constant is how it stops happening.
  */
 export const REVIEW_TOOLS: readonly string[] = [
-    'read_file', 'grep_search', 'list_directory', 'codebase_search',
-    'go_to_definition', 'find_references', 'workspace_symbols', 'hover',
-    'document_symbols', 'impact_analysis', 'blame', 'search_history', 'why_was_this_changed',
-    'expand_output', 'complete_task',
+    'read_file', 'grep_search', 'list_directory', 'codebase_search', 'complete_task',
+    ...CODE_INTEL_READ_TOOLS,
+    ...NOTEBOOK_READ_TOOLS,
 ];
 
 /**

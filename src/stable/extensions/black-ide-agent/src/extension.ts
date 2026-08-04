@@ -15,7 +15,7 @@ import { CodebaseIndex } from './core/codebase-index';
 import { EventBus } from './core/event-bus';
 import { TelemetrySink } from './core/telemetry-sink';
 import { PipelineRunSummary } from './core/pipeline-runs';
-import { KnowledgeBase, summarizeRepoStructure } from './core/knowledge-base';
+import { seedArchitectureOnce } from './core/architecture-seed';
 import { SessionManager } from './core/session-manager';
 import { HistoryStore } from './memory/history-store';
 import { ModeLoader } from './core/mode-loader';
@@ -28,6 +28,7 @@ import { getHtmlForWebview as buildWebviewHtml } from './core/webview-html';
 import { SettingsPanel } from './core/settings-panel';
 import { ManagerPanel } from './core/manager-panel';
 import { registerCommands } from './core/command-registry';
+import { registerReviewCommand } from './core/review-command';
 import { runPipelineCore, runChatPipeline, PipelineCoreDeps } from './agent/pipeline-entry';
 import { ManagedRunRegistry } from './agent/managed-runs';
 import { generateConversationTitle } from './core/conversation-title';
@@ -78,6 +79,16 @@ export function activate(context: vscode.ExtensionContext) {
         openSettingsPanel: () => settingsPanel!.open(),
         openManagerPanel: () => managerPanel.open(),
     }, provider.docsStore);
+
+    // Reviewer mode's palette entry (Phase 9, M47). Registered separately because it
+    // needs the artifact store and the checkpoint manager, and threading two more
+    // parameters through `registerCommands` for one command would make every future
+    // command's dependencies that command's problem too.
+    registerReviewCommand(context, {
+        secretManager,
+        artifacts: provider.artifacts,
+        checkpoints: provider.checkpoints,
+    });
 }
 
 export function deactivate() {}
@@ -224,52 +235,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         // read side (KnowledgeBase.readContext) has real content to inject on the very
         // first task instead of an empty header. Fire-and-forget: nothing about activation
         // should wait on, or fail because of, a best-effort scan.
-        void this._seedArchitectureOnce();
-    }
-
-    /** globalState key prefix for the once-per-workspace discovery scan. */
-    private static readonly ARCH_SCAN_KEY = 'blackIde.architectureScan';
-
-    /**
-     * One-time repository-discovery scan per workspace (P1). Guarded three ways, because
-     * this runs unprompted on activation: a globalState flag so it runs once, an unseeded
-     * check so it can never overwrite human or agent edits, and a total try/catch so a
-     * scan failure can never break activation.
-     */
-    private async _seedArchitectureOnce(): Promise<void> {
-        try {
-            const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!rootPath) return;
-
-            const key = `${BlackIdeChatProvider.ARCH_SCAN_KEY}:${rootPath}`;
-            if (this._context.globalState.get<boolean>(key)) return;
-
-            const kb = new KnowledgeBase(rootPath);
-            // Check before scanning — the scan is the expensive part and is pointless if
-            // architecture.md already says something.
-            if (!kb.isArchitectureUnseeded()) {
-                await this._context.globalState.update(key, true);
-                return;
-            }
-
-            const uris = await vscode.workspace.findFiles(
-                '**/*',
-                '**/{node_modules,.git,dist,out,build,.next,coverage,vendor}/**',
-                4000
-            );
-            if (uris.length === 0) return; // empty/unopened workspace — try again next time
-
-            let pkgJson: any;
-            try { pkgJson = JSON.parse(fs.readFileSync(path.join(rootPath, 'package.json'), 'utf8')); } catch {}
-
-            kb.ensureScaffold();
-            if (kb.scaffoldArchitecture(summarizeRepoStructure(uris.map(u => vscode.workspace.asRelativePath(u)), pkgJson))) {
-                // console, not the event bus: bus envelopes carry session/task metadata that
-                // does not exist at activation time, and no run is in flight to attribute to.
-                console.log(`[Knowledge] Seeded architecture.md from a scan of ${uris.length} files.`);
-            }
-            await this._context.globalState.update(key, true);
-        } catch { /* best-effort; the knowledge base must never break activation */ }
+        void seedArchitectureOnce(this._context);
     }
 
     /** Absolute path to the bundled built-in skill packs shipped with the extension. */
@@ -355,6 +321,9 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
 
     /** Typed artifacts, for the review surface (Phase 7, M38). */
     public get artifacts(): ArtifactStore { return this._artifacts; }
+
+    /** Checkpoints, so M47's offered fixes are undoable through the existing timeline. */
+    public get checkpoints(): CheckpointManager { return this._checkpoints; }
 
     /** `/compact`'s palette twin (Phase 5, M30) — same path as the slash command. */
     public compactConversation() {

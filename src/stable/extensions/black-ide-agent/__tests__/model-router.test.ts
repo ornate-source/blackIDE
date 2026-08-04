@@ -27,7 +27,9 @@ const all = [claude, gpt, gpt2, groq, local];
 
 describe('role resolution', () => {
     it('names every role the roadmap asked for', () => {
-        expect([...MODEL_ROLES]).toEqual(['chat', 'plan', 'edit', 'apply', 'autocomplete', 'embed', 'rerank']);
+        // `review` joined in Phase 9 (M47). Unlike the other roles it exists so a
+        // reviewer can be pointed at a *better* model, not a cheaper one.
+        expect([...MODEL_ROLES]).toEqual(['chat', 'plan', 'edit', 'apply', 'autocomplete', 'embed', 'rerank', 'review']);
     });
 
     it('prefers an explicit override over everything', () => {

@@ -77,12 +77,13 @@ Nine built-in modes, each with targeted system prompts, tool permissions, and it
 | **Manager** | Coordination and delegation | 15 | Cannot write code; `spawn_subagent` only |
 | **Sr Architect** | System design, patterns, tech debt | 20 | Read-only; writes ADRs and refactor plans |
 | **Learn** | Explaining the codebase and teaching | 20 | Read-only; cannot edit, run commands, or delegate |
+| **Reviewer** | Reviewing the working diff for defects | 20 | Read-only, and runs confined: no network, no shell |
 
 The **Constraints** column is enforced, not advisory: each mode's tool allowlist is checked
 where tools actually execute, so a mode that cannot write files cannot write files even if the
 model asks to.
 
-Beyond these nine user-selectable modes, the [multi-agent pipeline](#-the-multi-agent-pipeline) drives seven **internal** phase modes of its own (Sr Architect HLD, Sr Engineer LLD, Planner, and the Design/Backend/Frontend/Testing Executors). They are hidden from the mode picker — the orchestrator selects them automatically per phase.
+Beyond these ten user-selectable modes, the [multi-agent pipeline](#-the-multi-agent-pipeline) drives seven **internal** phase modes of its own (Sr Architect HLD, Sr Engineer LLD, Planner, and the Design/Backend/Frontend/Testing Executors). They are hidden from the mode picker — the orchestrator selects them automatically per phase.
 
 ### ⏮️ Atomic Checkpoints & Rollback
 

@@ -59,6 +59,11 @@
         "icon": "$(book)"
       },
       {
+        "command": "black-ide.reviewChanges",
+        "title": "✦ Black IDE: Review Working Changes",
+        "icon": "$(search-fuzzy)"
+      },
+      {
         "command": "black-ide.addSkillFrom",
         "title": "✦ Black IDE: Add Skill Pack From URL",
         "icon": "$(cloud-download)"

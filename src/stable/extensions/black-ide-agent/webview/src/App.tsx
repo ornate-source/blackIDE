@@ -144,6 +144,7 @@ const MODEL_ROLE_HINTS: { role: string; hint: string }[] = [
   { role: 'apply', hint: 'Fast apply: turns an intent into exact SEARCH/REPLACE blocks. Off unless set — a strong model here costs more than not using it' },
   { role: 'autocomplete', hint: 'Inline completion — latency matters more than depth' },
   { role: 'rerank', hint: 'Re-scores code search results. Off unless set; a deterministic lexical reranker runs otherwise' },
+  { role: 'review', hint: 'Reviews your working diff. The one role where a cheaper model costs more than it saves — a reviewer that misses defects and volunteers style opinions is worse than none' },
 ];
 
 const DEFAULT_PROVIDERS: Record<string, ProviderSetting> = {

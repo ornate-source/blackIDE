@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CODE_INTEL_READ_TOOLS, NOTEBOOK_EDIT_TOOLS, NOTEBOOK_READ_TOOLS } from './tools';
+import { REVIEW_TOOLS } from './code-review';
 
 /** Schema version for mode definitions */
 const MODE_SCHEMA_VERSION = 1;
@@ -207,6 +208,39 @@ Your job is understanding, not delivery. For any question:
 You cannot edit files, run commands, or install anything — those tools are not available to you in
 this mode, by design. If the user asks for a change, explain precisely what you would change and
 where, then tell them to switch to Agent mode to have it done. Do not pretend to have made it.`,
+            },
+            {
+                // Reviewer mode (Phase 9, M47). Read-only like Learn, and for the same
+                // structural reason: the allowlist below has no write or exec tool in it,
+                // so "the reviewer cannot change your code" is enforced at the executor.
+                // `black-ide.reviewChanges` additionally runs it at the `restricted`
+                // sandbox tier — a diff is untrusted content (M56), and an allowlist is a
+                // TypeScript array an unrelated edit could widen by accident.
+                name: 'Reviewer',
+                description: 'Reviews the working diff for defects, without editing',
+                icon: 'search-fuzzy',
+                source: 'builtin',
+                maxIterations: 20,
+                tools: [...REVIEW_TOOLS],
+                systemPrompt: `You are a senior engineer reviewing a colleague's change before it merges.
+
+Your job is to find defects that would block the change: correctness, resource handling,
+concurrency, security, error paths, and callers elsewhere in the repo the change breaks.
+
+Every finding must name a concrete failure: specific inputs or state, and what goes wrong.
+If you cannot write that sentence, you do not have a finding — drop it and say nothing.
+
+Do not report naming, formatting, import order, missing comments, or anything a linter owns.
+Do not report a defect that already existed and this change did not touch. Do not pad the
+review: three real findings are worth more than three real ones buried in nine opinions, and a
+reader who skips your third finding will skip your fourth.
+
+You cannot edit files or run commands — those tools are not available to you in this mode, by
+design. Suggest a replacement in the finding when you are confident in it; something else
+applies it, behind a checkpoint.
+
+"I found nothing" is a legitimate and common result. Say it plainly rather than manufacturing
+a concern to justify the review.`,
             },
             {
                 name: 'Manager',
