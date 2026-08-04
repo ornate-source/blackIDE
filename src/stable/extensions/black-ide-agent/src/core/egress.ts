@@ -73,6 +73,37 @@ export const EGRESS_REGISTER: EgressPoint[] = [
         disabledBy: 'the web_search tool being unavailable in the mode',
     },
     {
+        id: 'task-trackers',
+        destination: 'api.github.com · api.linear.app · the user\'s Jira host',
+        trigger: 'user-action',
+        module: 'core/task-fetchers.ts',
+        why: 'Reading an issue the user named in their prompt (M67). A read, initiated by them '
+            + 'typing a URL or an explicit #n — never from a bare key, which could belong to any '
+            + 'of three trackers and would mean sending their token to two vendors they do not use.',
+        disabledBy: 'not referencing an issue, and by configuring no tracker credentials',
+    },
+    {
+        id: 'slack',
+        destination: 'hooks.slack.com or slack.com/api',
+        trigger: 'user-action',
+        module: 'core/slack-transport.ts',
+        why: 'Forwarding one completion notice, after the user read it and confirmed that '
+            + 'specific message (M68). Completion notices go to the local inbox by default; Slack '
+            + 'is a per-message forward with no standing grant expressible in the type.',
+        disabledBy: 'allowExternalPosting, and by configuring no Slack target',
+    },
+    {
+        id: 'remote-runner',
+        destination: 'the user\'s own runner (no default endpoint)',
+        trigger: 'opt-in',
+        module: 'agent-core/remote-runner.ts',
+        why: 'Running the agent\'s commands on a machine the user operates (M66). Bring-your-own '
+            + 'by construction: there is no default endpoint and no Black IDE runner service, so '
+            + 'an unconfigured install has no remote execution rather than remote execution '
+            + 'pointed at us. We do not become a data processor by default.',
+        disabledBy: 'configuring no runner URL — which is the default',
+    },
+    {
         id: 'gh-pr-review',
         destination: 'github.com (via the `gh` CLI)',
         trigger: 'user-action',
