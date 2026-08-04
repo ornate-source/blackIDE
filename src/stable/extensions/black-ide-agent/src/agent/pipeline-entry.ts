@@ -232,6 +232,36 @@ export async function runPipelineCore(deps: PipelineCoreDeps, params: {
         // absent one, because it reads as a promise. Stale values in a user's settings
         // blob are simply ignored.
 
+        /*
+         * MCP servers for an unattended run (M51 · P9-5).
+         *
+         * A pipeline run has nobody to approve an `mcp_call`, and an MCP server
+         * contributes tools the agent *will* call over a channel the user cannot see —
+         * which makes it the strongest case in the codebase for G3's default. So a server
+         * is connected here only if a human put its exact identity in `mcpVettedServers`.
+         *
+         * Before this, the pipeline constructed an `MCPClient` and never connected
+         * anything to it, so MCP was unavailable unattended by accident rather than by
+         * policy. Unavailable-by-accident and refused-by-policy look identical until
+         * somebody "fixes" the missing call.
+         */
+        const vettedServers: string[] = Array.isArray(generalSettings.mcpVettedServers)
+            ? generalSettings.mcpVettedServers.map(String)
+            : [];
+        try {
+            const mcpConfigs = await mcpClient.loadConfigs();
+            if (mcpConfigs.length) {
+                for (const status of await mcpClient.connectAll(mcpConfigs, { unattended: true, vetted: vettedServers })) {
+                    log(status.connected
+                        ? `[MCP] ${status.name}: ${status.tools} tool(s) available to this run.`
+                        : `[MCP] ${status.reason || `${status.name} was not connected.`}`);
+                }
+            }
+        } catch (error: any) {
+            // A pipeline run must not fail because an optional integration did not load.
+            log(`[MCP] Skipped: ${error?.message || error}`);
+        }
+
         // Tracks which files each phase touched, keyed by mode id, so the orchestrator
         // can build a deterministic mindmap entry + overview.md without depending on
         // the executor agent remembering to call update_mindmap itself.

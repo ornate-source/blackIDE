@@ -269,7 +269,18 @@ export async function runAgentTask(
         let mcpToolDocs = '';
         if (effectiveMode === 'agent') {
             const mcpConfigs = await mcpClient.loadConfigs();
-            for (const mc of mcpConfigs) { log(`[MCP] Connecting: ${mc.name}...`); await mcpClient.connectServer(mc); }
+            // Attended: the user is here and approves each `mcp_call`, so vetting does
+            // not apply (M51 is about the runs where nobody is). Failures are logged
+            // with the reason rather than passed over, so a server that stopped working
+            // does not present as the model quietly getting worse.
+            const statuses = await mcpClient.connectAll(mcpConfigs, { unattended: false });
+            for (const status of statuses) {
+                if (status.connected) {
+                    log(`[MCP] ${status.name}: ${status.tools} tool(s), ${status.resources} resource(s), ${status.prompts} prompt(s).`);
+                } else {
+                    log(`[MCP] ${status.reason || `${status.name} did not connect.`}`);
+                }
+            }
             mcpToolDocs = mcpClient.getToolDescriptions();
         }
 

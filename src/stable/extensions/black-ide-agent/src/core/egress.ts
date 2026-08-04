@@ -73,6 +73,16 @@ export const EGRESS_REGISTER: EgressPoint[] = [
         disabledBy: 'the web_search tool being unavailable in the mode',
     },
     {
+        id: 'mcp-remote',
+        destination: 'configured',
+        trigger: 'agent-run',
+        module: 'tools/mcp-http.ts',
+        why: 'A remote MCP server the user configured in mcp.json (M49), plus its OAuth token '
+            + 'endpoint. https-only except loopback. No remote server is contacted unless one is '
+            + 'configured, and an unattended run refuses any that is not explicitly vetted (M51).',
+        disabledBy: 'configuring no http/sse MCP server',
+    },
+    {
         id: 'docs-crawl',
         destination: 'user-supplied URL',
         trigger: 'user-action',
