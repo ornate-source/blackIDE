@@ -2,11 +2,22 @@
 
 **Author:** Principal Engineer (fleet + agent infrastructure)
 **Date:** 2026-07-22
-**Status:** **In progress — Phases 1–5 delivered, Phase 6 partial (2026-07-22).**
-**Scope reference:** `src/stable/extensions/black-ide-agent/`. Every claim below is grounded in
-current code (file:line where it matters).
+**Status:** **Delivered and closed (2026-08-04).** All six phases shipped. Kept as the **design
+record** for the skills subsystem — the problem statement, the resolution model, the storage layout
+and the risks are still what the code does. It is **not** a status document: for that read
+[`features.md`](./features.md) (capabilities), [`pending-tasks.md`](./pending-tasks.md) (what is
+open) and [`enhancement.md`](./enhancement.md) (the roadmap that superseded this one's forward half).
 
-> ## Delivery status (2026-07-22)
+**What closed after this document was written.** Phase 6's remaining diagnostics UI shipped as
+`agent/skill-diagnostics.ts` (M5, Phase 0 of the roadmap). The 16-pack library grew to **47**, each
+with a golden eval task (M59). Distribution — a registry with pinned refs, SHA-256 verification and
+`black-ide.addSkillFrom` — shipped as M60, which this document listed as out of scope. Mindmap
+read-back, the Phase 5 follow-up, shipped as M46. The catalog below is therefore a *target that was
+met and passed*, not a backlog.
+
+**Scope reference:** `src/stable/extensions/black-ide-agent/`.
+
+> ## Delivery status at the time of writing (2026-07-22) — historical
 > Extension `tsc -b` clean · harness **426/426** (+40, suites `[44]`–`[46]`) · webview builds.
 >
 > | Phase | Status | What landed |
@@ -21,90 +32,28 @@ current code (file:line where it matters).
 > **Follow-up (not yet done):** expand the built-in library beyond the initial 16 (the catalog
 > below is the target; adding packs is data-only, no code); Phase 6 diagnostics UI.
 
-This plan does two things:
-1. **Part 1** — a maturity map of *every* Black IDE capability, so we know where the product
-   actually stands (Beginning / Mid / Advanced), not where the README says it does.
-2. **Part 2** — the next big initiative: turn the eight agents from fixed-prompt generalists into
-   a **project-aware fleet** that loads the right skills for the stack in front of them (Django,
-   .NET, Rust, React, …), and keeps the mindmap synced to that reality.
+This plan did two things:
+1. **Part 1** — a maturity map of *every* Black IDE capability. **Superseded** by
+   [`features.md`](./features.md); the section below says why and what it got wrong.
+2. **Part 2** — the initiative itself: turn the agents from fixed-prompt generalists into a
+   **project-aware fleet** that loads the right skills for the stack in front of them (Django,
+   .NET, Rust, React, …), and keeps the mindmap synced to that reality. **Delivered** — this is the
+   part still worth reading.
 
 ---
 
-## Part 1 — Feature Maturity Map
+## Part 1 — Feature Maturity Map *(superseded)*
 
-**Legend.** 🟢 **Advanced** — robust, tested, production-quality. 🟡 **Mid** — works, but with a
-real limitation (not wired everywhere, not project-aware, opt-in, or thin). 🔴 **Beginning** —
-exists but naive/experimental, or barely wired.
+**Moved to [`features.md`](./features.md), which is canonical.** This map was written on 2026-07-22
+and was the first of three inventories in this folder; by 2026-08-04 it was the most out of date of
+the three — it graded eight modes (there are nine), sixteen skill packs (there are 47), DuckDuckGo-
+only web search (Brave/Tavily/Google CSE shipped in Phase 3), a 50-line chunking window (symbol
+chunking shipped in Phase 3) and parallel wave execution as experimental (deleted in Phase 6).
 
-### Agent core & orchestration
-
-| Capability | Level | Why this level |
-|---|:--:|---|
-| Bounded agent loop (context budgeting, execution interlock, native tools) | 🟢 | `agent/agent-loop.ts` + `core/context-manager.ts`; tested |
-| Two-phase planning + human approval gate (persisted across reload) | 🟢 | `PlanningEngine`, Memento-backed approval |
-| Multi-agent pipeline (HLD → LLD → Planner → Executors → reconcile) | 🟢 | `agent/pipeline-orchestrator.ts`; dependency graph, PR/apply modes |
-| Subagent isolation (git worktrees, mutex, delta reconcile) | 🟢 | `agent/worktree-manager.ts`; real-git tests |
-| Concurrent Pipeline Manager (up to 4 runs, durable history) | 🟢 | `core/pipeline-runs.ts` |
-| Request classification / auto-plan / auto-orchestrate triggers | 🟡 | keyword heuristics (`planning-engine.ts`), not learned |
-| Parallel wave execution | 🔴 | experimental, default off, "not verified under extension host" |
-
-### The agents (fleet)
-
-| Capability | Level | Why this level |
-|---|:--:|---|
-| **8 selectable agents** (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect) | 🟡→🟢 | static base prompts in `core/mode-loader.ts`, **now augmented at runtime with project-aware skill packs** (Phase 4). Base prompts still static |
-| 7 internal pipeline-phase agents (HLD, LLD, Planner, Design/Backend/Frontend/Testing Executors) | 🟡→🟢 | **now receive resolved skills** via the orchestrator's `skillsForMode` (Phase 4) — previously got none |
-| Custom modes (YAML frontmatter, 3 scopes, hot-reload, inline diagnostics) | 🟢 | `ModeLoader.watchForChanges` |
-| Per-mode tool allowlists + iteration budgets | 🟢 | enforced in the sandbox gate. **Corrected 2026-07-27:** the allowlists were *advertising-only* until Phase 2 — `isToolAllowedInMode` knows only the three coarse `AgentMode`s, and every mode except Ask/Plan resolves to `agent`, so Manager, Sr Architect and the pipeline phases could have executed a write call they never advertised. A second gate in `tool-executor.ts` now enforces the acting mode's list where tools run |
-
-### Skills & knowledge — **was the weak spine; now the newest strength** (Part 2 delivered)
-
-| Capability | Level | Why this level |
-|---|:--:|---|
-| **Skills framework** (`SkillsManager` + `SkillResolver`) | 🔴→🟡 | Now **project- & role-aware**: resolves by stack + role + prompt (`agent/skill-resolver.ts`), **16 bundled packs**, wired into **both chat and pipeline agents**, precedence bundled→global→workspace. Remaining: broader library (16 of ~60), no diagnostics UI yet |
-| **Project-type detection** (Django / .NET / Rust / React / Go / …) | 🔴→🟡 | **Built** (`core/project-profiler.ts`): manifest-based, confidence-scored, tested across ~10 stacks. Rule-based (not learned); framework coverage still growing |
-| Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | solid store + first-run scan; content still generic, not yet stack-specialized from the profile |
-| **Mindmap syncing** (`project_mindmap.md`) | 🟡 | now upserts an idempotent **"Project Stack & Conventions"** section from the profile (Phase 5); still write-mostly — full agent read-back is a follow-up |
-| First-run architecture scan | 🟡 | `summarizeRepoStructure()` lists files + `package.json`; stack now classified separately by the profiler |
-
-### Retrieval & context
-
-| Capability | Level | Why |
-|---|:--:|---|
-| Semantic codebase index — retrieval & ranking (embeddings + BM25 via RRF) | 🟢 | `core/codebase-index.ts`; embeddings are opt-in |
-| Semantic codebase index — **chunking** | 🟡 | **Corrected 2026-07-27:** this row previously claimed "AST-aware chunking". It is not — `chunkFile()` (`core/codebase-index.ts:420`) is a fixed 50-line window with 10-line overlap (`CHUNK_LINES`/`CHUNK_OVERLAP`), so chunks can split mid-function. Symbol-aware chunking is scheduled as E2 in [`enhancement.md`](./enhancement.md) |
-| Context manager / token budgeting + compaction | 🟢 | `core/context-manager.ts` |
-| Prompt builder (per-section budgets) | 🟢 | `core/prompt-builder.ts` |
-
-### Tools
-
-| Capability | Level | Why |
-|---|:--:|---|
-| File / grep / list / run_command | 🟢 | `tools/tool-runner.ts` |
-| Checkpoints & rollback (reverse hunks, per-message undo) | 🟢 | `core/checkpoint-manager.ts` |
-| **Browser automation** (Playwright, gated + on-demand install) | 🟡 | opt-in after Phase-1 hardening; per-task sessions, allowlist-enforced |
-| **MCP client** (stdio JSON-RPC, tool registration) | 🟡 | works, Agent-mode only; no remote/SSE transport |
-| Web search | 🟡 | DuckDuckGo only (`tools/web-search.ts`); no API-key providers |
-
-### Editor integration & platform
-
-| Capability | Level | Why |
-|---|:--:|---|
-| Inline completion (FIM-aware) | 🟡 | `core/inline-completion.ts`; single-model, no multi-file context |
-| Inline chat (`Cmd+I`) | 🟡 | selection-scoped; solid but narrow |
-| Commit-message generation | 🟡 | works; diff-size naive |
-| Multi-provider LLM (OpenAI/Anthropic/Google/OpenRouter/Ollama/LM Studio) | 🟢 | `core/llm-client.ts` |
-| Output modes (`apply` / `pr`) | 🟢 | `core/git-pr.ts` |
-| Local-only telemetry + diagnostics export | 🟢 | `core/telemetry-sink.ts` |
-
-**Read of the map (updated):** the *engine* (loop, pipeline, checkpoints, index, worktrees) is
-Advanced. The **intelligence layer that makes agents good at a specific stack was Beginning — it is
-now Mid** and rising: Part 2 shipped (Phases 1–5), so skills are project- and role-aware, reach
-**both** chat and pipeline agents, and the stack is detected from manifests and synced to the
-mindmap. The remaining lift is *breadth* (grow the 16-pack library toward the full catalog) and
-*polish* (Phase 6 diagnostics), not architecture.
-
----
+Its **legend survives unchanged** and is what `features.md` and `enhancement.md` both use: 🟢
+Advanced · 🟡 Mid · 🔴 Beginning. Its **read of the map has held**: the engine was Advanced and the
+stack-specific intelligence layer was the weak spine. Part 2 below is what fixed that, and it
+shipped — 47 packs, project- and role-aware resolution, reaching chat and pipeline agents alike.
 
 ## Part 2 — Initiative: Project-Aware Dynamic Agent Skills
 

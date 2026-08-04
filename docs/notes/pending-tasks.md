@@ -1,6 +1,8 @@
 # Black IDE — Pending Tasks
 
-**Derived from:** [`enhancement.md`](./enhancement.md) rev 15 (2026-08-04)
+**Derived from:** [`enhancement.md`](./enhancement.md) rev 15 (2026-08-04) · **canonical for open
+work** — what exists rather than what is missing is [`features.md`](./features.md); see
+[`README.md`](./README.md) for who owns what.
 **Audited against the tree:** 2026-08-04 — every open row below was re-checked in code, not read off
 the previous revision's claims.
 **Baseline at audit time:** `tsc -b` clean · vitest **1 629/1 629 / 62 suites** · harness 418/418 ·

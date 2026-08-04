@@ -12,13 +12,18 @@ egress register that fails the build when an undeclared network call is added. P
 (§4.6), which is harness capability rather than phase work. Supersedes the "next initiative" half of
 [`plan.md`](./plan.md) (which is delivered through its Phase 5).
 
+**What this document owns:** the competitive read, the complete gap inventory (§3) and the phase plan
+(§4). It does **not** own the capability inventory — that is [`features.md`](./features.md), which is
+canonical for Status and Level per feature, and [`pending-tasks.md`](./pending-tasks.md) is canonical
+for what is open. See [`README.md`](./README.md) for who owns what.
+
 | Phase | Status | Covers | Evidence |
 |---|:--:|---|---|
-| 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**671** (≤700 gate met **and now enforced by a test**) · eval harness at **74 tasks / 13 fixtures** with a wrong-idiom metric · vitest wired · skill diagnostics. |
+| 0 — Truth-up & foundations | ✅ | M1–M5 | 8 docs corrected · `extension.ts` 2537→**671** (≤700 gate met **and now enforced by a test**; **699** as of 2026-08-04) · eval harness with a wrong-idiom metric, since grown to **112 tasks / 21 fixtures** · vitest wired · skill diagnostics. |
 | 1 — Language-server tools & tests | 🟡 | M6–M8 | 8 tools in `tools/lsp-tools.ts` + `core/test-report.ts`; 5 of 6 gates asserted, incl. rename across 6 files in a real extension host. **Outstanding:** the LSP-over-grep gate needs the model tier (§4.6). |
 | 2 — Rules, prompts & modes | ✅ | M9–M13 | Rules v2, team rules, prompt library, Learn mode, session panel with **rule *and* tool toggles** — the tool half enforced at the executor, not advertised. M9's stronger reading closed as won't-do. |
-| 3 — Retrieval substrate | ✅ | M14–M22 | **All nine milestones.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction 37.5% at realistic path depth · git history tools · **index build 5 000 files in 1 247 ms** against a ≤2 s gate · 11 `@`-mention providers incl. `@symbol`, `@docs`, `@web`. |
-| 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **16 providers** (Bedrock/Vertex deferred with a reason) · zero-config local first run. |
+| 3 — Retrieval substrate | ✅ | M14–M22 | **All nine milestones.** recall@5 84.7→**91.2** · @10 93.1→**97.2** · @20 94.4→**100** · impact analysis 0 FP / 0 misses on 6 refactors · compaction **36.9%** at realistic path depth · git history tools · **index build 5 000 files in 1 247 ms** against a ≤2 s gate · 11 `@`-mention providers incl. `@symbol`, `@docs`, `@web`. |
+| 4 — Model layer | ✅ | M23–M27 | `ModelRouter` with 7 roles · health-aware cross-provider failover in chat **and** the pipeline · fast-apply that fails closed · **15 providers** (recounted 2026-08-04; Bedrock/Vertex deferred with a reason) · zero-config local first run. |
 | 5 — Editor ergonomics | ✅ | M28–M30 | Next-edit prediction over an edit-history buffer + the M15 graph, cross-file via a jump affordance, **nothing survives a buffer change** (asserted) · terminal `Cmd+K`, single-line by construction and never auto-run · rolling summarization above `fit`, refusing while an approval is open · `/compact` implemented, having been a UI suggestion with no handler since Phase 2. |
 | 6 — Agent Manager & parallel execution | ✅ | M31–M37 | Task agents as a first-class unit — own worktree, mode, model **and workspace root** · one governor across both lanes · agent inbox with parking and once-per-event notification · **parallel wave execution deleted, not deferred** (M35) · per-root profiles · multi-model race that ranks on evidence and is willing to say "no winner". |
 | 7 — Artifacts, steering & verification | ✅ | M38–M40 | Typed artifacts with a real index (the old store accepted a type and reported every artifact as `report`) · **mid-run steering that never lands between a `tool_use` and its result** · a verify contract with four outcomes and exactly one self-correction · verification in all three lanes · **an artifact review panel where a comment on a region reaches the running agent's next turn** — the M39 path finally driven from a surface that knows what the user is looking at · visual capture that refuses to guess rather than attach a screenshot of the wrong app. |
@@ -28,66 +33,30 @@ egress register that fails the build when an undeclared network call is added. P
 | 11 — Headless core, CLI & SDK | 🟡 | M62–M65 | The core boundary **declared and transitively enforced** (zero `vscode` reachable), a Node host implementing it with no editor, and a CLI surface with a JSON event stream and CI exit codes. **Outstanding:** the physical package move, the executor's host refactor, and the daemon (M65). |
 | 12 — Remote execution, integrations, analytics | 🟡 | M66–M71 | **All four gate clauses met:** the default build phones home to nobody (enforced by a source-walking egress accounting test) · an org policy can only **tighten**, never widen · nothing is posted externally without a per-action confirmation that *cannot* be granted in advance · disabling the analytics sink removes its egress by construction. **Not started:** remote execution (M66), domain verticals (M70), voice (M71). |
 
-**Re-verified 2026-08-02 by running everything:** harness **426/426** · vitest **693/693 / 36
-suites** · eval gate green (stack detection 100% 13/13 · skill exact-match 100% · fail-safe 1/1 ·
-**wrong-idiom 0% of 33 guarded tasks** · **recall@5 91.2% · @10 97.2% · @20 100%** · compaction
-37.4% · *no regression vs `eval/baseline.json`*) · `tsc -b` clean · webview builds · `extension.ts`
-**693 LOC**. The **19 real-host integration tests did not run** on 2026-08-02:
-`@vscode/test-electron` spawns `Contents/MacOS/Electron` and the VS Code build it downloads (1.131.0)
-ships `Contents/MacOS/Code`. A tooling mismatch that predates this phase — recorded rather than
-rounded up to "everything green".
+**Re-verified 2026-08-04 by running everything:** harness **418/418** · vitest **1 629 / 62
+suites** · eval gate green (112 tasks / 21 fixtures · stack detection 100% 21/21 · skill exact-match
+100% · fail-safe 1/1 · **wrong-idiom 0% of 38 guarded tasks** · **recall@5 91.2% · @10 97.2% ·
+@20 100%** · compaction 36.9% at realistic path depth · *no regression vs `eval/baseline.json`*) ·
+`tsc -b` clean · webview builds · `extension.ts` **699 LOC** (≤700 gate). The **19 real-host
+integration tests still did not run**: `@vscode/test-electron` spawns `Contents/MacOS/Electron` and
+the VS Code build it downloads (1.131.0) ships `Contents/MacOS/Code`. A tooling mismatch that
+predates this phase — recorded rather than rounded up to "everything green".
 
-## ⇢ Pending tasks — phases 0–4 (re-audited against the code 2026-08-01)
+## ⇢ Where open work is tracked
 
-Every row below was checked against the tree today, not against the previous revision's claims.
-Phases 0–3 are the started phases; **Phase 4 is included because it is next on the critical path and
-because M17's remaining half is blocked on it** — the roadmap's own sequencing makes Phase 4 the
-unblocking phase, so its rows belong on the same list rather than in a separate backlog.
+**[`pending-tasks.md`](./pending-tasks.md) is canonical for what is open** — organised by phase,
+re-audited against the code rather than against this document’s claims. This section used to carry a
+second open-items list for phases 0–4; **all fourteen of its rows are closed**, and keeping a
+resolved backlog beside a live one is how the two disagree.
 
-**Verified state at audit time (before this pass):** `tsc -b` clean · harness **426/426** · vitest
-**393/393 / 23 suites** · eval green, no regression vs `eval/baseline.json` · `extension.ts` **652
-LOC**. The "Verified how" column below is what the code showed *then*, kept as written so the audit
-stays checkable; the Status column is where it ended up.
-
-| # | Pending task | Phase | Tracked at | Verified how | Blocked by | Status |
-|:--:|---|:--:|:--:|---|---|---|
-| **1** | **Tool toggles** in the session panel | 2 | M10 | `toggleRule` exists at `App.tsx:3395` → `webview-message-handler.ts:223`; **no `toggleTool` on either side** | nothing | ✅ **done 2026-08-01** — M10 → ✅ |
-| **2** | **`@symbol`** provider in the `@`-mention set | 3 | M19 | `context-provider-setup.ts:49-88` registers 8 providers; no symbol entry | nothing — M15 exposes `index.graph` | ✅ **done 2026-08-01** |
-| **3** | Index-build budget **≤2 s per 5 000 files** never asserted | 3 | M14 gate | restated in the M14 note; no test measures it | needs a corpus big enough to mean something | ✅ **done 2026-08-01 — 1 247 ms / 5 000 files** |
-| **4** | **`ModelRouter`** — roles `chat/plan/edit/apply/autocomplete/embed/rerank` | 4 | M23 | no `model-router.ts`; role resolution is ad-hoc (`inline-completion.ts:44` reads `autocompleteModelId`, everything else reads `selectedModelId`) | nothing | ✅ **done 2026-08-01** |
-| **5** | **Cross-provider failover / health-aware routing** | 4 | M24 | `llm-client.ts:58` `fallbackTurn` is the *local-protocol* path, not failover | #4 | ✅ **done 2026-08-01** — chat **and** pipeline |
-| **6** | **Rerank cross-encoder** (only the lexical fallback ships) | 3 | M17 | `core/reranker.ts:17` says so in a comment | **#4's `rerank` role** | ✅ **done 2026-08-01** — M17 → ✅ |
-| **7** | **Provider breadth** 6 → ~18 | 4 | M26 | `types.ts:4` — `LLMConfigEntry.type` is a 5-member union | nothing | ✅ **done 2026-08-01 — 16**, Bedrock/Vertex deferred with a reason |
-| **8** | **Zero-config first run** (usable with no API key) | 4 | M27 | every config path throws "No LLM configurations found" with no key | nothing | ✅ **done 2026-08-01** |
-| **9** | **Fast-apply path** (cheap model materialises SEARCH/REPLACE) | 4 | M25 | no apply-role path anywhere | #4 | ✅ **done 2026-08-01** — fails closed |
-| **10** | **`@docs` crawl + index** | 3 | M20 | no docs provider, crawler or namespaced shard | nothing (network-facing) | ✅ **done 2026-08-01** |
-| **11** | **Keyed search providers** (Brave / Tavily / Google CSE) | 3 | M21 | `tools/web-search.ts` is 108 LOC of DDG scrape | nothing | ✅ **done 2026-08-01** |
-| **12** | Eval breadth: **19 tasks / 8 fixtures** vs a planned 8–10 × 6 stacks | 0 | M3 | `eval/tasks.js` is 53 LOC / 19 entries | nothing | ✅ **done 2026-08-01 — 74 tasks / 13 fixtures, and it found F3/F3b** |
-| **13** | "Symbol questions resolve via **LSP not grep**" unasserted | 1 | M6/M7 gate | `eval/` has no model-calling tier | **needs the opt-in model tier** | 🔴 blocked — not phase work |
-| **14** | §4.2's four ⚠ rows (task success, tokens/task, symbol accuracy, wrong-idiom) | 0 | M3 / §4.2 | `eval/baseline.json` holds only deterministic metrics | **same model tier as #13** | 🔴 blocked — not phase work |
-
-**#13 and #14 are the same blocker twice**, and neither is phase work: both need an **opt-in tier of
-the eval harness that spends real model calls**. That is a harness capability with a cost model (keys
-in CI, a budget per run, non-determinism to control), and it is the single prerequisite for four of
-§4.2's metric rows plus Phase 1's last gate. Making it a Phase 4 task would hang the deterministic
-gates of five phases off a non-deterministic runner. It is specified as **§4.6 — the model tier**
-below so it is owned rather than perpetually deferred, and it is the one thing on this list that is
-**not** attempted in this pass.
-
-**12 of the 14 closed on 2026-08-01**, in dependency order: #1–#3 and #12 (self-contained), then
-Phase 4 (#4 → #5, #7, #8, #9), then #6 once #4 existed to unblock it, then #10 → #11. Every delivery
-note is filed under its phase in §4.
-
-**What that means for the roadmap: phases 0–4 are delivered, and Phase 3's and Phase 4's milestones
-are all ✅.** Closing Phase 4 also closed the last two Phase 3 partials — M17's cross-encoder (it
-needed the `rerank` role) and M19 (`@symbol` here, `@docs`/`@web` with M20/M21). The only work
-outstanding in phases 0–4 is the model tier, which is not phase work.
-
-**Verified after the pass, by running everything:** `tsc -b` clean · harness **426/426** · vitest
-**582/582 / 32 suites** (was 393/23) · eval gate green with a re-recorded baseline (74 tasks /
-13 fixtures · stack detection 100% · exact-match 100% · **wrong-idiom 0% of 33 guarded tasks** ·
-recall@5 91.2 · @10 97.2 · @20 100) · webview builds · `extension.ts` **671 LOC**, inside the
-≤700 gate and now *enforced* by a test rather than by hand.
+The audit is worth one line rather than a table: on **2026-08-01, twelve of its fourteen rows closed
+in dependency order** — tool toggles, `@symbol`, the index-build budget and the eval-set expansion
+first, then Phase 4 entire (`ModelRouter` → failover, provider breadth, zero-config, fast-apply),
+then M17’s cross-encoder once the `rerank` role existed to unblock it, then `@docs` → keyed search.
+Each delivery note is filed under its phase in §4. **The two that did not close are the same blocker
+twice** — the LSP-over-grep gate and §4.2’s ⚠ metric rows both need an eval tier that spends real
+model calls, which is specified at **§4.6** and tracked as **X-1** in `pending-tasks.md`. Making it a
+phase task would hang five phases’ deterministic gates off a non-deterministic runner.
 
 ### Previously-tracked items, now closed (kept for the record)
 
@@ -102,8 +71,9 @@ used to duplicate them and drifted every revision, so it now says only what the 
 
 **The two `extension.ts` cuts, because both are cited elsewhere.** 2537 → 623 in Phase 0, then 652
 once M19's provider assembly landed, then 704 on 2026-08-01 when the `@docs`/`@web` wiring went in
-inline — **past the gate**, caught by hand, moved into `core/context-provider-setup.ts`, and now at
-**671** with `__tests__/source-hygiene.test.ts` failing the build over 700. Two of the original cuts
+inline — **past the gate**, caught by hand, moved into `core/context-provider-setup.ts`, and **699 as
+of 2026-08-04**, with `__tests__/source-hygiene.test.ts` failing the build over 700. One line of
+headroom is worth naming: the next feature needing a field there hits the gate. Two of the original cuts
 needed a design decision rather than a move, and both are recorded at **G10**: `core/chat-session.ts`
 holds the chat lane's state as one object shared *by reference* (because `_runAgentTask` reassigns it
 mid-run while the webview handler reads it afterwards), and `agent/managed-runs.ts` moved the Manager
@@ -130,298 +100,28 @@ the argument for the eval tier, restated with each finding.
 
 **Benchmarked against:** Google Antigravity 2.0 · Cursor 3.5 · Continue.dev · NeuralInverse · CortexIDE · A-Coder · OPIDE.
 
-> **Method.** Every "Level"/"Status" below is grounded in code in this repo (file:line where it
-> matters), not in the README. Competitor claims come from their public docs/READMEs as of
+> **Method.** Every grade in this folder is grounded in code in this repo (file:line where it
+> matters), not in the README — here for gaps and phases, in [`features.md`](./features.md) for
+> capabilities. Competitor claims come from their public docs/READMEs as of
 > 2026-07-27 and are labelled as *their* claims, not measured results. Where our own docs
 > overstate reality, that is called out — see [Doc corrections](#0-doc-corrections-truth-up).
 
-> **What changed in rev 14 (2026-08-02).** Delivery: **Phase 12's privacy and authority spine —
-> M67–M69**, with M66, M70 and M71 not started. Tally **59 of 71**. All four of Phase 12's gate
-> clauses are met and enforced by tests, which is the first phase since Phase 5 where every clause
-> landed.
+> **What changed in rev 15 (2026-08-04).** Delivery: **Phase 7 closed** — visual capture (M40) and
+> the artifact review panel (M38). The tally of *addressed* gaps stays **59 of 71**, because both
+> milestones were already counted as partial; what moved is the split, **53 complete + 6 partial →
+> 55 complete + 4 partial**, which is the number worth watching. Every P0 done.
 >
-> **The egress register found two undeclared network callers on its first run** — a model-list fetch
-> and a loopback Ollama probe. Both legitimate, both now declared. That is the normal state of such a
-> list and the reason it is enforced by a source walk rather than written down: "we don't phone home"
-> is a claim about code that does not exist, and you cannot test for absence by looking at the thing.
+> **Documentation pass in the same revision.** This file carried a second capability inventory (§1)
+> beside [`features.md`](./features.md); the two drifted, and §1 was the stale one — it still graded
+> the code graph and git-history search absent after Phase 3 shipped both. §1 is now a pointer,
+> `features.md` is canonical, and the revision log below moved out of this header into §6 so the
+> first screen of the roadmap is the roadmap.
 >
-> **A sentinel that would have inverted the org policy.** `sessionTokenBudget: 0` means *unlimited*,
-> so `Math.min(0, 50_000)` is 0 — an org imposing a ceiling on a user who had none would have
-> removed it. Caught because the tighten-only property is asserted as one capability score over the
-> whole structure, not field by field.
->
-> **The per-action confirmation is enforced by a type, not a policy.** `OutboundContext` has no field
-> for a remembered answer, so a caller cannot express "they allowed this last week"; adding ambient
-> posting means changing the type, which a reviewer sees.
->
-> **What changed in rev 13 (2026-08-02).** Delivery: **Phase 11's boundary and headless surface —
-> M62–M64**, with M65 not started. Tally **56 of 71**.
->
-> **The phase's decision is a barrel rather than a `git mv`.** "Zero vscode imports in the core" can
-> be reached by moving eighty files in one change — a diff across most of the repository that the
-> harness cannot meaningfully verify — or by **naming the boundary and enforcing it transitively**,
-> then moving modules when there is a reason to. The second makes the property true, checked on every
-> commit, and true incrementally. The first is how a decoupling ships as a directory rename.
->
-> **Four dependency edges cut, and the pattern is the finding.** Three of the four were a *single
-> line* each holding a whole subsystem hostage: an unused `vscode` import; one type
-> (`vscode.SecretStorage`) that made the entire retrieval stack editor-bound because the index takes
-> a `SecretManager`; and a value-import of the tool executor where only its shape was needed, which
-> pulled the LSP bridge and the codebase index into everything importing the agent loop. The fourth
-> was `workspaceFolders[0]` inside the skills manager — also M36 in miniature.
->
-> **The boundary checker distinguishes `import type`**, because a type-only import is erased and
-> creates no runtime dependency. A checker that cannot tell a contract from a dependency forces
-> duplicate type declarations to satisfy it.
->
-> **A block comment closed by its own example.** A glob written out in a doc comment in
-> `node-host.ts` — doubled star, slash, star — terminates the comment. Same family as this
-> codebase's three NUL bytes: invisible as prose, changes what the file means.
->
-> **What changed in rev 12 (2026-08-02).** Delivery: **Phase 10 (M59–M61)**. The bundled catalog
-> went **16 → 47 packs**, and because `eval-task-coverage` asserts every pack has a golden task, the
-> eval corpus grew with it: **74 → 112 tasks, 13 → 21 fixtures**, plus profiler detection for six
-> stacks it could not previously see. Tally **54 of 71**.
->
-> **The gate's wording was wrong and the eval set caught it.** "≥1 role and ≥1 stack" asserted
-> literally broke a golden task — `a11y-wcag-aria` ships `stacks: []` deliberately, meaning *any*
-> stack, and `empty-fe-1` pins that it fires on a repo with none. The test now asserts the
-> resolver's real contract.
->
-> **A resolver defect surfaced and deliberately not fixed here:** a cross-cutting pack with a broad
-> `stacks` list displaced a specific pack on a task whose *role it did not match* — a stack match
-> should not survive a role mismatch. Worked around in data; named so it is not lost.
->
-> **Two of the new packs reproduced F3b**, the documented trigger-substring bug (`it` in `rspec`,
-> `orm` in `orm-patterns` — inside f*orm*at and transf*orm*). Both were caught by the short-trigger
-> allowlist Phase 6 added for exactly that, which forces a new short trigger to be a decision
-> somebody writes down.
->
-> **What changed in rev 11 (2026-08-02).** Delivery: **Phase 9's security spine — M52–M56** — and
-> with M54 and M56 closed, **every P0 item in the 71-gap inventory is now done**. Tally **51 of 71**.
-> Five of Phase 9's twelve milestones; the Reviewer agent, MCP transport parity and sandbox tiers
-> are not started and are listed as such rather than sketched.
->
-> **The redaction work is mostly about what it refuses to redact.** Over-redaction is not a safe
-> failure — an agent whose view of the code is full of `[redacted]` cannot reason about it, and the
-> user switches the feature off, after which nothing is protected. Six false positives were caught by
-> tests, including an ordinary English sentence: prose clears the entropy threshold, and credentials
-> have no spaces.
->
-> **The injection fixtures assert the gates, not the filter.** A pattern matcher that blocked
-> injections would be theatre; what holds is that `isToolAllowedInMode`, `CommandPolicy` and the
-> session toggles have no parameter through which content could reach them.
->
-> **Three defects found by tests during the phase.** `sk-ant-…` labelled as `openai-key` (the value
-> was scrubbed either way, so a weaker assertion would have passed while mislabelling every Anthropic
-> key in the audit trail); `API_KEY=${API_KEY}` redacted because a placeholder branch described a
-> prefix inside an anchored alternation; and a **literal NUL byte** in `workspace-guard.ts` — the
-> third in this codebase, caught by `source-hygiene` within the same phase, and fixed by removing the
-> sentinel rather than escaping it.
->
-> **What changed in rev 10 (2026-08-02).** Delivery: **Phase 8 (M41–M46)** — four complete, M41
-> partial, M45 not started. Tally **46 of 71**. Three of the phase's four gate clauses are met; the
-> fourth is a retrieval-quality measurement with no corpus behind it yet.
->
-> **The byte-stable markdown round-trip is the clause worth naming.** ADR 007 makes the markdown the
-> authority and the typed index derived, and byte-stability is what stops that inverting: the file is
-> in the user's repo and therefore in their diffs, so a projection that churns it on every pass is one
-> they stop reading and then delete.
->
-> **Two decisions recorded rather than absorbed.** Contradiction similarity is **lexical, not
-> embedding-based** — E7 specifies embeddings, and using them would make every memory write a network
-> call, so the feature guaranteeing memories are never silently lost would acquire a failure mode
-> that silently loses them. And **M41's extractor is not wired**: the bands and the filter exist, but
-> the model call that turns a finished turn into candidates belongs in §4.6's opt-in tier rather than
-> as a per-turn cost nobody asked for.
->
-> **A defect the gate caught in its own implementation:** decay advanced one stage per call, so an
-> entry's state depended on how often the consolidation job had run rather than on elapsed time.
-> Reopening a project after a gap gave a different answer from leaving the editor open.
->
-> **And the suite's only flaky test, fixed rather than tolerated.** Phase 3's index-build budget
-> measures wall clock inside a 46-file worker pool, so it had started measuring the other suites
-> (~1.2 s alone, over the 2 s gate under contention). Best-of-three now: contention can only make a
-> sample slower, and a genuine regression still fails all three.
->
-> **What changed in rev 9 (2026-08-02).** Delivery: **Phase 7 (M38–M40)** — one complete, two
-> partial — plus the closure of Phase 6's partial, M37. Mid-run steering, the verify contract, and
-> typed artifacts. Tally **40 of 71**.
->
-> **This is the first phase to close with real work outstanding, and it is graded that way.** M39 is
-> complete. M38 ships the typed model, the store and the comment plumbing but **not the review
-> panel**. M40 ships the contract, the four-outcome judgement and the report, wired into the
-> task-agent lane — but not into pipeline runs, not into chat tasks, and with no visual capture, so
-> two of the phase's four gate rows read *not met* rather than met-with-caveats.
->
-> **M37 closed as a side effect, which the roadmap implied and never said:** a race ranks on test
-> evidence, and until M40 produced evidence there was nothing to rank on. That dependency was the
-> real reason M37 shipped partial in Phase 6.
->
-> **Two long-standing defects surfaced.** `ArtifactManager` has accepted an artifact type, dropped
-> it, and reported every artifact as `report` since Feature 18 — invisible because nothing rendered
-> the type. And two test suites shell out to `tsc`/`stylelint`, so running the build and the tests in
-> one command makes them contend and fail intermittently; separately, 920/920 is stable.
->
-> **What changed in rev 8 (2026-08-02).** Delivery: **Phase 6 (M31–M37)** — six complete, one
-> partial — taking the tally to **37 of 71** and clearing the last P1 items in the Manager lane.
-> Task agents, one governor across both lanes, the agent inbox, per-root profiles, the multi-model
-> race, and **the deletion of parallel wave execution**.
->
-> **The no-partials run ended, and it is recorded rather than smoothed.** M37's ranking is built and
-> tested; the evidence it ranks on is not wired, so `raceOutcome` reports `testsRan: false` and the
-> comparison falls through to diff size — the fourth tiebreak doing the first one's job. A race that
-> silently ranks on churn while claiming to rank on tests is exactly what this document exists to
-> catch, so it is 🟡.
->
-> **M35 is closed by deletion, decided by the owner.** Six revisions of "default-off, unverified"
-> ended by removing the path rather than by verifying it, on the argument that E18's reserved role for
-> it — E3's execution engine — is now filled by the task-agent lane, where the isolation is asserted
-> rather than hoped for. The deletion test then caught what makes deletions leak: `tsc -b` leaves the
-> compiled artifact behind, so the "deleted" module was still `require`-able at runtime.
->
-> **Four defects found by building it.** A cancelled agent that sat `running` forever if its task
-> never observed the abort signal (status is now the user's intent, applied at once; the concurrency
-> slot stays held until the run truly ends, because a streaming final turn is still spending).
-> Concurrent agents sharing one `BrowserTool` and one `MCPClient` — four agents driving one Chromium
-> session. `WorktreeManager` reading `workspaceFolders[0]` in all seven methods, so an agent declared
-> against one root would build its worktree from another repo's HEAD. And a leaked concurrency slot
-> when worktree creation itself failed, which would have ratcheted the cap down by one, permanently,
-> every time git hiccuped.
->
-> **The ≤700-line gate fired for the third consecutive phase** (711 lines). This time the extraction
-> it forced — `_getProjectProfile` into `core/project-profile-cache.ts` — is where the profile became
-> per-root, so the gate produced M36's substance instead of merely surviving it.
->
-> **What changed in rev 7 (2026-08-02).** Delivery: **Phase 5 (M28–M30)**, taking the tally to
-> **30 of 71, still with no partials**, and clearing the eleventh of thirteen P0 items. Next-edit
-> prediction, terminal `Cmd+K`, and rolling summarization; full note under Phase 5 in §4.
->
-> **Two of the phase's four gate clauses are asserted and two are not**, and the split is the same
-> one every phase since rev 4 has hit. "Zero completions after the buffer changed" and "never drops a
-> pending approval or tool result" are invariants, so they are gated. "p50 ≤250 ms" and "≥40% of
-> accepted suggestions multi-line or cross-file" are ratios over predictions a model produced, so
-> they are §4.6 rows. What shipped for those two is the **instrument** — `NextEditStats` computes all
-> three ratios and `black-ide.nextEdit.showStats` reads them — because a gate with nothing behind it
-> is an assertion, and this document has spent four revisions establishing what those are worth.
->
-> **Four defects found by the work, all by a test or a measurement.** A churn bound inherited from
-> fast-apply that refused *every* edit to *every* small file (33% of a three-line module is one line);
-> deleted text being unrecoverable after the change event fires, which silently reduced the edit
-> history to insertions and hid the rename case it exists for; an OS-keychain read on the typing path;
-> and — the one that only appears on a bill — next-edit firing after every file the *agent* wrote,
-> because `onDidChangeTextDocument` reports that a document changed and never who changed it.
->
-> **Two things that were already broken, found by becoming their second caller.** `/compact` has been
-> in the webview's slash-command list since Phase 2 with no handler anywhere, so typing it sent the
-> literal string to the model as a task — which is why M30's wording is "*keep* `/compact` as the
-> manual override". And `CommandHost.detectedStacks` has been declared optional and never implemented
-> since Phase 3, so M20's stack-based doc suggestions have always been computed from an empty list.
-> Both fixed. Both type-checked perfectly while doing nothing.
->
-> **The ≤700-line gate fired again, on the same kind of change, and this time the test caught it.**
-> Wiring next-edit into `activate()` took `extension.ts` to 705. In rev 6 the equivalent was caught by
-> reading a line count by hand; the test added then did its job here.
->
-> **One tier did not run and is not being rounded up:** the 19 real-host integration tests.
-> `@vscode/test-electron` spawns `Contents/MacOS/Electron`; VS Code 1.131.0 ships
-> `Contents/MacOS/Code`. Tooling mismatch, predates this phase, no Phase 5 code is covered there.
->
-> **What changed in rev 6 (2026-08-01).** Delivery: **12 of the 14 open items in phases 0–4 closed**,
-> which completes phases 2, 3 and 4 and takes the tally to **27 of 71, with no partials**. Phase 2's
-> tool toggles (M10), Phase 3's `@symbol` + `@docs` + keyed search (M19–M21) and cross-encoder rerank
-> (M17), Phase 0's eval breadth (M3: 19 → 74 tasks), the never-measured index-build budget
-> (**1 247 ms / 5 000 files** against ≤2 s), and all of **Phase 4** (M23–M27).
->
-> **Three defects found by the work, all by measurement rather than reading.** Growing the eval set
-> from 19 tasks to 74 immediately exposed **F3**: a NestJS repo asked for a users controller resolved
-> to *express + aspnet-core + nextjs + react + angular*, Flask got Django and FastAPI, and a React
-> Native screen got Next.js idioms ranked first — packs list the language beside the framework, so on
-> any TypeScript repo they matched at language strength. **F3b**: `"req, res"` in the express pack's
-> frontmatter was split on the comma into the bare trigger `res`, which as a substring fires on
-> "**Res**tyle" and "add**res**s", making a backend pack a candidate on almost any English prompt in
-> any language's repo. And a residue of **F1**: `score += priority * 0.1` looked like a tie-break but
-> survives the `score > 0` filter unaided, so a language-only match scoped to another role floated
-> back on priority alone. All three are fixed with regression cover, and the wrong-idiom metric §4.2
-> asked for is now real and gated — 33 guarded tasks, 0 leaks.
->
-> **One gate the roadmap set and the code caught.** Wiring the `@docs`/`@web` providers inline took
-> `extension.ts` from 652 to **704 lines**, past a ≤700 gate that three revisions discuss and nothing
-> enforced. It is now enforced by a test, and the wiring lives in a module (671 lines).
->
-> **A finding about this document.** `enhancement.md` itself contained a **literal NUL byte** — inside
-> the paragraph describing the Phase 3 defect where a literal NUL byte shipped in source. Writing "the
-> escape `'\0'`" as an actual escape produced an actual NUL, so the roadmap was *binary to `grep`*,
-> and it was found exactly as the original was: a search that plainly should have matched silently
-> returned nothing. Fixed, and `__tests__/source-hygiene.test.ts` now covers `docs/notes/*.md` as well
-> as source — these files are the project's shared record and are read with the very tools the byte
-> defeats.
->
-> **One scope deviation, recorded rather than absorbed:** M26 ships **16** providers, not ~18.
-> Bedrock and Vertex need SigV4 signing and a Google OAuth exchange — auth implementations, not base
-> URLs — and a half-working entry would accept the user's key and fail every call.
->
-> **What is left in phases 0–4 is one thing, named:** the **model tier** (§4.6). Phase 1's
-> LSP-over-grep gate and four of §4.2's rows all need real model calls, and folding them into the
-> deterministic gate would make the one check that currently blocks bad merges fail intermittently.
->
-> **What changed in rev 5 (2026-07-29).** Delivery, plus one arithmetic correction: **§3's
-> priority tally has been wrong since rev 1** — it read "P0: 11 · P2: 23 · P3: 7" where counting the
-> table's own Pri column gives **13 · 30 · 22 · 6**. M28, M54 and M56 are P0 and were never in the
-> P0 total, which is why rev 4 could claim "three P0 items outstanding" while naming only M14, M15
-> and M23. Four P0 items are genuinely open: M23, M28, M54, M56.
->
-> Otherwise, delivery rather than verification. Phase 0's last gate closed
-> (`extension.ts` 960 → 652, under ≤700), Phase 2's M9 closed as **won't-do** rather than carried,
-> and **Phase 3 delivered M14–M18 and M22** with M17 and M19 partial by dependency. Retrieval:
-> recall@5 **84.7 → 91.2**, @10 **93.1 → 97.2**, @20 **94.4 → 100**; `impact_analysis` at **0 false
-> positives / 0 misses** across six refactors against a ≤2 FP gate.
->
-> **Two gate corrections, both forced by measuring rather than asserting.** Phase 3's headline
-> "+25% recall@10" was **arithmetically impossible** — authored before any baseline existed, it
-> needed 116% from a 93.1% base; it is restated as recall@5 ≥88.5% plus a ≥25% residual-error
-> reduction at k=10, and both halves are met. The index-build budget "+50% of baseline" resolved to
-> ≤39 ms on an 82-file fixture, which measures nothing; restated as ≤2 s per 5 000 files (agreed,
-> not yet asserted — pending item 9).
->
-> **One roadmap substitution, decided by the owner:** M14/M15 ship a **dependency-free lexical
-> backend** behind a `ChunkerBackend` seam instead of tree-sitter, which is not vendored here and
-> would mean ~12 MB of grammars plus per-platform packaging in an extension with one runtime
-> dependency. Recorded as a decision with its measurements, not as a shortfall.
->
-> **Defects found by Phase 3's own work**, each of which passed unit tests and failed only against
-> the corpus: `impact_analysis` computed the impact of a symbol's *file* (31 false positives → 0);
-> graph expansion only *inserted* missing files instead of promoting ranked-low ones, making it a
-> no-op; a plausible damped file-score aggregate cost 12 points of recall@5; the chunker dropped
-> every container symbol and every doc comment; the stemmer disagreed with itself on `reserve`
-> /`reserved`. Separately, two files shipped **literal NUL bytes** as separators — correct code, all
-> tests green, but raw control bytes make a file binary to `grep`/`diff`/review tooling, which then
-> silently show nothing. `__tests__/source-hygiene.test.ts` now fails on any raw control character.
->
-> **What changed in rev 4 (2026-07-28).** A verification pass, not new delivery: every claimed
-> check was re-run rather than re-quoted (all green — numbers above). Six corrections against the
-> code. **E_1: 23 → 31 native tools** — the count predated Phase 1's 7 LSP tools + `run_tests` and
-> was never updated. **Four `file:line` references had drifted** and are repointed: the
-> SEARCH/REPLACE contract (`tools.ts:63` → `:76`), ranged reads (`:14-22` → `:27-34`), the
-> post-edit diagnostics call site (`tool-executor.ts:111` → `:154`, since `:111` is now the Phase 2
-> allowlist gate), and the `@`-mention path (`App.tsx:1210` → `:1182`). **Phase 1 regraded ✅ → 🟡**
-> — not a regression: the rename-across-5+-files gate has *closed* since rev 3 (real host, 6 files),
-> but one gate genuinely remains unasserted, and ✅ was overclaiming it. **M3 regraded ✅ → 🟡** for
-> the eval set's task-count shortfall and the four unrecorded §4.2 baselines — which is what makes
-> fixture-backed `findFiles` a Phase 3 *opening* task. The pending-work table above is now the
-> single place Phase 0–2 leftovers are tracked.
->
-> **What changed in rev 2** *(retained for the record; rev 3 delivery is summarised above).* A second pass against the code found **four items graded wrongly** in
-> rev 1 and **eleven gaps missed entirely**. Corrections: `ManagerPanel.tsx` already exists with
-> per-run model and `awaiting_approval` (A6 🔴→🟡); post-edit diagnostics feedback already works
-> (E_10 ✅); `read_file` already paginates (D10 ✅); extension-marketplace compatibility is already
-> at parity (F20 ✅). Newly found gaps: LSP navigation tools, on-demand diagnostics, structured
-> test running, context providers beyond `@file`, git-history search, notebooks, terminal `Cmd+K`,
-> sandboxed execution, multi-model race, agent inbox, prompt library, multi-root correctness.
-> **Two items promoted to the front of the plan** as a result: language-server tools and
-> `run_tests` are now Phase 1 — days of work, largest accuracy-per-effort ratio in the document,
-> and they raise the measured ceiling of every phase after them.
->
+> **Revision log:** rev 14 (Phase 12 privacy spine) · 13 (Phase 11 boundary) · 12 (Phase 10 skills)
+> · 11 (Phase 9 security spine, last P0) · 10 (Phase 8 memory) · 9 (Phase 7 opened) · 8 (Phase 6
+> Manager) · 7 (Phase 5 ergonomics) · 6 (phases 0–4 closed) · 5 (§3 recount) · 4 (verification pass)
+> · 2 (regrades). Each with its findings in **[§6 — Revision log](#6-revision-log)**.
+
 > **Coverage commitment.** §3 is the complete gap inventory (71 items). §4 schedules all 71 across
 > 13 phases; §4.3 is the coverage matrix. §4.5 lists the only six items deliberately *not*
 > scheduled, with the reason each is an architectural position rather than a missing feature.
@@ -430,131 +130,19 @@ the argument for the eval tier, restated with each finding.
 
 ## 1. Feature list — Level & Status
 
-**Level** = engineering maturity of what exists. 🟢 Advanced (robust, tested, production) ·
-🟡 Mid (works, real limitation) · 🔴 Beginning (naive/experimental/barely wired) · ⬜ Absent.
+**Moved.** The per-capability inventory that used to live here is now
+[`features.md`](./features.md), and that file is canonical. It carried the same rows in a second
+vocabulary, was regenerated on a different cadence, and drifted: at rev 15 this section still graded
+the code graph and git-history search as absent (both shipped in Phase 3), the tool count at 31 (it
+is 38), and verification as unbuilt (Phase 7 closed it). Two inventories are one inventory and one
+liability.
 
-**Status** = delivery state. ✅ Shipped · 🟡 Partial · 🧪 Experimental (default-off) ·
-📋 Planned in this doc · ❌ Not present.
+`features.md` uses the same two axes this section defined — **Level** (🟢 Advanced · 🟡 Mid ·
+🔴 Beginning · — nothing built) and **Status** (✅ Shipped · 🟡 Partial · 🧪 Default-off ·
+📋 Planned · ⬜ Deliberate non-feature) — so nothing about how to read a grade has changed.
 
-**Parity** = who sets the bar we are measured against.
-
-### 1.1 Agent core & orchestration
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| A1 | Bounded agent loop, context budgeting, execution interlock | 🟢 | ✅ | `agent/agent-loop.ts`, `core/context-manager.ts`. At bar. |
-| A2 | Two-phase planning + human approval gate (survives reload) | 🟢 | ✅ | `agent/planning-engine.ts`. Ahead of Continue; at Antigravity's plan artifact bar. |
-| A3 | Multi-agent pipeline (HLD→LLD→Planner→Design/Backend/Frontend/Testing) | 🟢 | ✅ | `agent/pipeline-orchestrator.ts` (614 LOC). **Ahead of all seven** — nobody else ships a fixed SDLC pipeline. |
-| A4 | Subagent isolation via git worktrees + delta reconcile | 🟢 | ✅ | `agent/worktree-manager.ts`. At Cursor's worktree bar. |
-| A5 | Concurrent pipeline runs (≤4) with durable history | 🟢 | ✅ | `core/pipeline-runs.ts`. |
-| A6 | **Agent Manager: N independent user-launched agents, each own worktree + own model** | 🟢 | ✅ | *Corrected 2026-07-27:* `webview/src/ManagerPanel.tsx` **already exists** — `RunSummary` carries `modelId`, `status: awaiting_approval`, `currentPhase`, and `ParallelSubagents.tsx` renders subagents. **Shipped (Phase 6, M31/M32).** The missing unit — the independent, non-pipeline task agent — now exists: own worktree, mode, model and workspace root, listed beside pipeline runs. Isolation is structural (the executor is rooted in the worktree, not the repo) and the live workspace is untouched until an explicit apply. At Antigravity Manager's and Cursor's bar on parallelism; ahead on the apply gate, which neither makes explicit. |
-| A7 | Request classification / auto-plan / auto-orchestrate | 🟡 | ✅ | Keyword heuristics in `planning-engine.ts`; not learned, not model-assisted. |
-| A8 | Parallel wave execution | ⬜ | ❌ | **Deleted in Phase 6 (M35)** rather than graduated. Default-off and unverified for six phases; the role E18 reserved for it — E3's execution engine — is filled by task agents, where the isolation is asserted. Concurrency now lives in the Agent Manager, not in the pipeline. |
-| A9 | Mid-run steering (correct an agent without restarting the task) | 🟢 | ✅ | **Shipped (Phase 7, M39).** `core/steering.ts` — a correction is queued per agent and drained at the top of the next turn, keeping every file the run has read and every conclusion it reached. Never lands between a `tool_use` and its `tool_result`, and never produces two consecutive user turns; both are provider rejections rather than degraded answers. At Antigravity's steering bar; the comment-*on-artifact-region* surface is plumbed but not yet rendered (M38). |
-| A10 | Background / cloud agents (off-machine execution) | ⬜ | ❌ | Cursor Background Agent, Antigravity async tasks. Unblocked by Phase 11's host seam — a run needs an `AgentHost`, and nothing in the core now assumes that host is an editor — but the daemon itself (M65) is not started. → **E14** |
-
-### 1.2 The fleet (agents & modes)
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| B1 | **9** selectable modes (Ask, Plan, Agent, Frontend, Backend, DevOps, Manager, Sr Architect, **Learn**) | 🟢 | ✅ | `core/mode-loader.ts`. Learn added in Phase 2. Ahead of Cursor (3) and A-Coder (4) on breadth. |
-| B2 | 7 internal pipeline-phase agents | 🟢 | ✅ | Unique to us. |
-| B3 | Custom modes (YAML frontmatter, 3 scopes, hot-reload, inline diagnostics) | 🟢 | ✅ | At Continue's agent-block bar, better DX (diagnostics). |
-| B4 | Per-mode tool allowlist + iteration budget | 🟢 | ✅ | **Regraded twice.** Was 🟢 on the assumption the allowlists were enforced; Phase 2 found they were *advertising-only* (`isToolAllowedInMode` knows only the 3 coarse `AgentMode`s, and everything but Ask/Plan resolves to `agent`), so Manager and the pipeline phases could have executed writes they never advertised. A second gate in `agent/tool-executor.ts` now enforces the acting mode's list where tools run — genuinely 🟢 as of Phase 2. Ahead of Cursor/A-Coder. |
-| B5 | **Reviewer agent (PR/diff review that proposes fixes)** | ⬜ | ❌ | Cursor BugBot (~80% claimed resolution). We ship *zero* review capability. → **E8** |
-| B6 | Learn / teaching mode | 🟢 | ✅ | **Shipped (Phase 2, M13).** `core/mode-loader.ts`; read-only by construction — no write, command or delegation tools in the allowlist, enforced by the B4 gate rather than by prompt wording. At A-Coder's Student Mode bar minus adaptive difficulty levels. |
-| B7 | Domain-vertical fleets (firmware, legacy modernization) | ⬜ | ❌ | NeuralInverse (357 MCU variants, 61 translation profiles). Deliberately out of our lane, but the skills framework makes it data-only. → **E17** |
-
-### 1.3 Knowledge, rules & memory
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| C1 | Skills framework (stack + role + prompt resolution) | 🟡 | ✅ | `agent/skill-resolver.ts`, `agent/skills-manager.ts`. **Resolution precision fixed in Phase 0 (finding F1):** role affinity alone no longer qualifies a stack-scoped pack, framework matches outrank bare language matches, and `priority` is a tie-breaker rather than evidence. Fail-safe now 1/1 and gated. Still 🟡 only because the **library is 16 packs of a ~60-pack catalog**. → **E9** |
-| C2 | Project profiler (manifest-based stack detection) | 🟢 | ✅ | `core/project-profiler.ts`. **100% (8/8) on the eval fixture set** after Phase 0 fixed finding F2 (React-based frameworks now imply `react` instead of excluding it). Ahead of everyone — no competitor keys prompts off detected stack. |
-| C3 | Bundled skill packs | 🟢 | ✅ | **16 → 47 (Phase 10, M59).** Wave 2 shipped: frameworks (`nestjs`, `django-rest-framework`, `spring-boot`, `laravel`, `vue`, `svelte-kit`, `remix`, `astro`, `flutter`, `entity-framework-core`, `gorm`), testing (`vitest`, `react-testing-library`, `playwright-e2e`, `cypress-e2e`, `xunit`, `cargo-test`, `go-test`, `rspec`, `junit-mockito`) and cross-cutting (`rest-api-design`, `auth-jwt-oauth`, `db-migrations`, `orm-patterns`, `component-architecture`, `test-strategy`, `coverage-tdd`, `docker`, `kubernetes`, `github-actions-ci`, `terraform`). Every pack has ≥1 golden task, asserted. |
-| C4 | Rules engine (glob-scoped, activation modes, per-session toggles) | 🟢 | ✅ | **Shipped (Phase 2, M9/M10).** `core/rules.ts` + `core/rules-loader.ts`: `.blackide/rules/*.md`, four activation modes (`always`/`glob`/`agent-requested`/`manual`), three scopes, priority, own glob engine, hot-reload, Problems-panel diagnostics, `AGENTS.md` back-compat. Session panel toggles rules and reports what fired. **At Cursor's and Continue's bar**, with `agent-requested` (budget-deferred bodies) as a small edge. **Tool toggles landed 2026-08-01 (M10)** — enforced at the executor, not advertised — so the panel is complete. |
-| C5 | Long-term project memory (`.blackIDE/knowledge/`) | 🟡 | ✅ | `core/knowledge-base.ts` (308 LOC), `memory/knowledge-store.ts`. Human-readable markdown is a real strength (ADR 007). |
-| C6 | **Automatic memory extraction / dedup / decay / contradiction detection** | 🟡 | 🟡 | **Phase 8 (M41–M44).** Typed tiered entries beside a byte-stable markdown projection; identity-based dedup (the old SHA-256 store treated "Use pnpm." and "Use pnpm" as two memories); decay that demotes then archives and never deletes; contradiction detection that **asks and never overwrites**; idempotent consolidation. Two tiers not three — OPIDE's sensory tier is a second name for the transcript `ContextManager` already bounds. **Still 🟡:** the extractor that produces candidates from a turn needs a model call and is not wired, so nothing is yet extracted *automatically*. |
-| C7 | Mindmap sync (`project_mindmap.md`) | 🟢 | ✅ | **Read-back shipped (Phase 8, M46),** closing plan.md's Phase 5 follow-up. The file had been write-only since then: the agent recomputed what it had written and never saw a convention a human added to it. Now injected as its own budgeted prompt section, with auto-sync blocks excluded so a run does not re-read its own history. |
-| C8 | Team / org-level shared rules | 🟢 | ✅ | **Shipped (Phase 2, M11).** `team-rules/` or `$BLACKIDE_TEAM_RULES`; injected first so they survive truncation, and not user-disableable. At Cursor Team Rules' bar. *(Team-level shared **memory** is separate and still absent — see C6.)* |
-
-### 1.4 Retrieval & context
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| D1 | Hybrid semantic index (embeddings + BM25 via RRF) | 🟢 | ✅ | `core/codebase-index.ts`. Fusion ranking is genuinely good. |
-| D2 | **Chunking strategy** | 🔴 | 🟡 | `chunkFile()` at `codebase-index.ts:420` is a **fixed line-window with overlap** — no symbol awareness at all. Our docs claim "AST-aware chunking"; that is not what the code does. OPIDE: tree-sitter, 13+ languages. → **E2** |
-| D3 | Code graph: call graph, type hierarchy, impact analysis | ⬜ | ❌ | OPIDE ships this; Cursor uses it for multi-file edits. Highest-leverage retrieval gap. → **E2** |
-| D4 | Reranker stage | 🟢 | ✅ | **Shipped (Phase 3 M17, completed Phase 4).** `core/reranker.ts` — tuned `LexicalReranker` (the default, and what runs with no rerank model) plus `ModelReranker` on the `rerank` role, scoring the whole candidate set in one call. Recall@10 95.8 → **97.2**. At Continue's bar. |
-| D5 | Context manager / token budgeting / compaction | 🟢 | ✅ | `core/context-manager.ts`, `core/prompt-builder.ts`, and **rolling summarization as of Phase 5 (M30)**: `core/rolling-summary.ts` folds the older middle into prose at a threshold, layered *above* `fit` rather than replacing it — `fit` stays the deterministic floor that still holds the window when the summarizer's provider is down. Refuses outright while an approval gate is open, never orphans a tool result, never folds an unresolved call. `/compact` is the same path with the threshold removed. |
-| D6 | **Structured tool-output compression** | 🔴 | 🟡 | `core/text-cap.ts` truncates raw text. A-Coder claims 30–70% token reduction via TOON encoding of tool output. → **E11** |
-| D7 | External docs indexing (`@docs`-class provider) | 🟢 | ✅ | **Shipped (Phase 3, M20).** `core/docs-index.ts` — bounded same-origin crawl scoped to the root *path* (so a version-pinned URL cannot drift into another version), passage-level search, stack-based suggestions, `black-ide.addDocs`. At Continue's `@docs` bar. |
-| D9 | **Context providers / `@`-mentions** | 🟢 | ✅ | **Shipped (Phase 3, M19–M21).** `core/context-providers.ts` — a `ContextProvider` API with budgets and visible truncation, and **11 providers**: `@file`, `@folder`, `@symbol`, `@problems`, `@terminal`, `@git`, `@rules`, `@skills`, `@past-chats`, `@docs`, `@web`. Mentions are resolved server-side into the prompt rather than left as text. **At Cursor's and Continue's bar.** |
-| D10 | Ranged file reads (token-efficient pagination) | 🟢 | ✅ | *Corrected:* `read_file` already takes `start_line`/`end_line` (`core/tools.ts:27-34`) — at A-Coder's "intelligent file pagination" bar. |
-| D11 | **Git-history semantic search** | ⬜ | ❌ | A-Coder ships Morph-accelerated search across git history. `grep -rn "git log\|blame"` over `src/` returns nothing. → **E20** |
-| D12 | **Notebook (`.ipynb`) awareness** | 🟡 | 🟡 | **Phase 10, M61.** `core/notebook.ts` — byte-stable round trip, per-cell edit preserving the `source` array shape Jupyter writes (a plain string is valid nbformat and rewrites every cell), outputs excluded from prompts by default, cell-granular snapshot/restore. **Partial:** `edit_notebook_cell` is not yet registered in the executor's tool surface. |
-| D8 | Web search | 🟢 | ✅ | **Keyed providers shipped (Phase 3, M21):** Brave / Tavily / Google CSE with DDG as the no-key default. Every failure degrades to DDG *and names the degradation*, so a configured-but-unused key is visible. |
-
-### 1.5 Tools & execution
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| E_1 | **31** native tools (file/grep/list/run_command/subagent/artifact/mindmap/LSP/tests/…) | 🟢 | ✅ | `core/tools.ts` — *recount 2026-07-28:* 23 before Phase 1, **31** after it added the 7 LSP tools + `run_tests`. Ahead of A-Coder (22+) and OPIDE (10+). |
-| E_2 | Exact SEARCH/REPLACE edit contract | 🟢 | ✅ | `core/tools.ts:76` — same discipline A-Coder calls out as its precision feature. At bar. |
-| E_3 | Checkpoints & rollback (reverse hunks, per-message undo) | 🟢 | ✅ | `core/checkpoint-manager.ts`. **Ahead of CortexIDE's "checkpoint and visualize".** |
-| E_4 | Browser automation (Playwright, gated, per-task session) | 🟡 | ✅ | `tools/browser-tool.ts` + `browser-capability.ts` allowlist. |
-| E_5 | **Visual verification loop (screenshot/recording as reviewable evidence)** | 🟡 | 🟡 | **Phase 7, M40 (partial).** The contract exists: `planVerification` requires a screenshot when a UI file changes, `evaluateVerification` reports it missing, and a `test-report` artifact is written on every path — so an unverified run is now distinguishable from a clean one, which it was not. **Still missing:** nothing captures the screenshot, so UI work lands as `incomplete` by design; and verification runs for task agents only, not pipeline or chat runs. Behind Antigravity. |
-| E_6 | MCP client | 🟡 | ✅ | `tools/mcp-client.ts:51` — **stdio only**, Agent-mode only, refused in pipeline runs. Antigravity ships Chrome + Web MCP servers; remote/streamable HTTP is table stakes now. → **E12** |
-| E_7 | Vision / image input | 🟢 | ✅ | `core/llm-client.ts:334-370` — images on user turns *and* tool results, OpenAI + Anthropic shapes. At A-Coder's bar. |
-| E_8 | Agent hooks (`beforeToolCall`/`afterToolCall`/`beforeResponse`/`onError`) | 🟡 | ✅ | `agent/hooks.ts:8`. Present but under-documented and unused by first-party features. |
-| E_9 | Tool circuit breakers / per-tool failure budgets | 🟢 | ✅ | **Shipped (Phase 9, M52).** `core/tool-breaker.ts` — consecutive failures plus a latency budget, per tool and per *run* (the fix for a wedged server is a restart, so a breaker outliving the run would keep it disabled after the user fixed it). Tripped tools are removed from the advertised list **and** refused at the executor. At OPIDE's bar. |
-| E_10 | Post-edit diagnostics feedback | 🟢 | ✅ | *Corrected:* `ToolRunner.collectDiagnostics` (`tools/tool-runner.ts:306`) is called after every edit from `agent/tool-executor.ts:154` — the agent **does** see compiler/linter errors it caused. Better than the first assessment. |
-| E_11 | On-demand `get_diagnostics` + LSP navigation tools | 🟢 | ✅ | **Shipped (Phase 1, M6/M7).** `tools/lsp-tools.ts` — `get_diagnostics`, `go_to_definition`, `find_references`, `workspace_symbols`, `hover`, `code_actions`, `rename_symbol`. Symbols addressed by *name* (a model has no character offsets), every provider call raced against a timeout, and a cold/absent server degrades to grep with an explicit note instead of erroring. Verified in a real extension host. **Structural advantage over the extension-only competitors**, who cannot reach a language server this directly. |
-| E_12 | **Sandboxed command execution** | 🔴 | ❌ | `executeCommandInTerminal` (`tool-runner.ts:133`) spawns a real, unrestricted `vscode.window.createTerminal`. Policy-gated (G1) but not *contained*. Cursor 2.0 sandboxed shells; OPIDE QuickJS sandbox + 10-layer model. → **E23** |
-| E_13 | Test-runner integration (run one test, parse results structurally) | 🟢 | ✅ | **Shipped (Phase 1, M8).** `core/test-report.ts` — command selection from `ProjectProfile` plus pure parsers for pytest/jest/vitest/dotnet/cargo/go/rspec, returning **failures only**. 30 KB of output with 800 passing cases and one failure formats to <2 KB, asserted in CI. Trusts the exit code over the parse, so a crashed runner is never reported as a pass. |
-
-### 1.6 Editor integration & platform
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| F1 | Inline completion (FIM-aware) | 🟡 | ✅ | `core/inline-completion.ts` (80 LOC) — single model, single file, no edit history. |
-| F2 | **Next-edit prediction (multi-file, edit-history-aware, jump-to-next-edit)** | 🟢 | ✅ | **Shipped (Phase 5, M28).** `core/next-edit.ts` + `core/next-edit-controller.ts` — a coalescing edit-history buffer and the M15 graph produce a SEARCH/REPLACE-anchored prediction that is verified against the live file and discarded if any document it was computed from has moved. Cross-file is the normal case, reached by a jump affordance rather than ghost text, because the stable inline-completion API cannot render away from the cursor. Off by default: it spends a model call per typing pause. Behind Cursor Tab v2 on the model (they train one for it; we route the `autocomplete` role at whatever the user configured) — at bar on the capability. |
-| F3 | Inline chat (`Cmd+I`) | 🟡 | ✅ | `core/inline-chat-controller.ts` — selection-scoped. |
-| F4 | Commit-message generation | 🟡 | ✅ | Diff-size handling is naive. |
-| F5 | Multi-provider LLM (OpenAI/Anthropic/Google/OpenRouter/Ollama/LM Studio) | 🟢 | ✅ | `core/llm-client.ts` (478 LOC). NeuralInverse claims 20 providers; 6 well-tested beats 20 shallow. |
-| F6 | **Per-role model config (chat/edit/apply/autocomplete/embed/rerank)** | 🟢 | ✅ | **Shipped (Phase 4, M23).** `core/model-router.ts` — seven roles, resolved in one place, with an explicit override outranking a standing role mapping and the legacy `autocompleteModelId` still honoured. `apply`/`rerank` stay off until named, because falling back to the strong model there costs more than not having the feature. At Continue's model-roles bar. |
-| F7 | **Cross-provider failover / health-aware routing** | 🟢 | ✅ | **Shipped (Phase 4, M24).** Per-provider circuit breaker (consecutive failures, cooldown, half-open retry); failover at the *turn* so a run keeps its context; a different provider tried before another of the same one; **never after output has streamed**, since that would append a second answer to half of one. Covers chat *and* unattended pipeline runs. `fallbackTurn` remains the local-protocol path and is no longer the only thing here. |
-| F8 | Fast-apply path (small model applies a large diff) | 🟢 | ✅ | **Shipped (Phase 4, M25).** `edit_file`'s `intent` → apply-role model → verified with the *real* applier. Malformed, missing-anchor, ambiguous, no-change and oversized results all escalate to the strong model, so a silently wrong edit is not reachable. |
-| F9 | Output modes (`apply` / `pr`) | 🟢 | ✅ | `core/git-pr.ts`. Ahead of most. |
-| F10 | Headless CLI / SDK surface | 🟡 | 🟡 | **Phase 11 (M62–M64).** The core boundary is declared and **transitively enforced** — nothing reachable from `agent-core` imports `vscode` — with a Node host that implements it using no editor, and a CLI surface (JSON-per-line stdout, logs on stderr, six CI exit codes distinguishing *completed but unverified* from *completed*). **Partial:** the runnable `bin` entry and the package move are not shipped. |
-| F11 | Skill/rule distribution (registry or hub) | 🟡 | 🟡 | **Phase 10, M60.** `core/skill-registry.ts` — registry entries with a **pinned** ref (a moving ref is refused, since it makes the checksum meaningless), SHA-256 verified before the content is examined, installs to `.blackide/skills/` where a same-named local pack shadows it, and a forbidden-key deny list so a pack can never declare `tools`/`autoApprove`/`policy`. **Partial:** the fetching command is not wired. |
-| F12 | **Terminal `Cmd+K`** (natural language → shell command) | 🟢 | ✅ | **Shipped (Phase 5, M29).** `core/terminal-command.ts` — single-line by construction, because `sendText(text, false)` suppresses one *trailing* newline and executes every embedded one; judged by the same `CommandPolicy` as the agent's `run_command`, so this surface cannot be more permissive than that one; mandatory preview, and inserted with `shouldExecute: false` even for allow-listed commands. **At Cursor's bar, with a stricter never-run posture.** |
-| F13 | **Provider breadth** | 🟢 | ✅ | **6 → 16 (Phase 4, M26).** Added DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI — one dispatch, one preset table, so the streaming and tool-call parsing cannot drift per provider. **Bedrock and Vertex remain absent by decision:** SigV4 signing and a Google OAuth exchange are auth implementations, not base URLs. |
-| F14 | Zero-config first run (works before a key is added) | 🟢 | ✅ | **Shipped (Phase 4, M27), local-first by design.** Probes Ollama / LM Studio / llama.cpp on a 1.2 s timeout and *offers* what it finds; never auto-enables, ignores a runtime with no models pulled, and types the result `local` so tool calls go through the protocol that works on every local model. We still do not operate a hosted free tier (§4.5). |
-| F15 | **Multi-model race** (same prompt, N models, compare & pick) | 🟡 | 🟡 | **Phase 6, M37.** `core/model-race.ts` ranks lexicographically — a failing candidate never outranks a passing one, whatever its diff size — caps the field, and returns *no winner* rather than nominating one on weak evidence. Nothing is auto-applied. **Partial:** the test-result half is not wired, so ranking currently falls through to diff size. |
-| F16 | **Agent inbox / notifications when input is needed** | 🟢 | ✅ | **Shipped (Phase 6, M34).** `core/agent-inbox.ts` — blocked / parked / failed / **review** across both lanes, badge counts in the Manager header, and a notification fired once per (item, reason) so a poll of an unchanged inbox is silent. At Antigravity's inbox bar; the `review` reason (finished work nobody has applied) is an addition. |
-| F17 | Reusable prompt / notepad library | 🟢 | ✅ | **Shipped (Phase 2, M12).** `core/prompt-library.ts` + loader: `.blackide/prompts/*.md` become slash commands with `$ARGS`/`$1`…`$9` and cycle-safe `steps:` workflows; built-in names refused at load so a user file cannot silently redefine `/plan`. At Cursor Notepads' and Continue prompt blocks' bar, plus workflow chaining neither has. |
-| F18 | Multi-root / multi-workspace support | 🟡 | ✅ | **Phase 6, M36.** `core/workspace-roots.ts` gives longest-prefix, boundary-aware attribution and `core/project-profile-cache.ts` caches a profile per root, so a Django+React workspace stops injecting Django skills into React files. Worktree operations take the root they act on. Still 🟡 on level: the codebase index remains a single shard. |
-| F19 | Voice input | ⬜ | ❌ | Cursor ships it. Genuinely low value for us; scheduled last. → **E31** |
-| F20 | Extension marketplace / Open VSX compatibility | 🟢 | ✅ | `config/product.json` carries full gallery + `extensionKind`/API-proposal compatibility tables. **Already at OPIDE's Open VSX bar** — no work needed. |
-
-### 1.7 Safety, privacy & quality engineering
-
-| # | Capability | Level | Status | Parity bar / gap |
-|---|---|:--:|:--:|---|
-| G1 | Command policy: hard deny list + user allow/deny + ask | 🟢 | ✅ | `core/command-policy.ts`. **Ahead of the field** — nobody else documents an unoverridable deny list. |
-| G2 | Secrets in OS keychain (`SecretStorage`), never `settings.json` | 🟢 | ✅ | `core/secret-manager.ts`. At OPIDE's keychain bar. |
-| G3 | Auto-approve deliberately ignored in unattended pipeline runs | 🟢 | ✅ | Best-in-class safety posture. |
-| G4 | Local-only telemetry + diagnostics export | 🟢 | ✅ | `core/telemetry-sink.ts`, and as of Phase 12 **enforced rather than asserted**: `core/egress.ts` registers every outbound destination with a reason and a trigger, and a source walk fails the build on any undeclared network call. "The default build phones home to nobody" is a test. **Ahead of the field** — nobody else publishes an enumerable egress list. |
-| G5 | Append-only audit trail per run (who/what/when/which tool/which model) | 🟢 | ✅ | **Shipped (Phase 9, M53).** `core/audit-trail.ts` — JSONL in the user's repo, monotonic sequence, **no update method by construction**, tolerant of the truncated final line a crash leaves, and redacted on the way *in* rather than at export. At OPIDE's bar. |
-| G6 | Prompt/log secret redaction | 🟢 | ✅ | **Shipped (Phase 9, M54 — P0).** `core/redaction.ts` — 13 vendor-shape detectors that fire anywhere, plus entropy gated behind an assignment context *and* a token-shape check, because over-redaction is the failure that gets the feature switched off. Half its tests assert what must survive untouched. |
-| G7 | Workspace-boundary enforcement on file tools | 🟢 | ✅ | **Shipped (Phase 9, M55).** `core/workspace-guard.ts` — one chokepoint covering traversal, prefix collision, symlinks and protected paths (`.git`, because `core.fsmonitor` escapes the command policy). The `test_sandbox_*.js` scripts it replaces printed things, asserted nothing, and were run by nothing. |
-| G8 | Skill validation diagnostics + skills-fired telemetry | 🟢 | ✅ | **Shipped (Phase 0, M5),** closing out plan.md Phase 6. `agent/skill-diagnostics.ts` surfaces malformed packs in the Problems panel — `loadSkillDir` previously collapsed every failure into a silent `undefined`. The two valuable checks catch packs that can *never* fire and packs that would fire on *every* turn. `SkillsFired` telemetry names bundled packs only; user pack names can encode project detail, so those are counted, not named. |
-| G9 | Test architecture | 🟢 | ✅ | **Four tiers as of Phase 2.** Harness 426 assertions (bespoke but pinned as the compatibility tier) · **vitest 195 tests / 13 suites** (was 2 orphaned files that no installed runner could even execute) · **19 real-host integration tests** under `@vscode/test-electron` · the eval gate. One shared `vscode` stub (`test/vscode-stub.js`) serves the vscode-free tiers, so a suite cannot pass in one and fail in the other. |
-| G11 | At-rest encryption for agent artifacts / memory | ⬜ | ❌ | OPIDE claims AES-256-GCM. Our `.blackIDE/` is plaintext on disk (defensible — it's the user's repo — but not an option we offer). → **E15** |
-| G12 | Team analytics / admin policy dashboard | 🟡 | 🟡 | **Phase 12, M69.** Opt-in, self-hosted, **no default endpoint anywhere in the source** — the sink does nothing without a URL the org supplies, which makes "disabling it removes all egress" true by construction. The payload is an eight-field allowlist projection of the audit trail: counts, never content. Org policy is **tighten-only**, asserted as a capability-score property. **Partial:** no dashboard; the sink transport is not wired. |
-| G13 | Issue-tracker / chat integrations (GitHub Issues, Linear, Jira, Slack) | 🟡 | 🟡 | **Phase 12, M67/M68.** Reference parsing that refuses to guess a tracker from a bare key, and an outbound model where **the type makes a standing grant inexpressible** — every post is confirmed individually, with the body shown verbatim. **Partial:** per-tracker fetchers and a Slack transport are not wired. |
-| G10 | `extension.ts` maintainability | 🟢 | ✅ | **2537 → 652 LOC (−74%)** across thirteen modules — the **≤700 gate is met** as of 2026-07-29 (623 after the Phase 0 cut; 652 once Phase 3's M19 wiring landed, which is why that phase's provider assembly went into its own module). Two cuts needed a design decision rather than a move, and both are the reason this took three passes. `core/chat-session.ts` holds the chat lane's mutable state as one object shared *by reference*, because `_runAgentTask` reassigns it mid-run while the webview handler reads it afterwards — passing values would have handed the extracted code a stale snapshot. `agent/managed-runs.ts` moved the Manager lane as a **class**, not the deps-object function the other extractions used, because its live `Map` and persisted history must be folded together on every transition or a reload shows ghost "running" rows; moving those methods without the state they guard would have split that invariant across two files. → **E0 (closed)** |
+What stays here is the part that is about *competitors* rather than about us: the scoreboard below,
+the gap inventory in §3, and the phase plan in §4.
 
 ### 1.8 Scoreboard
 
@@ -570,11 +158,11 @@ the argument for the eval tier, restated with each finding.
 | Retrieval & code graph | 🟢 | OPIDE, Cursor | **At bar as of Phase 3.** Symbol chunking, a code graph with impact analysis, rerank, 11 context providers, `@docs`. recall@5 84.7→91.2 · @10 93.1→97.2 · @20 100. |
 | Memory | 🟡 | Cursor, OPIDE | **Closing as of Phase 8.** Ages, dedups, contradicts and consolidates — with a markdown projection that round-trips byte-stable, which neither competitor documents. Behind on the one thing the grade turns on: extraction is not yet automatic. |
 | Daily-driver autocomplete | 🟢 | Cursor | **At bar on capability as of Phase 5** — next-edit with cross-file jump, terminal `Cmd+K`. Still behind on the *model*: Cursor trains one for this and we route a role. |
-| Parallel task agents | 🟢 | Antigravity, Cursor | **At bar as of Phase 6.** N independent agents, one governor, an inbox, and an apply gate neither competitor makes explicit. *Steering* (mid-run correction) is still absent — Phase 7. |
-| Verification & artifacts | 🔴 | Antigravity | **We are behind.** |
-| Model routing | 🟢 | Continue, OPIDE | **At bar as of Phase 4.** Seven roles, health-aware cross-provider failover, fast-apply, 16 providers, zero-config local first run. |
-| Review automation | ⬜ | Cursor BugBot | **Absent.** |
-| Distribution / surfaces | 🟡 | Continue Hub, Antigravity CLI/SDK | **Started.** Skill distribution with pinned refs and checksums (Phase 10); an enforced vscode-free core with a Node host and a CLI surface (Phase 11). Behind on the runnable binary and the daemon. |
+| Parallel task agents | 🟢 | Antigravity, Cursor | **At bar as of Phase 6, ahead as of Phase 7.** N independent agents, one governor, an inbox, an apply gate neither competitor makes explicit, and mid-run steering. |
+| Verification & artifacts | 🟢 | Antigravity | **At bar as of Phase 7 (closed 2026-08-04).** Four verification outcomes where an unrunnable suite is not a pass, wired into all three lanes; typed artifacts with a review panel where a comment on a region reaches the running agent. Behind only on visual evidence, which needs a reachable preview URL and otherwise reports `incomplete` with a reason. |
+| Model routing | 🟢 | Continue, OPIDE | **At bar as of Phase 4.** Seven roles, health-aware cross-provider failover, fast-apply, 15 providers, zero-config local first run. |
+| Review automation | ⬜ | Cursor BugBot | **Absent.** M47 is now unblocked on its output surface — the review panel exists — and blocked only on M57's sandbox tiers. |
+| Distribution / surfaces | 🟡 | Continue Hub, Antigravity CLI/SDK | **Started.** Skill distribution with pinned refs and checksums, and the `addSkillFrom` command wired (Phase 10); an enforced vscode-free core, a Node host, and `bin/blackide` running real tasks (Phase 11). Behind on the daemon (M65) and the physical package move (M62). |
 
 > **Board update after Phases 0–2 (2026-07-27).** Three areas moved from behind to at-or-above
 > bar: code intelligence (Phase 1 exposed the language servers the fork already runs), rules and
@@ -584,12 +172,13 @@ the argument for the eval tier, restated with each finding.
 > (they were advertising-only until Phase 2 closed the gap). The three areas we lead — pipeline,
 > command policy, checkpoints — are unchanged. **The next gap is the substrate: retrieval.**
 
-**Read of the board.** The *engine* is genuinely advanced and in two places (pipeline, safety) we
-lead the field. What we lack is (a) the **retrieval substrate** everyone else is now building on
-(symbol graph + rerank), (b) the **control surface** that makes multi-agent work reviewable
-(manager view, artifacts, steering), and (c) the **daily-driver ergonomics** (next-edit, per-role
-models) that decide whether a developer keeps the editor open. Nothing here needs a rewrite —
-every item is additive to an architecture that already holds.
+**Read of the board (2026-08-04).** The three gaps the rev-1 read named are closed: the **retrieval
+substrate** landed in Phase 3, the **control surface** that makes multi-agent work reviewable —
+manager view, artifacts, steering, verification — closed with Phase 7, and the **daily-driver
+ergonomics** landed in Phases 4–5. What is left is narrower and of a different kind: **containment**
+(sandbox tiers, and the Reviewer that waits on them), **MCP transport parity**, and **measurement** —
+the model tier, without which five metric rows stay ⚠ and Phase 1's last gate stays unasserted.
+Nothing here needs a rewrite; every item is additive to an architecture that already holds.
 
 ---
 
@@ -985,8 +574,8 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | ID | Missing capability | Pri | Enh | Phase | Notes |
 |---|---|:--:|:--:|:--:|---|
 | M1 | Doc claims corrected (AST chunking, provider failover) | P0 | E0 | 0 ✅ |
-| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ | 2537 → **652 LOC** across 13 modules; **≤700 gate met** 2026-07-29 (see G10) |
-| M3 | Golden-task eval set + scoring | P0 | E0 | 0 ✅ | **74 tasks / 13 fixtures 2026-08-01** — the planned 8–10 × 6 stacks, plus a task for every bundled pack and every resolver role, plus a **wrong-idiom metric** (33 guarded tasks, 0 leaks). Recall recorded 2026-07-29. Task-success / tokens-per-task belong to the model tier (§4.6), which is tracked there rather than as eval-set debt |
+| M2 | `extension.ts` (2537 LOC) decomposed | P0 | E0 | 0 ✅ | 2537 → **652 LOC** across 13 modules; **≤700 gate met** 2026-07-29 and enforced by a test since (**699** on 2026-08-04 — see G10) |
+| M3 | Golden-task eval set + scoring | P0 | E0 | 0 ✅ | **74 tasks / 13 fixtures 2026-08-01, since grown to 112 / 21 with M59** — the planned 8–10 × 6 stacks, plus a task for every bundled pack and every resolver role, plus a **wrong-idiom metric** (38 guarded tasks, 0 leaks). Recall recorded 2026-07-29. Task-success / tokens-per-task belong to the model tier (§4.6), which is tracked there rather than as eval-set debt |
 | M4 | Vitest migration off the bespoke harness | P0 | E0 | 0 ✅ |
 | M5 | Skill validation diagnostics UI + skills-fired telemetry | P1 | E0 | 0 ✅ |
 | M6 | On-demand `get_diagnostics` tool | P0 | E22 | 1 ✅ |
@@ -1009,7 +598,7 @@ blocks daily use or other work · **P1** competitive parity · **P2** differenti
 | M23 | Per-role models (chat/plan/edit/apply/autocomplete/embed/rerank) | P0 | E10 | 4 ✅ | `core/model-router.ts`; five ad-hoc `selectedModelId` reads replaced by role resolution, with the legacy `autocompleteModelId` still honoured |
 | M24 | Cross-provider failover / health-aware routing | P1 | E10 | 4 ✅ | per-provider circuit breaker; failover at the *turn* so a run keeps its context, a different provider tried before another of the same one, and **never after output has streamed** |
 | M25 | Fast-apply path | P1 | E10 | 4 ✅ | `edit_file`'s `intent` → apply-role model → verified with the real applier; malformed, missing-anchor, ambiguous, no-change and oversized results all escalate to the strong model |
-| M26 | Provider breadth (6 → ~18) | P2 | E26 | 4 ✅ | **6 → 16.** DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI. Bedrock/Vertex deliberately not shipped — request signing, not config |
+| M26 | Provider breadth (6 → ~18) | P2 | E26 | 4 ✅ | **6 → 15** (recounted against `PROVIDER_PRESETS` 2026-08-04; earlier revisions said 16). DeepSeek, Groq, Mistral, xAI, Together, Fireworks, Cerebras, LiteLLM, vLLM, Azure OpenAI. Bedrock/Vertex deliberately not shipped — request signing, not config |
 | M27 | Zero-config first run (local model, no key) | P2 | E26 | 4 ✅ | probes Ollama / LM Studio / llama.cpp on a short timeout and **offers** what it finds; never auto-enables |
 | M28 | Next-edit prediction (multi-file, edit-history, jump-to) | P0 | E1 | 5 ✅ | coalescing edit-history ring buffer + M15 graph neighbourhood → a SEARCH/REPLACE-anchored prediction, verified against the live file and discarded if any document moved; cross-file is a first-class outcome via a jump affordance, not a special case |
 | M29 | Terminal `Cmd+K` | P2 | E25 | 5 ✅ | `core/terminal-command.ts` — single-line by construction (an embedded newline in `sendText` executes), judged by the same `CommandPolicy` as the agent, mandatory preview, inserted with `shouldExecute: false` **always** |
@@ -3248,3 +2837,299 @@ the unoverridable command deny list with auto-approve refused in unattended runs
 hunk per-message checkpointing (E_3), and project-aware skill resolution keyed off manifest-based
 stack detection (C1/C2). **Protect these while closing the gaps above** — they are the reason to
 choose Black IDE, and none of the enhancements in this document should compromise them.
+
+
+---
+
+## 6. Revision log
+
+Per-revision delivery notes and the defects each pass found, newest first. Moved here from the
+header in rev 15. Per-phase *delivery* detail lives under its phase in §4; this is the record of
+what each pass changed about the document and what building it surfaced.
+
+**What changed in rev 14 (2026-08-02).** Delivery: **Phase 12's privacy and authority spine —
+M67–M69**, with M66, M70 and M71 not started. Tally **59 of 71**. All four of Phase 12's gate
+clauses are met and enforced by tests, which is the first phase since Phase 5 where every clause
+landed.
+
+**The egress register found two undeclared network callers on its first run** — a model-list fetch
+and a loopback Ollama probe. Both legitimate, both now declared. That is the normal state of such a
+list and the reason it is enforced by a source walk rather than written down: "we don't phone home"
+is a claim about code that does not exist, and you cannot test for absence by looking at the thing.
+
+**A sentinel that would have inverted the org policy.** `sessionTokenBudget: 0` means *unlimited*,
+so `Math.min(0, 50_000)` is 0 — an org imposing a ceiling on a user who had none would have
+removed it. Caught because the tighten-only property is asserted as one capability score over the
+whole structure, not field by field.
+
+**The per-action confirmation is enforced by a type, not a policy.** `OutboundContext` has no field
+for a remembered answer, so a caller cannot express "they allowed this last week"; adding ambient
+posting means changing the type, which a reviewer sees.
+
+**What changed in rev 13 (2026-08-02).** Delivery: **Phase 11's boundary and headless surface —
+M62–M64**, with M65 not started. Tally **56 of 71**.
+
+**The phase's decision is a barrel rather than a `git mv`.** "Zero vscode imports in the core" can
+be reached by moving eighty files in one change — a diff across most of the repository that the
+harness cannot meaningfully verify — or by **naming the boundary and enforcing it transitively**,
+then moving modules when there is a reason to. The second makes the property true, checked on every
+commit, and true incrementally. The first is how a decoupling ships as a directory rename.
+
+**Four dependency edges cut, and the pattern is the finding.** Three of the four were a *single
+line* each holding a whole subsystem hostage: an unused `vscode` import; one type
+(`vscode.SecretStorage`) that made the entire retrieval stack editor-bound because the index takes
+a `SecretManager`; and a value-import of the tool executor where only its shape was needed, which
+pulled the LSP bridge and the codebase index into everything importing the agent loop. The fourth
+was `workspaceFolders[0]` inside the skills manager — also M36 in miniature.
+
+**The boundary checker distinguishes `import type`**, because a type-only import is erased and
+creates no runtime dependency. A checker that cannot tell a contract from a dependency forces
+duplicate type declarations to satisfy it.
+
+**A block comment closed by its own example.** A glob written out in a doc comment in
+`node-host.ts` — doubled star, slash, star — terminates the comment. Same family as this
+codebase's three NUL bytes: invisible as prose, changes what the file means.
+
+**What changed in rev 12 (2026-08-02).** Delivery: **Phase 10 (M59–M61)**. The bundled catalog
+went **16 → 47 packs**, and because `eval-task-coverage` asserts every pack has a golden task, the
+eval corpus grew with it: **74 → 112 tasks, 13 → 21 fixtures**, plus profiler detection for six
+stacks it could not previously see. Tally **54 of 71**.
+
+**The gate's wording was wrong and the eval set caught it.** "≥1 role and ≥1 stack" asserted
+literally broke a golden task — `a11y-wcag-aria` ships `stacks: []` deliberately, meaning *any*
+stack, and `empty-fe-1` pins that it fires on a repo with none. The test now asserts the
+resolver's real contract.
+
+**A resolver defect surfaced and deliberately not fixed here:** a cross-cutting pack with a broad
+`stacks` list displaced a specific pack on a task whose *role it did not match* — a stack match
+should not survive a role mismatch. Worked around in data; named so it is not lost.
+
+**Two of the new packs reproduced F3b**, the documented trigger-substring bug (`it` in `rspec`,
+`orm` in `orm-patterns` — inside f*orm*at and transf*orm*). Both were caught by the short-trigger
+allowlist Phase 6 added for exactly that, which forces a new short trigger to be a decision
+somebody writes down.
+
+**What changed in rev 11 (2026-08-02).** Delivery: **Phase 9's security spine — M52–M56** — and
+with M54 and M56 closed, **every P0 item in the 71-gap inventory is now done**. Tally **51 of 71**.
+Five of Phase 9's twelve milestones; the Reviewer agent, MCP transport parity and sandbox tiers
+are not started and are listed as such rather than sketched.
+
+**The redaction work is mostly about what it refuses to redact.** Over-redaction is not a safe
+failure — an agent whose view of the code is full of `[redacted]` cannot reason about it, and the
+user switches the feature off, after which nothing is protected. Six false positives were caught by
+tests, including an ordinary English sentence: prose clears the entropy threshold, and credentials
+have no spaces.
+
+**The injection fixtures assert the gates, not the filter.** A pattern matcher that blocked
+injections would be theatre; what holds is that `isToolAllowedInMode`, `CommandPolicy` and the
+session toggles have no parameter through which content could reach them.
+
+**Three defects found by tests during the phase.** `sk-ant-…` labelled as `openai-key` (the value
+was scrubbed either way, so a weaker assertion would have passed while mislabelling every Anthropic
+key in the audit trail); `API_KEY=${API_KEY}` redacted because a placeholder branch described a
+prefix inside an anchored alternation; and a **literal NUL byte** in `workspace-guard.ts` — the
+third in this codebase, caught by `source-hygiene` within the same phase, and fixed by removing the
+sentinel rather than escaping it.
+
+**What changed in rev 10 (2026-08-02).** Delivery: **Phase 8 (M41–M46)** — four complete, M41
+partial, M45 not started. Tally **46 of 71**. Three of the phase's four gate clauses are met; the
+fourth is a retrieval-quality measurement with no corpus behind it yet.
+
+**The byte-stable markdown round-trip is the clause worth naming.** ADR 007 makes the markdown the
+authority and the typed index derived, and byte-stability is what stops that inverting: the file is
+in the user's repo and therefore in their diffs, so a projection that churns it on every pass is one
+they stop reading and then delete.
+
+**Two decisions recorded rather than absorbed.** Contradiction similarity is **lexical, not
+embedding-based** — E7 specifies embeddings, and using them would make every memory write a network
+call, so the feature guaranteeing memories are never silently lost would acquire a failure mode
+that silently loses them. And **M41's extractor is not wired**: the bands and the filter exist, but
+the model call that turns a finished turn into candidates belongs in §4.6's opt-in tier rather than
+as a per-turn cost nobody asked for.
+
+**A defect the gate caught in its own implementation:** decay advanced one stage per call, so an
+entry's state depended on how often the consolidation job had run rather than on elapsed time.
+Reopening a project after a gap gave a different answer from leaving the editor open.
+
+**And the suite's only flaky test, fixed rather than tolerated.** Phase 3's index-build budget
+measures wall clock inside a 46-file worker pool, so it had started measuring the other suites
+(~1.2 s alone, over the 2 s gate under contention). Best-of-three now: contention can only make a
+sample slower, and a genuine regression still fails all three.
+
+**What changed in rev 9 (2026-08-02).** Delivery: **Phase 7 (M38–M40)** — one complete, two
+partial — plus the closure of Phase 6's partial, M37. Mid-run steering, the verify contract, and
+typed artifacts. Tally **40 of 71**.
+
+**This is the first phase to close with real work outstanding, and it is graded that way.** M39 is
+complete. M38 ships the typed model, the store and the comment plumbing but **not the review
+panel**. M40 ships the contract, the four-outcome judgement and the report, wired into the
+task-agent lane — but not into pipeline runs, not into chat tasks, and with no visual capture, so
+two of the phase's four gate rows read *not met* rather than met-with-caveats.
+
+**M37 closed as a side effect, which the roadmap implied and never said:** a race ranks on test
+evidence, and until M40 produced evidence there was nothing to rank on. That dependency was the
+real reason M37 shipped partial in Phase 6.
+
+**Two long-standing defects surfaced.** `ArtifactManager` has accepted an artifact type, dropped
+it, and reported every artifact as `report` since Feature 18 — invisible because nothing rendered
+the type. And two test suites shell out to `tsc`/`stylelint`, so running the build and the tests in
+one command makes them contend and fail intermittently; separately, 920/920 is stable.
+
+**What changed in rev 8 (2026-08-02).** Delivery: **Phase 6 (M31–M37)** — six complete, one
+partial — taking the tally to **37 of 71** and clearing the last P1 items in the Manager lane.
+Task agents, one governor across both lanes, the agent inbox, per-root profiles, the multi-model
+race, and **the deletion of parallel wave execution**.
+
+**The no-partials run ended, and it is recorded rather than smoothed.** M37's ranking is built and
+tested; the evidence it ranks on is not wired, so `raceOutcome` reports `testsRan: false` and the
+comparison falls through to diff size — the fourth tiebreak doing the first one's job. A race that
+silently ranks on churn while claiming to rank on tests is exactly what this document exists to
+catch, so it is 🟡.
+
+**M35 is closed by deletion, decided by the owner.** Six revisions of "default-off, unverified"
+ended by removing the path rather than by verifying it, on the argument that E18's reserved role for
+it — E3's execution engine — is now filled by the task-agent lane, where the isolation is asserted
+rather than hoped for. The deletion test then caught what makes deletions leak: `tsc -b` leaves the
+compiled artifact behind, so the "deleted" module was still `require`-able at runtime.
+
+**Four defects found by building it.** A cancelled agent that sat `running` forever if its task
+never observed the abort signal (status is now the user's intent, applied at once; the concurrency
+slot stays held until the run truly ends, because a streaming final turn is still spending).
+Concurrent agents sharing one `BrowserTool` and one `MCPClient` — four agents driving one Chromium
+session. `WorktreeManager` reading `workspaceFolders[0]` in all seven methods, so an agent declared
+against one root would build its worktree from another repo's HEAD. And a leaked concurrency slot
+when worktree creation itself failed, which would have ratcheted the cap down by one, permanently,
+every time git hiccuped.
+
+**The ≤700-line gate fired for the third consecutive phase** (711 lines). This time the extraction
+it forced — `_getProjectProfile` into `core/project-profile-cache.ts` — is where the profile became
+per-root, so the gate produced M36's substance instead of merely surviving it.
+
+**What changed in rev 7 (2026-08-02).** Delivery: **Phase 5 (M28–M30)**, taking the tally to
+**30 of 71, still with no partials**, and clearing the eleventh of thirteen P0 items. Next-edit
+prediction, terminal `Cmd+K`, and rolling summarization; full note under Phase 5 in §4.
+
+**Two of the phase's four gate clauses are asserted and two are not**, and the split is the same
+one every phase since rev 4 has hit. "Zero completions after the buffer changed" and "never drops a
+pending approval or tool result" are invariants, so they are gated. "p50 ≤250 ms" and "≥40% of
+accepted suggestions multi-line or cross-file" are ratios over predictions a model produced, so
+they are §4.6 rows. What shipped for those two is the **instrument** — `NextEditStats` computes all
+three ratios and `black-ide.nextEdit.showStats` reads them — because a gate with nothing behind it
+is an assertion, and this document has spent four revisions establishing what those are worth.
+
+**Four defects found by the work, all by a test or a measurement.** A churn bound inherited from
+fast-apply that refused *every* edit to *every* small file (33% of a three-line module is one line);
+deleted text being unrecoverable after the change event fires, which silently reduced the edit
+history to insertions and hid the rename case it exists for; an OS-keychain read on the typing path;
+and — the one that only appears on a bill — next-edit firing after every file the *agent* wrote,
+because `onDidChangeTextDocument` reports that a document changed and never who changed it.
+
+**Two things that were already broken, found by becoming their second caller.** `/compact` has been
+in the webview's slash-command list since Phase 2 with no handler anywhere, so typing it sent the
+literal string to the model as a task — which is why M30's wording is "*keep* `/compact` as the
+manual override". And `CommandHost.detectedStacks` has been declared optional and never implemented
+since Phase 3, so M20's stack-based doc suggestions have always been computed from an empty list.
+Both fixed. Both type-checked perfectly while doing nothing.
+
+**The ≤700-line gate fired again, on the same kind of change, and this time the test caught it.**
+Wiring next-edit into `activate()` took `extension.ts` to 705. In rev 6 the equivalent was caught by
+reading a line count by hand; the test added then did its job here.
+
+**One tier did not run and is not being rounded up:** the 19 real-host integration tests.
+`@vscode/test-electron` spawns `Contents/MacOS/Electron`; VS Code 1.131.0 ships
+`Contents/MacOS/Code`. Tooling mismatch, predates this phase, no Phase 5 code is covered there.
+
+**What changed in rev 6 (2026-08-01).** Delivery: **12 of the 14 open items in phases 0–4 closed**,
+which completes phases 2, 3 and 4 and takes the tally to **27 of 71, with no partials**. Phase 2's
+tool toggles (M10), Phase 3's `@symbol` + `@docs` + keyed search (M19–M21) and cross-encoder rerank
+(M17), Phase 0's eval breadth (M3: 19 → 74 tasks), the never-measured index-build budget
+(**1 247 ms / 5 000 files** against ≤2 s), and all of **Phase 4** (M23–M27).
+
+**Three defects found by the work, all by measurement rather than reading.** Growing the eval set
+from 19 tasks to 74 immediately exposed **F3**: a NestJS repo asked for a users controller resolved
+to *express + aspnet-core + nextjs + react + angular*, Flask got Django and FastAPI, and a React
+Native screen got Next.js idioms ranked first — packs list the language beside the framework, so on
+any TypeScript repo they matched at language strength. **F3b**: `"req, res"` in the express pack's
+frontmatter was split on the comma into the bare trigger `res`, which as a substring fires on
+"**Res**tyle" and "add**res**s", making a backend pack a candidate on almost any English prompt in
+any language's repo. And a residue of **F1**: `score += priority * 0.1` looked like a tie-break but
+survives the `score > 0` filter unaided, so a language-only match scoped to another role floated
+back on priority alone. All three are fixed with regression cover, and the wrong-idiom metric §4.2
+asked for is now real and gated — 33 guarded tasks, 0 leaks.
+
+**One gate the roadmap set and the code caught.** Wiring the `@docs`/`@web` providers inline took
+`extension.ts` from 652 to **704 lines**, past a ≤700 gate that three revisions discuss and nothing
+enforced. It is now enforced by a test, and the wiring lives in a module (671 lines).
+
+**A finding about this document.** `enhancement.md` itself contained a **literal NUL byte** — inside
+the paragraph describing the Phase 3 defect where a literal NUL byte shipped in source. Writing "the
+escape `'\0'`" as an actual escape produced an actual NUL, so the roadmap was *binary to `grep`*,
+and it was found exactly as the original was: a search that plainly should have matched silently
+returned nothing. Fixed, and `__tests__/source-hygiene.test.ts` now covers `docs/notes/*.md` as well
+as source — these files are the project's shared record and are read with the very tools the byte
+defeats.
+
+**One scope deviation, recorded rather than absorbed:** M26 ships **16** providers, not ~18.
+Bedrock and Vertex need SigV4 signing and a Google OAuth exchange — auth implementations, not base
+URLs — and a half-working entry would accept the user's key and fail every call.
+
+**What is left in phases 0–4 is one thing, named:** the **model tier** (§4.6). Phase 1's
+LSP-over-grep gate and four of §4.2's rows all need real model calls, and folding them into the
+deterministic gate would make the one check that currently blocks bad merges fail intermittently.
+
+**What changed in rev 5 (2026-07-29).** Delivery, plus one arithmetic correction: **§3's
+priority tally has been wrong since rev 1** — it read "P0: 11 · P2: 23 · P3: 7" where counting the
+table's own Pri column gives **13 · 30 · 22 · 6**. M28, M54 and M56 are P0 and were never in the
+P0 total, which is why rev 4 could claim "three P0 items outstanding" while naming only M14, M15
+and M23. Four P0 items are genuinely open: M23, M28, M54, M56.
+
+Otherwise, delivery rather than verification. Phase 0's last gate closed
+(`extension.ts` 960 → 652, under ≤700), Phase 2's M9 closed as **won't-do** rather than carried,
+and **Phase 3 delivered M14–M18 and M22** with M17 and M19 partial by dependency. Retrieval:
+recall@5 **84.7 → 91.2**, @10 **93.1 → 97.2**, @20 **94.4 → 100**; `impact_analysis` at **0 false
+positives / 0 misses** across six refactors against a ≤2 FP gate.
+
+**Two gate corrections, both forced by measuring rather than asserting.** Phase 3's headline
+"+25% recall@10" was **arithmetically impossible** — authored before any baseline existed, it
+needed 116% from a 93.1% base; it is restated as recall@5 ≥88.5% plus a ≥25% residual-error
+reduction at k=10, and both halves are met. The index-build budget "+50% of baseline" resolved to
+≤39 ms on an 82-file fixture, which measures nothing; restated as ≤2 s per 5 000 files (agreed,
+not yet asserted — pending item 9).
+
+**One roadmap substitution, decided by the owner:** M14/M15 ship a **dependency-free lexical
+backend** behind a `ChunkerBackend` seam instead of tree-sitter, which is not vendored here and
+would mean ~12 MB of grammars plus per-platform packaging in an extension with one runtime
+dependency. Recorded as a decision with its measurements, not as a shortfall.
+
+**Defects found by Phase 3's own work**, each of which passed unit tests and failed only against
+the corpus: `impact_analysis` computed the impact of a symbol's *file* (31 false positives → 0);
+graph expansion only *inserted* missing files instead of promoting ranked-low ones, making it a
+no-op; a plausible damped file-score aggregate cost 12 points of recall@5; the chunker dropped
+every container symbol and every doc comment; the stemmer disagreed with itself on `reserve`
+/`reserved`. Separately, two files shipped **literal NUL bytes** as separators — correct code, all
+tests green, but raw control bytes make a file binary to `grep`/`diff`/review tooling, which then
+silently show nothing. `__tests__/source-hygiene.test.ts` now fails on any raw control character.
+
+**What changed in rev 4 (2026-07-28).** A verification pass, not new delivery: every claimed
+check was re-run rather than re-quoted (all green — numbers above). Six corrections against the
+code. **E_1: 23 → 31 native tools** — the count predated Phase 1's 7 LSP tools + `run_tests` and
+was never updated. **Four `file:line` references had drifted** and are repointed: the
+SEARCH/REPLACE contract (`tools.ts:63` → `:76`), ranged reads (`:14-22` → `:27-34`), the
+post-edit diagnostics call site (`tool-executor.ts:111` → `:154`, since `:111` is now the Phase 2
+allowlist gate), and the `@`-mention path (`App.tsx:1210` → `:1182`). **Phase 1 regraded ✅ → 🟡**
+— not a regression: the rename-across-5+-files gate has *closed* since rev 3 (real host, 6 files),
+but one gate genuinely remains unasserted, and ✅ was overclaiming it. **M3 regraded ✅ → 🟡** for
+the eval set's task-count shortfall and the four unrecorded §4.2 baselines — which is what makes
+fixture-backed `findFiles` a Phase 3 *opening* task. The pending-work table above is now the
+single place Phase 0–2 leftovers are tracked.
+
+**What changed in rev 2** *(retained for the record; rev 3 delivery is summarised above).* A second pass against the code found **four items graded wrongly** in
+rev 1 and **eleven gaps missed entirely**. Corrections: `ManagerPanel.tsx` already exists with
+per-run model and `awaiting_approval` (A6 🔴→🟡); post-edit diagnostics feedback already works
+(E_10 ✅); `read_file` already paginates (D10 ✅); extension-marketplace compatibility is already
+at parity (F20 ✅). Newly found gaps: LSP navigation tools, on-demand diagnostics, structured
+test running, context providers beyond `@file`, git-history search, notebooks, terminal `Cmd+K`,
+sandboxed execution, multi-model race, agent inbox, prompt library, multi-root correctness.
+**Two items promoted to the front of the plan** as a result: language-server tools and
+`run_tests` are now Phase 1 — days of work, largest accuracy-per-effort ratio in the document,
+and they raise the measured ceiling of every phase after them.

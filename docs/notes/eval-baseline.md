@@ -7,6 +7,30 @@
 This is the number every later phase has to move. From here on, a phase that does not
 shift a metric does not ship — see [`enhancement.md`](./enhancement.md) §4.
 
+> **Read this as a baseline, not as a status.** Every figure below is what the harness measured on
+> **2026-07-27**, kept as written so the comparison stays honest. The current numbers are in the
+> table immediately below, and `npm run eval` prints them.
+
+## Where the metrics stand today (2026-08-04)
+
+| Metric | Baseline (2026-07-27) | Now | Moved by |
+|---|:--:|:--:|---|
+| Golden tasks / fixtures | 19 / 8 | **112 / 21** | Phase 0 → 74/13, Phase 10 → 112/21 (every pack needs a task) |
+| Bundled skill packs | 16 | **47** | Phase 10 (M59) |
+| Stack detection accuracy | 100% (8/8) | **100% (21/21)** | held across 13 more fixtures |
+| Skill exact-match rate | 100% | **100%** | held as the corpus grew |
+| Known library gaps | 4 | **16** | the corpus grew faster than the library; each is a named task with no suitable pack |
+| Fail-safe (no stack → no injection) | 1/1 | **1/1** | held by test + gate |
+| Wrong-idiom leakage | *(not yet measured)* | **0% of 38 guarded tasks** | Phase 0 added the metric |
+| recall@5 / @10 / @20 | 84.7 / 93.1 / 94.4 | **91.2 / 97.2 / 100** | Phase 3 (symbol chunking, graph, rerank) |
+| Tool-output compaction | *(not yet measured)* | **36.9%** realistic · 81% repeated diagnostics | Phase 3 (M18) |
+| Index build, 5 000 files | *(not yet measured)* | **1 247 ms** against a ≤2 s gate | Phase 3 (M14) |
+
+**Known library gaps went 4 → 16 and that is not a regression.** The number counts tasks with no
+suitable pack bundled, so growing the corpus faster than the library raises it by construction. It is
+the honest read of the same fact the 100% exact-match rate states: *when* a suitable pack exists the
+resolver picks it — which is not the same as the library being adequate.
+
 ---
 
 ## Why this exists
