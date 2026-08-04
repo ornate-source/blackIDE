@@ -10,6 +10,8 @@ import { RaceCandidate, planRace, pickWinner } from '../core/model-race';
 import { TaskAgentRegistry } from './task-agent-registry';
 import { TaskAgentEntryDeps, buildTaskRunner, buildWorktreeOps } from './task-agent-entry';
 import { SecretManager } from '../core/secret-manager';
+import { daemonInboxItems, mergeInbox } from '../core/daemon-protocol';
+import { markResultSeen, readResults } from '../agent-core/daemon';
 
 // ─── The task-agent lane, assembled (Phase 6) ───────────────────────────────
 //
@@ -147,7 +149,35 @@ export class TaskAgentLane implements vscode.Disposable {
     // ── Inbox (M34) ─────────────────────────────────────────────────────────
 
     inbox(): InboxItem[] {
-        return buildInbox(this.d.listPipelineRuns(), this.registry.list());
+        /*
+         * Daemon results join the inbox here — M65's fourth gate clause (P11-3).
+         *
+         * The clause is "a daemon run's results appear in the inbox", and this is the
+         * line that makes it true. A daemon that only logged to a file would have "run"
+         * without "reported": the user opens the editor the next morning and nothing
+         * tells them the overnight run finished, failed, or has been sitting since 02:00.
+         * F16 graded exactly that defect 🔴 for the in-editor lanes, and a daemon
+         * reintroduces it in the form where the user is least likely to look.
+         *
+         * Merged rather than folded into `buildInbox`, which is about the two *live*
+         * in-editor lanes and has carefully never had a filesystem dependency.
+         */
+        const editorItems = buildInbox(this.d.listPipelineRuns(), this.registry.list());
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) return editorItems;
+        try {
+            return mergeInbox(editorItems, daemonInboxItems(readResults(root)));
+        } catch {
+            // A missing or unreadable daemon directory is the normal case for anyone who
+            // has never run one. The in-editor inbox must not depend on it.
+            return editorItems;
+        }
+    }
+
+    /** The user has seen a daemon result, so it stops appearing. */
+    acknowledgeDaemonResult(id: string): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (root) markResultSeen(root, id.replace(/^daemon:/, ''));
     }
 
     /**
