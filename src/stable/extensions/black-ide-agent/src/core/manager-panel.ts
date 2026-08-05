@@ -5,7 +5,8 @@ import { PipelineRunSummary } from '@blackide/agent-core/core/pipeline-runs';
 import { TaskAgentSummary } from '@blackide/agent-core/core/task-agents';
 import { ArtifactRecord, ArtifactType } from './artifacts';
 import { buildReviewView, reviewCounts, routeComment } from './artifact-review';
-import { openAgentWorktree, retryPrompt, showAgentDiff, steerAgent } from './office-actions';
+import { handleOfficeMessage } from './office-messages';
+import { WebviewSurface } from './webview-html';
 import { buildMemoryView } from './memory-view';
 import { MemoryEntry } from '@blackide/agent-core/core/memory-model';
 import { ExtractionCandidate } from '@blackide/agent-core/core/memory-lifecycle';
@@ -20,9 +21,24 @@ import { ExtractionCandidate } from '@blackide/agent-core/core/memory-lifecycle'
  * preserving the original disposal semantics exactly.
  */
 
+/** Which tab to land on, and what to select once there. */
+export interface ManagerTab {
+    lane: 'office' | 'logs' | 'pipeline' | 'agent' | 'review' | 'memory';
+    /** For `logs`: the run whose journal to select. */
+    runId?: string;
+    /**
+     * For `agent`: the launcher's prompt and model, as `retryPrompt` produces them.
+     *
+     * Carried on the tab request rather than posted separately so it survives the mount —
+     * a retry handed over from the Front Desk usually *is* the click that opens the panel,
+     * which is exactly when a second message would arrive before anyone was listening.
+     */
+    prefill?: { prompt: string; modelId: string };
+}
+
 /** The narrow slice of the chat provider this panel needs. All members are public API. */
 export interface ManagerPanelHost {
-    getHtmlForWebview(webview: vscode.Webview, viewType: 'chat' | 'settings' | 'manager'): string;
+    getHtmlForWebview(webview: vscode.Webview, viewType: WebviewSurface): string;
     startManagedPipelineRun(prompt: string, modelId: string, managerWebview: vscode.Webview): { runId: string } | { error: string };
     cancelManagedPipelineRun(runId: string): void;
     approveManagedPipelineRun(runId: string): void;
@@ -116,17 +132,40 @@ export class ManagerPanel {
         return !!ManagerPanel._live?._panel;
     }
 
+    /**
+     * A tab asked for before the webview could hear about it.
+     *
+     * `postMessage` between `createWebviewPanel` and the React root mounting has nobody
+     * listening, so the request is held until the webview says it is there. It says so by
+     * asking for something — see the ready check in the message handler.
+     */
+    private _pendingTab?: ManagerTab;
+
     constructor(
         private readonly _context: vscode.ExtensionContext,
         private readonly _secretManager: SecretManager,
         private readonly _host: ManagerPanelHost,
     ) {}
 
-    public open(): void {
+    /**
+     * Open, or reveal, optionally on a named tab.
+     *
+     * The tab argument exists for the Front Desk's two hand-offs (M73): `[ Office ▸ ]`
+     * wants the floor at full width, and a failed item's `[ Logs ]` wants that run's
+     * journal. Without it both would land on whichever tab the user last left open, which
+     * for a hand-off from another surface is indistinguishable from the button being wired
+     * to the wrong thing.
+     */
+    public open(tab?: ManagerTab): void {
         if (this._panel) {
             this._panel.reveal(vscode.ViewColumn.Active);
+            if (tab) this._panel.webview.postMessage({ type: 'showManagerTab', value: tab });
             return;
         }
+
+        // A fresh panel mounts on the Office tab already, so a bare request for it needs
+        // nothing further. A prefill still does.
+        this._pendingTab = tab && (tab.lane !== 'office' || tab.prefill) ? tab : undefined;
 
         this._panel = vscode.window.createWebviewPanel(
             'black-ide-pipeline-manager',
@@ -152,6 +191,21 @@ export class ManagerPanel {
 
         this._panel.webview.onDidReceiveMessage(async (data: any) => {
             if (!this._panel) return;
+
+            /*
+             * The ready signal.
+             *
+             * `listOffice` is the first thing the React root sends on mount, so the first
+             * one to arrive proves there is a listener — which is the only moment a tab
+             * requested at open time can actually be delivered. Reusing an existing
+             * message rather than adding a `ready` handshake keeps the mount to one round
+             * trip; a second message would be sent on every open to serve the rare one.
+             */
+            if (data.type === 'listOffice' && this._pendingTab) {
+                this._panel.webview.postMessage({ type: 'showManagerTab', value: this._pendingTab });
+                this._pendingTab = undefined;
+            }
+
             switch (data.type) {
                 case 'startPipelineRun': {
                     const result = this._host.startManagedPipelineRun(data.value?.prompt || '', data.value?.modelId || '', this._panel.webview);
@@ -166,13 +220,6 @@ export class ManagerPanel {
                 case 'cancelPipelineRun':
                     this._host.cancelManagedPipelineRun(data.value?.runId);
                     break;
-                case 'approvePipelineRun':
-                    this._host.approveManagedPipelineRun(data.value?.runId);
-                    break;
-                case 'rejectPipelineRun':
-                    this._host.rejectManagedPipelineRun(data.value?.runId);
-                    this._panel.webview.postMessage({ type: 'pipelineRunListSync', value: this._host.listManagedPipelineRuns() });
-                    break;
                 case 'listPipelineRuns':
                     // Sent on mount — repopulates the panel with in-flight/completed runs
                     // if it was closed and reopened while the extension host stayed alive.
@@ -184,22 +231,6 @@ export class ManagerPanel {
                     const root = data.value?.rootPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
                     const result = this._host.taskAgents.launch(data.value?.prompt || '', data.value?.modelId || '', data.value?.mode, root);
                     if ('error' in result) vscode.window.showWarningMessage(result.error);
-                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
-                    break;
-                }
-                case 'cancelTaskAgent':
-                    this._host.taskAgents.cancel(data.value?.agentId);
-                    break;
-                case 'applyTaskAgent': {
-                    const result = await this._host.taskAgents.apply(data.value?.agentId);
-                    if ('error' in result) vscode.window.showErrorMessage(result.error);
-                    else vscode.window.showInformationMessage('Applied the agent\'s changes to your workspace.');
-                    this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
-                    break;
-                }
-                case 'discardTaskAgent': {
-                    const result = await this._host.taskAgents.discard(data.value?.agentId);
-                    if ('error' in result) vscode.window.showErrorMessage(result.error);
                     this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
                     break;
                 }
@@ -308,63 +339,6 @@ export class ManagerPanel {
                     this._panel.webview.postMessage({ type: 'taskAgentListSync', value: this._host.taskAgents.list() });
                     this._panel.webview.postMessage({ type: 'agentInboxSync', value: { items: this._host.taskAgents.inbox() } });
                     break;
-                // ── The Agent Office (M74–M77) ──────────────────────────────
-                /*
-                 * One message serves the whole surface on mount.
-                 *
-                 * The Office is a projection of four lanes plus the governor plus live
-                 * telemetry, and asking for them separately would render a floor with
-                 * desks but no capacity, or capacity but no desks, for however long the
-                 * round trips took. `officeSync` carries the lot; everything after it is
-                 * a patch.
-                 */
-                case 'listOffice':
-                    this._host.office?.sync();
-                    this._panel.webview.postMessage({ type: 'officeFiles', value: this._host.office?.filesInPlay() ?? [] });
-                    break;
-                case 'acknowledgeDaemonResult':
-                    this._host.taskAgents.acknowledgeDaemonResult(String(data.value?.id || ''));
-                    this._host.office?.sync();
-                    break;
-                /*
-                 * The Office's per-item verbs.
-                 *
-                 * Every affordance `office-model.ts` can emit is handled here or above. A
-                 * rendered button with no case is the same defect R2 exists to prevent,
-                 * approached from the wiring side rather than the state-machine side —
-                 * `office-actions.test.ts` asserts the two halves agree.
-                 */
-                case 'officeSteer':
-                    await steerAgent({
-                        findAgent: (id) => this._host.taskAgents.list().find(a => a.id === id),
-                        steer: (id, text) => this._host.taskAgents.steer(id, text),
-                    }, String(data.value?.agentId || ''));
-                    break;
-                case 'officeDiff':
-                    await showAgentDiff(this._host.taskAgents.list().find(a => a.id === data.value?.agentId));
-                    break;
-                case 'officeWorktree':
-                    await openAgentWorktree(this._host.taskAgents.list().find(a => a.id === data.value?.agentId));
-                    break;
-                case 'officeRetry': {
-                    // Fills the launcher rather than relaunching. A failed run failed for a
-                    // reason, and a one-click repeat of the identical request is most often
-                    // a second identical failure that also costs money.
-                    const failed = retryPrompt(this._host.taskAgents.list().find(a => a.id === data.value?.agentId));
-                    if (failed) this._panel.webview.postMessage({ type: 'officePrefill', value: failed });
-                    break;
-                }
-                case 'officeReadPlan': {
-                    const plan = this._host.artifacts.list()
-                        .find(a => a.runId === data.value?.runId && a.type === 'plan');
-                    if (plan) await this._host.artifacts.open(plan);
-                    else vscode.window.showInformationMessage(
-                        'This run has not written a plan artifact yet. The Review tab lists everything it has produced.');
-                    break;
-                }
-                case 'openSettings':
-                    await vscode.commands.executeCommand('black-ide.openSettings');
-                    break;
                 // ── The Logs tab (M83) ──────────────────────────────────────
                 case 'listRunLogs':
                     this._panel.webview.postMessage({ type: 'runLogList', value: this._host.office?.listLogs(100) ?? [] });
@@ -448,6 +422,20 @@ export class ManagerPanel {
                     }
                     break;
                 }
+
+                /*
+                 * Everything the Office renders (M73).
+                 *
+                 * A `default` rather than a case list, because the Office's vocabulary is
+                 * `office-messages.ts`'s to define — this panel is one of two surfaces
+                 * that speak it, and enumerating the verbs here would mean a new
+                 * affordance had to be added in three places to reach both of them.
+                 * Unhandled messages fall out silently, exactly as they did when this was
+                 * a switch with no default.
+                 */
+                default:
+                    await handleOfficeMessage(this._host, data, this._panel.webview);
+                    break;
             }
         });
 

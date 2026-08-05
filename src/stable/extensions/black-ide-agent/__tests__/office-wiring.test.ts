@@ -26,6 +26,15 @@ import { Affordance, WorkLane, WorkStatus, affordancesFor } from '@blackide/agen
 const ROOT = path.join(__dirname, '..');
 const officeView = fs.readFileSync(path.join(ROOT, 'webview/src/OfficeView.tsx'), 'utf8');
 const managerPanel = fs.readFileSync(path.join(ROOT, 'src/core/manager-panel.ts'), 'utf8');
+/*
+ * The Office's verbs moved out of the panel when the Front Desk arrived (M73).
+ *
+ * They are scanned separately rather than concatenated with the panel because the two
+ * files answer different questions, and the last assertion in this file depends on the
+ * difference: `office-messages.ts` is what *both* surfaces route through, so a verb found
+ * only in `manager-panel.ts` works on the floor and does nothing in the sidebar.
+ */
+const officeMessages = fs.readFileSync(path.join(ROOT, 'src/core/office-messages.ts'), 'utf8');
 
 /** Every affordance the projection can emit, gathered by exercising every state. */
 function everyAffordance(): Set<Affordance> {
@@ -81,14 +90,30 @@ describe('every message a button sends is handled', () => {
         expect(sent).toContain('applyTaskAgent');
     });
 
-    it('has a case in manager-panel.ts, or a stated reason not to', () => {
+    it('has a case in office-messages.ts, or a stated reason not to', () => {
         for (const message of new Set(sent)) {
             if (WEBVIEW_HANDLED[message]) continue;
             expect(
-                managerPanel.includes(`case '${message}'`),
-                `OfficeView sends "${message}" and manager-panel.ts has no case for it`,
+                officeMessages.includes(`case '${message}'`),
+                `OfficeView sends "${message}" and office-messages.ts has no case for it`,
             ).toBe(true);
         }
+    });
+
+    /*
+     * The stronger half of the same rule, and the one M73 added.
+     *
+     * The Office renders in two places now. A verb handled in `manager-panel.ts` alone
+     * works when the user clicks it on the floor and silently does nothing when they click
+     * the identical button in the sidebar — which is worse than a missing button, because
+     * the surface has told them the operation exists. The shared module is the only place
+     * a verb may live.
+     */
+    it('handles no Office verb in manager-panel.ts alone', () => {
+        const stranded = [...new Set(sent)]
+            .filter(m => !WEBVIEW_HANDLED[m])
+            .filter(m => managerPanel.includes(`case '${m}'`));
+        expect(stranded, 'handled only for the editor tab — the sidebar\'s copy of these buttons is dead').toEqual([]);
     });
 
     it('handles every message the Logs tab sends', () => {
@@ -112,7 +137,7 @@ describe('R4 — theme tokens only', () => {
      * the three status literals already in `tailwind.config.js` are the only exceptions,
      * and they are referenced by name, never repeated as hex.
      */
-    for (const file of ['webview/src/OfficeView.tsx', 'webview/src/LogsTab.tsx']) {
+    for (const file of ['webview/src/OfficeView.tsx', 'webview/src/LogsTab.tsx', 'webview/src/FrontDesk.tsx']) {
         it(`${file} contains no literal hex colour`, () => {
             const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
             const hex = [...text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0]);

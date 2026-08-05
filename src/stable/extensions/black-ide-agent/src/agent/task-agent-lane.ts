@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AgentGovernor, GOVERNOR_DEFAULTS } from '@blackide/agent-core/core/agent-governor';
+import { AgentGovernor, GOVERNOR_DEFAULTS, GovernorSnapshot } from '@blackide/agent-core/core/agent-governor';
 import { TaskAgentSummary } from '@blackide/agent-core/core/task-agents';
 import { PipelineRunSummary } from '@blackide/agent-core/core/pipeline-runs';
 import {
@@ -35,8 +35,12 @@ export interface TaskAgentLaneDeps extends TaskAgentEntryDeps {
     secretManager: SecretManager;
     /** The other lane, so the inbox can see pipeline runs too. */
     listPipelineRuns(): PipelineRunSummary[];
-    /** Pushes state to the Manager panel when it is open. */
-    postToManager(message: any): void;
+    /**
+     * Pushes state to whichever Office surfaces are open — the Manager panel, the sidebar
+     * Front Desk, or neither. A no-op when nothing is listening, which is correct for a
+     * state push that is re-sent on mount.
+     */
+    postToSurfaces(message: any): void;
     /**
      * Every event a running agent publishes (M76), for the Office's live telemetry.
      *
@@ -46,6 +50,15 @@ export interface TaskAgentLaneDeps extends TaskAgentEntryDeps {
     onAgentEvent?(agentId: string, event: any): void;
     /** Fired when the roster's shape changed, so the Office can re-sync rather than patch. */
     onRosterChanged?(): void;
+    /**
+     * The inbox counts and the governor, after every recompute (M73).
+     *
+     * Separate from `postToSurfaces` because it must fire whether or not a panel is open —
+     * it feeds the status bar entry, whose entire reason to exist is being the surface
+     * that is watching when nobody is. Both values are computed on the line above the
+     * call; this hands over what would otherwise be discarded.
+     */
+    onOfficeStatus?(status: { counts: ReturnType<typeof inboxCounts>; governor: GovernorSnapshot }): void;
 }
 
 export class TaskAgentLane implements vscode.Disposable {
@@ -62,7 +75,7 @@ export class TaskAgentLane implements vscode.Disposable {
             load: () => d.context.globalState.get<TaskAgentSummary[]>(STORAGE_KEY) || [],
             save: (agents) => { void d.context.globalState.update(STORAGE_KEY, agents); },
             onChanged: (agents) => {
-                d.postToManager({ type: 'taskAgentListSync', value: agents });
+                d.postToSurfaces({ type: 'taskAgentListSync', value: agents });
                 d.onRosterChanged?.();
                 this.refreshInbox();
             },
@@ -235,7 +248,7 @@ export class TaskAgentLane implements vscode.Disposable {
     private refreshInbox(): void {
         const items = this.inbox();
         const counts = inboxCounts(items);
-        this.d.postToManager({ type: 'agentInboxSync', value: { items, counts } });
+        this.d.postToSurfaces({ type: 'agentInboxSync', value: { items, counts } });
         /*
          * The governor snapshot, pushed for the first time (M72).
          *
@@ -246,7 +259,18 @@ export class TaskAgentLane implements vscode.Disposable {
          * answer the same question at the same cadence, and a second 3-second interval to
          * carry six numbers is a second thing to get wrong.
          */
-        this.d.postToManager({ type: 'officeGovernor', value: this.governor.snapshot() });
+        const governor = this.governor.snapshot();
+        this.d.postToSurfaces({ type: 'officeGovernor', value: governor });
+
+        /*
+         * The same two values, to the surface that is always open (M73).
+         *
+         * Deliberately *not* behind `postToSurfaces`: that call is a no-op with no panel,
+         * which is right for a dashboard and wrong for the status bar. Everything below
+         * this line — the notification bookkeeping — already ran with no panel open, and
+         * this is the visual half of the same duty.
+         */
+        this.d.onOfficeStatus?.({ counts, governor });
 
         this.notified = pruneNotified(this.notified, items);
         const fresh = newlyNotifiable(items, this.notified);
@@ -259,11 +283,20 @@ export class TaskAgentLane implements vscode.Disposable {
         const blocking = fresh.filter(i => i.reason === 'blocked' || i.reason === 'parked');
         if (!blocking.length) return;
 
+        /*
+         * The toast reveals the Front Desk, not an editor tab (M73).
+         *
+         * It used to open the Manager panel, which takes over the editor column the user
+         * was reading — so acting on the notification cost them their place, and the cost
+         * fell on exactly the people who *did* respond promptly. The sidebar answers the
+         * same question ("which run is blocked, and what does it want?") beside the work
+         * instead of on top of it, and the full floor is one click further on.
+         */
         vscode.window.showInformationMessage(
             `Black IDE: ${summarizeForNotification(blocking)}`,
-            'Open Manager',
+            'Open Front Desk',
         ).then(choice => {
-            if (choice === 'Open Manager') void vscode.commands.executeCommand('black-ide.openPipelineManager');
+            if (choice === 'Open Front Desk') void vscode.commands.executeCommand('black-ide.openOffice');
         });
     }
 }

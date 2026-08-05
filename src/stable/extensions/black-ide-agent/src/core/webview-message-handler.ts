@@ -16,6 +16,7 @@ import { Rule } from '@blackide/agent-core/core/rules';
 import { ContextProviderRegistry } from './context-providers';
 import { advertisedTools, applyToggle, toolPanelEntries } from '@blackide/agent-core/core/tool-toggles';
 import { compactSession } from './compact-session';
+import { WebviewSurface } from './webview-html';
 
 /**
  * Router for messages arriving from the chat webview.
@@ -47,7 +48,7 @@ export interface WebviewMessageHost {
     /** `@`-mention providers (Phase 3, M19). */
     readonly contextProviders: ContextProviderRegistry;
 
-    getHtmlForWebview(webview: vscode.Webview, viewType: 'chat' | 'settings' | 'manager'): string;
+    getHtmlForWebview(webview: vscode.Webview, viewType: WebviewSurface): string;
     getActiveEditorSelectionContext(): Promise<string>;
     postCheckpoints(webview: vscode.Webview): void;
     reportUndo(result: { restored: string[]; conflicted: string[] }, webview: vscode.Webview): void;

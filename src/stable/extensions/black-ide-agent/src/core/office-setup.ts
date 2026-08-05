@@ -8,8 +8,10 @@ import { ProjectProfile } from '@blackide/agent-core/core/project-profiler';
 import { ArtifactStore } from '../agent/artifact-store';
 import { TaskAgentLane } from '../agent/task-agent-lane';
 import { ModeLoader } from './mode-loader';
-import { ManagerPanel } from './manager-panel';
+import { ManagerPanel, ManagerPanelHost, ManagerTab } from './manager-panel';
 import { OfficeHub } from './office-hub';
+import { OfficeSidebar } from './office-sidebar';
+import { OfficeStatusItem } from './office-status';
 
 // Re-exported so a caller that receives an `Office` can name its halves without a second
 // import of the module that happens to define them.
@@ -57,6 +59,17 @@ export function createOffice(deps: OfficeSetupDeps): Office {
     let hub: OfficeHub;
 
     /*
+     * The one surface that is not gated on anything (M73).
+     *
+     * Built before the lane so it can be a plain constructor dependency rather than
+     * something attached afterwards — and it is fed from the lane's inbox poll rather
+     * than from the hub's `post` below, because that gate is precisely what it must not
+     * be behind. An entry that goes blank when both panels are closed answers "is
+     * anything waiting on me?" only for users who were already looking.
+     */
+    const status = new OfficeStatusItem();
+
+    /*
      * The durable half of the Office (M82).
      *
      * Constructed here rather than in `extension.ts` so it can be handed to every lane at
@@ -68,7 +81,9 @@ export function createOffice(deps: OfficeSetupDeps): Office {
         directory: path.join((deps.context.storageUri ?? deps.context.globalStorageUri).fsPath, 'journal'),
         onLine: (line) => {
             // The live tail. Dropped when nothing is open — the file is already written, so
-            // a closed panel loses a repaint, not a record.
+            // a closed panel loses a repaint, not a record. Only the Manager panel has a
+            // Logs tab, so this stays a single destination even though the Office now has
+            // two surfaces.
             if (ManagerPanel.isOpen()) ManagerPanel.post({ type: 'journalLine', value: line });
         },
     });
@@ -84,12 +99,18 @@ export function createOffice(deps: OfficeSetupDeps): Office {
         log: deps.log,
         readRunLog: (params) => hub?.readLogForModel(params),
         listPipelineRuns: deps.listPipelineRuns,
-        postToManager: (message) => ManagerPanel.post(message),
+        postToSurfaces: (message) => {
+            ManagerPanel.post(message);
+            OfficeSidebar.post(message);
+        },
         onAgentEvent: (agentId, event) => {
             hub?.record(agentId, event);
             hub?.journalEvent(agentId, 'task', event);
         },
         onRosterChanged: () => hub?.sync(),
+        // One projection, two always-on surfaces: the label in the status bar, the same
+        // count on the activity-bar icon.
+        onOfficeStatus: (input) => OfficeSidebar.setBadge(status.update(input).attention),
     });
 
     hub = new OfficeHub({
@@ -110,13 +131,55 @@ export function createOffice(deps: OfficeSetupDeps): Office {
          * producer rather than only of the consumer.
          */
         post: (message) => {
-            if (!ManagerPanel.isOpen()) return false;
-            ManagerPanel.post(message);
+            /*
+             * Two surfaces since M73, and the gate is the *disjunction*.
+             *
+             * Each destination drops the message itself when it is not there, so the
+             * fan-out is unconditional; what this decides is whether the snapshot was
+             * worth building at all. Asking "is the panel open" alone would have made the
+             * sidebar a surface that renders whatever the editor tab happened to be
+             * watching — live only when a second, unrelated window was also open.
+             */
+            const panel = ManagerPanel.isOpen();
+            const sidebar = OfficeSidebar.isOpen();
+            if (!panel && !sidebar) return false;
+            if (panel) ManagerPanel.post(message);
+            if (sidebar) OfficeSidebar.post(message);
             return true;
         },
     });
 
     hub.start();
-    deps.context.subscriptions.push(lane, { dispose: () => hub.dispose() });
+    deps.context.subscriptions.push(lane, status, { dispose: () => hub.dispose() });
     return { lane, hub, journal };
+}
+
+/**
+ * Register the sidebar Front Desk (M73).
+ *
+ * Separate from `createOffice` because the two run at different moments and need
+ * different things. The Office itself is assembled inside the chat provider's
+ * constructor, before there is a Manager panel to hand off to; the sidebar needs both the
+ * finished provider and that panel, so it is registered from `activate()` once they
+ * exist.
+ *
+ * It lives in this module rather than in `extension.ts` for the reason the header gives:
+ * the entry point gains a call, not a block.
+ */
+export function registerOfficeSidebar(
+    context: vscode.ExtensionContext,
+    host: ManagerPanelHost,
+    openManager: (tab?: ManagerTab) => void,
+): void {
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            OfficeSidebar.viewType,
+            new OfficeSidebar(context, host, openManager),
+            // Deliberately *not* `retainContextWhenHidden`, unlike the chat view. The
+            // Front Desk holds no unsaved input and rebuilds from one `officeSync` on
+            // mount, so keeping a hidden React tree alive would buy a repaint the user
+            // cannot perceive at the cost of a webview that never sleeps.
+            { webviewOptions: { retainContextWhenHidden: false } },
+        ),
+    );
 }

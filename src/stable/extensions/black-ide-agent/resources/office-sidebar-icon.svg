@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Four desks on a floor: the Office's own shape, at activity-bar size.
+       Occupied desks are filled, the free seat is an outline — the same
+       "three of four busy" fact the status bar entry states in text. -->
+  <rect x="2.5" y="3.5" width="8" height="6" rx="1.5" fill="currentColor"/>
+  <rect x="13.5" y="3.5" width="8" height="6" rx="1.5" fill="currentColor"/>
+  <rect x="2.5" y="12.5" width="8" height="6" rx="1.5" fill="currentColor"/>
+  <rect x="13.5" y="12.5" width="8" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  <!-- The floor line, so the four squares read as a room rather than a grid. -->
+  <path d="M2.5 21.5h19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

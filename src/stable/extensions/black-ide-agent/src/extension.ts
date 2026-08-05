@@ -25,10 +25,10 @@ import { ProjectProfile, stackMindmapSection, upsertMarkdownSection, STACK_MINDM
 import { ProjectProfileCache } from './core/project-profile-cache';
 import { AgentScheduler } from './agent/scheduler';
 import { generateCommitMessage as generateCommitMessageCore } from './core/commit-message';
-import { getHtmlForWebview as buildWebviewHtml } from './core/webview-html';
+import { WebviewSurface, getHtmlForWebview as buildWebviewHtml } from './core/webview-html';
 import { SettingsPanel } from './core/settings-panel';
 import { ManagerPanel } from './core/manager-panel';
-import { Office, OfficeHub, createOffice } from './core/office-setup';
+import { Office, OfficeHub, createOffice, registerOfficeSidebar } from './core/office-setup';
 import { registerCommands } from './core/command-registry';
 import { registerReviewCommand } from './core/review-command';
 import { runPipelineCore, runChatPipeline, PipelineCoreDeps } from './agent/pipeline-entry';
@@ -79,8 +79,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     registerCommands(context, secretManager, provider, {
         openSettingsPanel: () => settingsPanel!.open(),
-        openManagerPanel: () => managerPanel.open(),
+        openManagerPanel: (tab) => managerPanel.open(tab),
     }, provider.docsStore);
+    registerOfficeSidebar(context, provider, (tab) => managerPanel.open(tab)); // M73
 
     // Reviewer mode's palette entry (Phase 9, M47). Registered separately because it
     // needs the artifact store and the checkpoint manager, and threading two more
@@ -692,7 +693,7 @@ class BlackIdeChatProvider implements vscode.WebviewViewProvider {
         return generateCommitMessageCore(this._secretManager);
     }
 
-    public getHtmlForWebview(webview: vscode.Webview, viewType: 'chat' | 'settings' | 'manager' = 'chat'): string {
+    public getHtmlForWebview(webview: vscode.Webview, viewType: WebviewSurface = 'chat'): string {
         return buildWebviewHtml(webview, this._context.extensionUri, viewType);
     }
 }

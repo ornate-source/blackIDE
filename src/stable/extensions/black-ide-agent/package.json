@@ -39,6 +39,11 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "black-ide.openOffice",
+        "title": "\u2726 Black IDE: Agent Office",
+        "icon": "$(organization)"
+      },
+      {
         "command": "black-ide.openPipelineManager",
         "title": "\u2726 Black IDE: Pipeline Manager",
         "icon": "$(run-all)"
@@ -144,6 +149,11 @@
           "command": "black-ide.openSettings",
           "group": "2_configuration",
           "order": 1.5
+        },
+        {
+          "command": "black-ide.openOffice",
+          "group": "2_configuration",
+          "order": 1.4
         }
       ],
       "scm/inputBox": [
@@ -159,6 +169,11 @@
           "id": "black-ide-chat",
           "title": "Black Agent",
           "icon": "resources/agent-sidebar-icon.svg"
+        },
+        {
+          "id": "black-ide-office",
+          "title": "Agent Office",
+          "icon": "resources/office-sidebar-icon.svg"
         }
       ]
     },
@@ -168,6 +183,13 @@
           "id": "black-ide-chat-view",
           "type": "webview",
           "name": ""
+        }
+      ],
+      "black-ide-office": [
+        {
+          "id": "black-ide-office-view",
+          "type": "webview",
+          "name": "Agent Office"
         }
       ]
     }

@@ -260,14 +260,17 @@ item, no menu entry, no keybinding. The inbox notification's only action is a to
 *"Open Manager"* (`task-agent-lane.ts:180`) — which steals an editor column to answer a yes/no
 question. That is the remaining shape of F16.
 
-**Container decision: a second view inside the existing `black-ide-chat` activity-bar container**,
-not a new container. One icon keeps Black IDE at one activity-bar entry; the container badge
-aggregates its views' badges, so the attention count shows even when the view is collapsed. **The
-trade-off, stated:** the chat view currently has `"name": ""` and renders as a bare webview filling
-the container; adding a sibling gives both views a title bar, so chat gains a `▾ CHAT` header row it
-does not have today. **Verify before building** that the fork's API version exposes
-`WebviewView.badge`; if not, the status bar item carries the count alone, which is why it is M73 and
-not an afterthought.
+~~**Container decision: a second view inside the existing `black-ide-chat` activity-bar container**,
+not a new container.~~ **Reversed in M73 — it ships in its own container**, on the trade-off this
+paragraph had already identified and then accepted the wrong way round. The chat view has
+`"name": ""` and renders as a bare webview filling its container; a sibling gives both views a title
+bar, so chat gains a `▾ CHAT` header row it does not have today. Weighed against it: one fewer
+activity-bar icon, and a container badge that aggregates. Neither is worth a permanent visible
+regression in the extension's primary surface, and the aggregate badge turned out to be moot —
+`WebviewView.badge` **does** exist in the fork (`vscode.d.ts:10254`), so the Front Desk carries its
+own count directly. The status bar item carries it regardless, and remains what the acceptance
+criterion rests on: a webview view is not constructed until its container has been opened once, so
+its badge cannot be the surface that speaks before the user has ever looked.
 
 ---
 
@@ -834,7 +837,7 @@ priority.
 | # | M | Wave | Task | Pri | Acceptance |
 |:--:|:--:|:--:|---|:--:|---|
 | O-1 | **M72** | 1 | **Header truth** — push `GovernorSnapshot` and `inboxCounts` to the panel; render slots, spend, tokens, attention | P1 | Every header number traces to a field that existed before this milestone. No new instrumentation |
-| O-2 | **M73** | 1 | **Entry points** — status bar item, sidebar view registration, command alias, `global/activity` entry, toast → sidebar | P1 | The attention count is visible without opening any panel. Toast no longer opens an editor tab |
+| O-2 | **M73** ✅ | 1 | **Entry points** — status bar item, sidebar view registration, command alias, `global/activity` entry, toast → sidebar | P1 | The attention count is visible without opening any panel. Toast no longer opens an editor tab |
 | O-3 | **M74** | 1 | **The work-item model** — `office-model.ts` + `office-narrate.ts` | P1 | Pure and unit-tested: a fixture of all four lanes produces one ordered roster; a lane with no worktree yields no worktree affordance; an event with no `arguments` narrates to a `—` target, never a guess |
 | **O-B1** | **M80** | **1** | **§9 Part A — the pre-flight speaks.** `Progress` event; status line with `phaseLabel` + newest log + elapsed | **P0** | No gap over 2 s between webview posts from submit to first token, asserted against a stubbed slow pre-flight |
 | **O-B2** | **M81** | **1** | **§9 Parts B & C — bound every wait, make Stop stop** | **P0** | Each bound in §9.7B has a default, a setting, and a test. Stop during pre-flight ends the run in ≤ 1 s |
@@ -911,7 +914,7 @@ Written down so a later revision does not quietly add them back.
 | **Redaction false-positives destroy the evidence** | Accepted, and stated: the alternative leaks on `[ Open as file ]`. `describeFindings` records what was redacted so a user can see *that* something was |
 | **Telemetry slows the thing it watches** — the git mutex is process-global and already a documented throughput ceiling | §5.4 budget, enforced by the M76 acceptance test |
 | **The §9 fixes change agent behaviour** — a bounded index build means fewer embeddings on the first turn | Deliberate, and the degradation path already exists: `applyRerank` falls back to fused ranking (`codebase-index.ts:283-293`). Search quality on turn 1 of a cold repo is worth less than the run starting |
-| **`WebviewView.badge` may not exist in the fork's API version** | Verify in M73 before building. The status bar item carries the count regardless |
+| ~~**`WebviewView.badge` may not exist in the fork's API version**~~ | **Resolved in M73: it does** (`vscode.d.ts:10254`). The badge carries the attention count on the activity-bar icon; the status bar item carries it regardless, and remains the surface the acceptance criterion rests on because a webview view is not constructed until its container is opened once |
 | **Chat gains a title bar** when a second view joins the container | Stated in §4.2 as a trade-off rather than discovered in review |
 | **Bundle growth reaches the chat sidebar**, since all three surfaces share one bundle | Lazy-mount behind `window.isManagerPanel`; measure before and after. The log viewer is the biggest new component and must not be in the chat bundle |
 | **Four lanes drift apart again** | The lane is a *field on one row type*, and `office-model.ts` is the only place that knows about lanes. A fifth lane is a case in one pure function |

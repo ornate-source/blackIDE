@@ -23,7 +23,7 @@ eval green, no regression vs `eval/baseline.json` · webview builds · CLI runs 
 | **11** | ✅ | **0** | P11-1 (M62 boundary) · **P11-2 (M62 package move)** · P11-3 (M65 daemon) |
 | **12** | ✅ | **0** | P12-1 (M67) · P12-2 (M68) · P12-3 (M66); P12-4/P12-5 resolved as positions |
 | — | — | — | **X-1** — the model tier, named in sixteen revisions and blocking five phases |
-| **Office** | 🟡 | **2** | **M72 · M74 · M76 · M77 · M82 · M83 · M84** — the Agent Office and the run journal. **M80 and M81 remain open** — see §1 |
+| **Office** | 🟡 | **2** | **M72 · M73 · M74 · M76 · M77 · M82 · M83 · M84** — the Agent Office, its entry points and the run journal. **M80 and M81 remain open** — see §1 |
 
 **Two tasks are open**, both P0 defect work rather than features. Eighteen were open at the
 previous audit and all eighteen are closed.
@@ -79,15 +79,37 @@ A third, smaller item is filed with them: an empty final turn (`agent/agent-loop
 | **M82** | The run journal — content-bearing, redacted on write, bounded four ways, local only, and complete with no panel open | A killed run's partial file still parses; a live run is never pruned |
 | **M83** | The Logs tab — three depths, filter, problems-only, live tail with pause, open-as-file | A page is a page: the webview never receives the whole file |
 | **M84** | `read_run_log` — a run can read an earlier run's record | Defaults to the caller's run at summary depth and states its own truncation |
+| **M73** | **Entry points** — the `◆ Office` status bar item, the `black-ide.openOffice` command, an activity-bar Front Desk, a `global/activity` entry, and the toast pointed at the sidebar | The attention count is visible with no panel open; no Office verb is handled for the editor tab alone |
 
 **Deviation from the plan, stated:** §6.6 specified `read_run_log` as Agent-mode-only. It ships as
 `risk: 'safe'`, so Ask and Plan get it too. *"Why did that run fail?"* is an Ask-mode question, the
 tool is read-only, and Ask can already read the files the log quotes — the prompt-budget argument
 did not survive contact with the actual use.
 
-**Still open from the plan's §10:** M73 (status bar item, sidebar view, entry points), M75 (the
-Front Desk as a sidebar view), M78 (the Desk drill-in with a steering textarea and history), M79
-(the honesty-gate lint and deleting `ParallelSubagents.tsx`). None blocks the two P0s.
+**What M73 found, and why it was worth a milestone of its own.** The wave that built the Office
+contributed no command, no view and no status bar entry: every surface worked and none could be
+found, and the *only* way in was a palette entry titled "Pipeline Manager". That is the third
+instance of the defect `tool-surface.test.ts` and `command-surface.test.ts` each exist for — fully
+implemented, correctly wired, silently unreachable — so it is now asserted from the manifest in
+`office-entry-points.test.ts` rather than left to a reviewer noticing an absent entry.
+
+Two things fell out of giving the Office a second surface. `office-messages.ts` now holds every verb
+the floor can render, because a button handled in `manager-panel.ts` alone works on the editor tab
+and silently does nothing in the sidebar — worse than a missing button, since the surface has
+claimed the operation exists. `office-state.ts` holds the patch merge for the same reason: its one
+subtle rule (an explicit `activity: undefined` must actually clear the field) would have been
+rewritten by hand in the second surface, looked correct, and been one field-clear behind.
+
+**Deviation from the plan, stated:** §7.2 draws the Front Desk as a `▾ AGENT OFFICE` section, which
+implies a view sharing a container. It ships in an activity-bar container of its own. A second view
+inside `black-ide-chat` would give the chat view — today a single unnamed view filling its container
+— a section header it has never had, which is a visible regression in the extension's primary
+surface bought for nothing the Office needs.
+
+**Still open from the plan's §10:** M75 (the Front Desk's inbox rendering — the sidebar registered by
+M73 currently shows the floor, not the per-reason action rows), M78 (the Desk drill-in with a
+steering textarea and history), M79 (the honesty-gate lint and deleting `ParallelSubagents.tsx`).
+None blocks the two P0s.
 
 ---
 
@@ -231,6 +253,7 @@ and are asserted.
 | 2026-08-04 | 11 | **P11-2 (M62)** — the package move. **Phase 11 → ✅, and the roadmap with it** | vitest 1 956/72 · harness 418/418 · eval green · the package imports standalone by name |
 | 2026-08-04 | Office | **M72 · M74 · M76 · M77** — the Agent Office: the work-item model, the narrator, the telemetry contract, the desks | vitest 2 003/75 · harness 418/418 · webview builds · `extension.ts` 698 (≤700) |
 | 2026-08-04 | Office | **M82 · M83 · M84** — the run journal, the Logs tab, and `read_run_log` | vitest 2 058/77 · harness 418/418 · `lint:css` clean |
+| 2026-08-05 | Office | **M73** — entry points: the status bar item, the command, the sidebar Front Desk, and the toast off the editor tab | vitest 2 073/78 · harness 418/418 · `lint:css` and `knip` clean · webview builds · `extension.ts` 699 (≤700) |
 
 **Found while closing this wave, and fixed here rather than filed:**
 

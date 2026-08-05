@@ -3,11 +3,10 @@ import { agentReducer, initialAgentState, AgentState } from './agent-store';
 import { PipelineLogPanel } from './AgentPanels';
 import ArtifactReview, { ReviewGroup } from './ArtifactReview';
 import { MemoryPanel, MemoryView } from './MemoryPanel';
-import { OfficeFile, OfficeView } from './OfficeView';
+import { OfficeView } from './OfficeView';
 import { LogPage, LogRun, LogsTab } from './LogsTab';
 import type { JournalLine } from '@blackide/agent-core/core/run-journal';
-import type { OfficeSnapshot } from '@blackide/agent-core/core/office-model';
-import type { GovernorSnapshot } from '@blackide/agent-core/core/agent-governor';
+import { EMPTY_OFFICE, reduceOffice } from './office-state';
 import { rawVscode } from './webview-bridge';
 
 const vscode = rawVscode || {
@@ -146,8 +145,9 @@ export default function ManagerPanel() {
    * receive `officePatch` messages while the tab is unmounted and drop them, so the desks
    * would be stale for up to a full sync every time the user came back to the tab.
    */
-  const [office, setOffice] = useState<OfficeSnapshot | undefined>();
-  const [officeFiles, setOfficeFiles] = useState<OfficeFile[]>([]);
+  const [officeState, dispatchOffice] = useReducer(reduceOffice, EMPTY_OFFICE);
+  const office = officeState.snapshot;
+  const officeFiles = officeState.files;
   // The review surface (M38). Held here rather than in the component so one message
   // listener serves the whole panel, as it already does for runs, agents and the inbox.
   const [artifactGroups, setArtifactGroups] = useState<ReviewGroup[]>([]);
@@ -211,37 +211,44 @@ export default function ManagerPanel() {
           setMemory(message.value);
           break;
         // ── The Agent Office (M74–M77) ────────────────────────────────────
+        /*
+         * All four Office messages, reduced by `office-state.ts`.
+         *
+         * Shared with the sidebar Front Desk rather than written out here (M73): the
+         * patch merge has one subtle rule — an explicit `activity: undefined` must
+         * actually clear the field — and a second hand-written copy of it would look
+         * correct and be one field-clear behind for as long as nobody compared the two
+         * surfaces side by side.
+         */
         case 'officeSync':
-          setOffice(message.value);
+        case 'officePatch':
+        case 'officeGovernor':
+        case 'officeFiles':
+          dispatchOffice(message);
           break;
         /*
-         * A patch carries only the fields that changed for one item.
+         * A tab requested by whoever opened this panel (M73).
          *
-         * Merged rather than replacing the item, because the patch channel deliberately
-         * omits everything it did not touch — an item's title, branch and affordances come
-         * from the roster and would be lost by a wholesale swap. `fields` is spread last so
-         * an explicit `activity: undefined` (the run's tool finished) actually clears it,
-         * which a `{...item, ...defined-only}` merge would silently ignore.
+         * The Front Desk hands off two things it cannot render — the full floor and a
+         * run's journal — and both have to land on the right tab rather than on whichever
+         * one the user happened to leave open, which from the other surface is
+         * indistinguishable from the button being wired to the wrong thing.
          */
-        case 'officePatch':
-          setOffice(prev => prev && ({
-            ...prev,
-            items: prev.items.map(item =>
-              item.id === message.value.id ? { ...item, ...message.value.fields } : item),
-            desks: prev.desks.map(desk =>
-              desk.item?.id === message.value.id
-                ? { ...desk, item: { ...desk.item, ...message.value.fields } }
-                : desk),
-          }));
+        case 'showManagerTab': {
+          const tab = message.value || {};
+          if (tab.lane) setLane(tab.lane);
+          if (tab.runId) {
+            setSelectedRun(tab.runId);
+            setLogPage(undefined); setLogTail([]); setLogPayloads({});
+            vscode.postMessage({ type: 'listRunLogs' });
+            vscode.postMessage({ type: 'readRunLog', value: { runId: tab.runId } });
+          }
+          if (tab.prefill) {
+            setPrompt(tab.prefill.prompt || '');
+            setModelId(tab.prefill.modelId || '');
+          }
           break;
-        case 'officeGovernor':
-          // Arrives on its own cadence from the inbox poll, so it must not wait for a full
-          // sync: the header's spend tile is the one number that moves while nothing else does.
-          setOffice(prev => prev && ({ ...prev, governor: message.value as GovernorSnapshot }));
-          break;
-        case 'officeFiles':
-          setOfficeFiles(message.value || []);
-          break;
+        }
         case 'officePrefill':
           // A retry fills the launcher rather than relaunching. The decision stays the
           // user's; the button only removes the retyping.

@@ -243,6 +243,104 @@ export function isLive(item: WorkItem): boolean {
     return item.status === 'running' || item.status === 'queued' || item.status === 'needs_you';
 }
 
+/** What the always-on status bar entry reads (M73). */
+export interface OfficeStatus {
+    /** The label, already assembled. `◆ Office` at its shortest. */
+    text: string;
+    tooltip: string;
+    /** Items the user has to deal with: blocked, parked, or failed. */
+    attention: number;
+    /** True when a ceiling is hit, so the host can tint the entry. */
+    exhausted: boolean;
+}
+
+/**
+ * The status bar entry — the one Office surface that is always open.
+ *
+ * Every other surface in this file is a projection somebody chose to look at. This one is
+ * on screen whether or not the user has thought about agents today, which makes it the
+ * only place the *absence* of a panel is not also the absence of the information — and
+ * therefore the only place that can honestly claim "you would have been told".
+ *
+ * ── R1 applies here more sharply than anywhere else ──────────────────────────
+ * Four characters of ambient reassurance is a design decision, not a fallback. A status
+ * bar entry that reads `◆ Office 0▸ 0!` when nothing has ever run trains the user to stop
+ * reading it, and the one time it says `1!` they will not notice. So each segment appears
+ * only when it has a non-zero value drawn from a field that was actually published:
+ * `active` from the governor, `attention` from `inboxCounts`. With no governor snapshot
+ * there is no number to show, and none is invented.
+ *
+ * ── Why `blocking + failed` and not `total` ──────────────────────────────────
+ * `counts.review` is work that finished and is waiting to be looked at. It is real, it is
+ * in the Front Desk, and it is deliberately not in the badge: nothing is stuck, nothing is
+ * on a timer, and a permanently non-zero badge is an ignored badge. `blocking` and
+ * `failed` are the two states where time is being wasted right now.
+ */
+export function officeStatus(snapshot: Pick<OfficeSnapshot, 'governor' | 'counts'>): OfficeStatus {
+    const governor = snapshot.governor;
+    const attention = snapshot.counts.blocking + snapshot.counts.failed;
+
+    /*
+     * Segments, in the order §7.1 of the design record draws them, each omitted when it
+     * has nothing to say. The wireframe's three examples are the three that fall out:
+     * `◆ Office`, `◆ Office 3▸`, `◆ Office ⛔ budget`.
+     *
+     * Exhaustion leads because it is the state that changes what the *user* can do — a
+     * launch will be refused — while the counters describe what the machine is doing.
+     * They compose rather than replace: an exhausted governor with three agents still
+     * running and one failure is all three facts at once, and dropping two of them to
+     * match a wireframe row would be the surface deciding which of the user's problems
+     * is worth mentioning.
+     */
+    const segments = [
+        governor?.exhausted ? '⛔ budget' : '',
+        governor && governor.active > 0 ? `${governor.active}▸` : '',
+        attention > 0 ? `${attention}!` : '',
+    ].filter(Boolean);
+
+    return {
+        text: ['◆ Office', ...segments].join(' '),
+        tooltip: officeTooltip(governor, snapshot.counts, attention),
+        attention,
+        exhausted: !!governor?.exhausted,
+    };
+}
+
+/**
+ * The hover, which is where the numbers get their names.
+ *
+ * The label is four characters and two glyphs; without this, `3▸ 1!` is a rebus. Built
+ * from the same two sources as the label so the two cannot disagree.
+ */
+function officeTooltip(
+    governor: GovernorSnapshot | undefined,
+    counts: OfficeSnapshot['counts'],
+    attention: number,
+): string {
+    const lines = ['Agent Office'];
+
+    if (governor) {
+        lines.push(`${governor.active} of ${governor.maxConcurrent} slots running`);
+        // Budgets of zero mean "unlimited" in `agent-governor.ts`, so a `$0.19 / $0.00`
+        // line would read as an overrun. Stated only when there is a ceiling to state.
+        if (governor.costBudget > 0) {
+            lines.push(`$${governor.costSpent.toFixed(2)} of $${governor.costBudget.toFixed(2)} spent`);
+        }
+        if (governor.exhausted) lines.push('Budget spent — nothing further will start');
+    }
+
+    if (attention > 0) {
+        const parts: string[] = [];
+        if (counts.blocking > 0) parts.push(`${counts.blocking} waiting on you`);
+        if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+        lines.push(parts.join(', '));
+    }
+    if (counts.review > 0) lines.push(`${counts.review} finished, ready to review`);
+
+    lines.push('Click to open the Front Desk');
+    return lines.join('\n');
+}
+
 /**
  * The buttons an item actually has.
  *

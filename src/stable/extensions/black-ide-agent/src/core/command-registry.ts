@@ -12,6 +12,7 @@ import { CommandPolicy } from '@blackide/agent-core/core/command-policy';
 import { LLMClient } from '@blackide/agent-core/core/llm-client';
 import { loadModelRouter } from './model-router-loader';
 import { buildTerminalPrompt, isSafeToInsert, judgeCommand, sanitizeCommand } from './terminal-command';
+import { ManagerTab } from './manager-panel';
 
 /**
  * Registration of every `black-ide.*` command contributed by the extension.
@@ -37,7 +38,8 @@ export interface CommandHost {
 
 export interface CommandPanels {
     openSettingsPanel(): void;
-    openManagerPanel(): void;
+    /** The tab is optional so the palette entry keeps its "wherever you left it" behaviour. */
+    openManagerPanel(tab?: ManagerTab): void;
 }
 
 export function registerCommands(
@@ -102,6 +104,25 @@ export function registerCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('black-ide.openPipelineManager', () => {
             panels.openManagerPanel();
+        })
+    );
+
+    /*
+     * The Agent Office's palette entry and the status bar item's click target (M73).
+     *
+     * It reveals the sidebar Front Desk rather than opening the Manager panel, which is
+     * the whole distinction the entry points draw: "what is waiting on me" is a glance
+     * beside your work, and "show me the whole floor" is a place you go. The full floor
+     * is one click further on, from the Front Desk's own `[ Office ▸ ]`.
+     *
+     * `.focus` is contributed automatically by VS Code for every registered view — using
+     * it rather than `workbench.view.extension.*` reveals the container *and* puts the
+     * view itself in focus, which for a collapsed view is the difference between the user
+     * seeing the Front Desk and seeing the header of a section they must then expand.
+     */
+    context.subscriptions.push(
+        vscode.commands.registerCommand('black-ide.openOffice', async () => {
+            await vscode.commands.executeCommand('black-ide-office-view.focus');
         })
     );
 
