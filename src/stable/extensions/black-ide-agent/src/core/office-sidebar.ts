@@ -9,6 +9,19 @@ import { handleOfficeMessage } from './office-messages';
 // the agents are doing costs the user the file they were reading, and the cost falls
 // hardest on whoever checks most often.
 //
+// ── Why it is stacked under the chat, not beside it ──────────────────────────
+// This view is the second pane of the `black-ide-chat` container rather than a container
+// of its own. Two activity-bar icons made "the agents" a place separate from "the agent",
+// which is a distinction the product does not actually draw — the runs on this floor are
+// the ones launched from the chat directly above it, and a user who wanted both open paid
+// for the split by never having both open. Stacked, the answer to "what are my agents
+// doing" is under the conversation that started them, and collapsing it is a click.
+//
+// The practical consequence is that being hidden is now routine rather than exceptional:
+// a collapsed section is the resting state, not an unopened container. Everything below
+// that turns on visibility — the publish gate, the re-sync, the badge — was already
+// written for it, because a background container had the same property.
+//
 // ── Why this is a second surface and not a second implementation ─────────────
 // It renders `OfficeView`, reads the same `officeSync`/`officePatch` channel, and routes
 // every button through `office-messages.ts`. Nothing about the Office is decided here —
@@ -38,19 +51,24 @@ export class OfficeSidebar implements vscode.WebviewViewProvider {
     }
 
     /**
-     * The count on the activity-bar icon.
+     * The count on the section header, and on the shared activity-bar icon.
      *
      * `WebviewView.badge` was carried as a risk in the design record — "may not exist in
      * the fork's API version" — and it does, so the attention count lands on the icon as
      * well as in the status bar. Two always-on surfaces rather than one is not redundancy
      * here: the status bar says *what* (`3▸ 1!`), the badge says *where to click*.
      *
-     * Set on the view rather than posted into the webview, so it is visible while the
-     * view is collapsed — which is the state it will spend most of its life in.
+     * Since the Front Desk was stacked into the chat container it renders in two places
+     * from this one call: on the `Agent Office` section header, and aggregated onto the
+     * `Black Agent` activity-bar icon the two views now share. The second is what the
+     * number is for — it is legible with the whole sidebar closed.
+     *
+     * Set on the view rather than posted into the webview, so it survives the section
+     * being collapsed — which is the state it will spend most of its life in.
      *
      * Only reaches a view that has been resolved: VS Code does not construct a webview
-     * view until the user opens its container once. That is why the status bar entry is
-     * the surface the acceptance criterion rests on, and this is the improvement on it.
+     * view until it is first expanded. That is why the status bar entry is the surface
+     * the acceptance criterion rests on, and this is the improvement on it.
      */
     static setBadge(attention: number): void {
         const view = OfficeSidebar._live?._view;
@@ -69,6 +87,10 @@ export class OfficeSidebar implements vscode.WebviewViewProvider {
      * the case the Office's publish rule cares about: VS Code stops delivering to a hidden
      * webview, so computing a snapshot for one costs the projection and buys nothing. The
      * view re-syncs when it becomes visible again.
+     *
+     * This carries more weight now that the section sits under the chat: collapsing it is
+     * a one-click, in-passing gesture, so `false` here is a state the user enters and
+     * leaves many times a session rather than a container they never opened.
      */
     static isOpen(): boolean {
         return !!OfficeSidebar._live?._view?.visible;

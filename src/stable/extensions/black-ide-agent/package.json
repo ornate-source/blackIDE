@@ -15,7 +15,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:black-ide-chat-view"
+    "onView:black-ide-chat-view",
+    "onView:black-ide-office-view"
   ],
   "main": "./dist/extension.js",
   "bin": {
@@ -169,11 +170,6 @@
           "id": "black-ide-chat",
           "title": "Black Agent",
           "icon": "resources/agent-sidebar-icon.svg"
-        },
-        {
-          "id": "black-ide-office",
-          "title": "Agent Office",
-          "icon": "resources/office-sidebar-icon.svg"
         }
       ]
     },
@@ -182,14 +178,17 @@
         {
           "id": "black-ide-chat-view",
           "type": "webview",
-          "name": ""
-        }
-      ],
-      "black-ide-office": [
+          "name": "Chat",
+          "icon": "resources/agent-sidebar-icon.svg",
+          "initialSize": 5
+        },
         {
           "id": "black-ide-office-view",
           "type": "webview",
-          "name": "Agent Office"
+          "name": "Agent Office",
+          "icon": "resources/office-sidebar-icon.svg",
+          "contextualTitle": "Black Agent",
+          "initialSize": 2
         }
       ]
     }

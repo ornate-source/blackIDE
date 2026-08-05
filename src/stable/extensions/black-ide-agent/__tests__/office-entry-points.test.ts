@@ -46,6 +46,42 @@ describe('the Office has entry points', () => {
         expect(activity.map(e => e.command)).toContain('black-ide.openOffice');
     });
 
+    it('shares one activity-bar container with the chat', () => {
+        /*
+         * The Office is a pane under the chat, not a second icon beside it.
+         *
+         * Two containers made "the agents" a destination separate from "the agent", a
+         * distinction the product does not draw: the runs on this floor are launched from
+         * the conversation directly above it. The split's real cost was that the two were
+         * mutually exclusive — revealing one hid the other — so the user who wanted to
+         * watch a run while starting the next one could not.
+         *
+         * Asserted from the manifest because re-splitting them is a four-line edit that
+         * reviews as tidying, and because nothing at runtime fails when it happens.
+         */
+        const containers: any[] = manifest.contributes.viewsContainers?.activitybar || [];
+        expect(containers.map(c => c.id)).toEqual(['black-ide-chat']);
+
+        const panes: any[] = manifest.contributes.views['black-ide-chat'] || [];
+        expect(panes.map(v => v.id)).toEqual(['black-ide-chat-view', 'black-ide-office-view']);
+    });
+
+    it('names both panes, now that each one has a header', () => {
+        // The chat view shipped with `name: ""` because a lone view in a container renders
+        // no header at all. Stacked, an empty name is a nameless section the user cannot
+        // tell apart from the one below it.
+        for (const view of manifest.contributes.views['black-ide-chat']) {
+            expect(view.name, `${view.id} has no name`).toBeTruthy();
+        }
+    });
+
+    it('activates when either pane is opened', () => {
+        // The Office pane can be the first thing resolved — `black-ide.openOffice` focuses
+        // it directly, and VS Code restores a collapsed layout in whatever order it likes.
+        // Activating only on the chat view would make that a race the user loses silently.
+        expect(manifest.activationEvents).toContain('onView:black-ide-office-view');
+    });
+
     it('the toast reveals the sidebar rather than opening an editor tab', () => {
         /*
          * The acceptance clause, asserted at the source.

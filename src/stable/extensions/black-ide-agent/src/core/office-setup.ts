@@ -175,10 +175,15 @@ export function registerOfficeSidebar(
         vscode.window.registerWebviewViewProvider(
             OfficeSidebar.viewType,
             new OfficeSidebar(context, host, openManager),
-            // Deliberately *not* `retainContextWhenHidden`, unlike the chat view. The
-            // Front Desk holds no unsaved input and rebuilds from one `officeSync` on
-            // mount, so keeping a hidden React tree alive would buy a repaint the user
-            // cannot perceive at the cost of a webview that never sleeps.
+            // Deliberately *not* `retainContextWhenHidden`, unlike the chat view directly
+            // above it. The Front Desk holds no unsaved input and rebuilds from one
+            // `officeSync` on mount, so keeping a collapsed React tree alive would buy a
+            // repaint the user cannot perceive at the cost of a webview that never sleeps.
+            //
+            // The asymmetry with the chat is the point of the two settings, not an
+            // oversight: now that both panes live in one container, collapsing either is
+            // routine, and the chat *does* hold something a rebuild would destroy — a
+            // half-typed prompt and a scrolled conversation.
             { webviewOptions: { retainContextWhenHidden: false } },
         ),
     );
